@@ -1,8 +1,9 @@
 id,priority,area,status,title,problem,done_when,commit_message
-UI-001,P0,panel,todo,Add light theme + system default,Only dark theme; need light mode for system light preference,Theme supports auto/light/dark; default auto respects prefers-color-scheme,"feat(panel): add light theme + theme switch"
-UI-002,P0,panel,todo,Replace browser dialogs (confirm/prompt),Native dialogs look ugly and break UX,All destructive actions use in-app modal; no window.confirm/prompt usage,"ui(panel): replace browser dialogs with modal"
-UI-003,P0,panel,todo,Add Minecraft flavor to UI,Panel lacks Minecraft identity,Subtle pixel/block styling added without hurting readability,"ui(panel): add minecraft flavor styling"
-UI-004,P0,panel,todo,Simplify topbar online indicator,Topbar online badge is visually heavy,Topbar status uses a small dot with tooltip,"ui(panel): simplify online indicator"
+UI-001,P0,panel,done,Add light theme + system default,Only dark theme; need light mode for system light preference,Theme supports auto/light/dark; default auto respects prefers-color-scheme,"feat(panel): add light theme + theme switch"
+UI-002,P0,panel,done,Replace browser dialogs (confirm/prompt),Native dialogs look ugly and break UX,All destructive actions use in-app modal; no window.confirm/prompt usage,"ui(panel): replace browser dialogs with modal"
+UI-003,P0,panel,done,Add Minecraft flavor to UI,Panel lacks Minecraft identity,Subtle pixel/block styling added without hurting readability,"ui(panel): add minecraft flavor styling"
+UI-004,P0,panel,done,Simplify topbar online indicator,Topbar online badge is visually heavy,Topbar status uses a small dot with tooltip,"ui(panel): simplify online indicator"
+UX-005,P1,panel,done,Keyboard shortcuts for modals,Modals require too much mouse clicking,Esc closes active modal; Enter confirms confirm dialog,"ux(panel): add modal keyboard shortcuts"
 1,P0,repo,done,Create initial git history,Repo currently has no commits; hard to track incremental progress,Initial commit exists and .env is ignored,"chore(repo): initial import"
 2,P0,docs,done,Define milestone workflow list,Need a single source of truth for what to fix next,WORKFLOW.csv tracked and referenced in README,"docs: add WORKFLOW.csv roadmap"
 3,P0,panel,done,Panel UI redesign (spacing/typography/buttons),Current UI feels cluttered and unattractive; buttons stick and tables overflow,All pages have consistent spacing; buttons compact; tables never overflow; key info is readable,"ui(panel): compact controls + card-based lists"

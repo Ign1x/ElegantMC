@@ -12,6 +12,7 @@
 /panel/.next/
 /panel/out/
 /panel/.env
+*.tsbuildinfo
 
 ## Local env / secrets
 .env

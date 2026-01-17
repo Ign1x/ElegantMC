@@ -29,7 +29,8 @@ type FrpProfile = {
   name: string;
   server_addr: string;
   server_port: number;
-  token?: string;
+  has_token?: boolean;
+  token_masked?: string;
   created_at_unix?: number;
   status?: {
     checkedAtUnix?: number;
@@ -1035,6 +1036,15 @@ export default function HomePage() {
     }
   }
 
+  async function fetchFrpProfileToken(profileId: string) {
+    const id = String(profileId || "").trim();
+    if (!id) return "";
+    const res = await apiFetch(`/api/frp/profiles/${encodeURIComponent(id)}/token`, { cache: "no-store" });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "failed to load frp token");
+    return String(json?.token || "");
+  }
+
   useEffect(() => {
     if (authed !== true) return;
     refreshProfiles();
@@ -1422,11 +1432,17 @@ export default function HomePage() {
           setFrpOpStatus("FRP enabled but no profile selected");
           return;
         }
+        let token = "";
+        try {
+          token = profile?.has_token ? await fetchFrpProfileToken(profile.id) : "";
+        } catch (e: any) {
+          throw new Error(`FRP token: ${String(e?.message || e)}`);
+        }
         const args: any = {
           name: "mc",
           server_addr: profile.server_addr,
           server_port: Number(profile.server_port),
-          token: profile.token || "",
+          token,
           local_port: port,
           remote_port: Number.isFinite(remotePort) ? remotePort : 0,
         };

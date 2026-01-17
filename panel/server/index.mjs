@@ -422,7 +422,13 @@ const server = http.createServer(async (req, res) => {
       const profiles = await listFrpProfiles();
       const statuses = await getFrpStatuses(profiles);
       const out = profiles.map((p) => ({
-        ...p,
+        id: p.id,
+        name: p.name,
+        server_addr: p.server_addr,
+        server_port: p.server_port,
+        created_at_unix: p.created_at_unix,
+        has_token: !!(p.token && String(p.token).trim()),
+        token_masked: maskToken(p.token),
         status: statuses.get(p.id) || { checkedAtUnix: 0, online: null, latencyMs: 0, error: "" },
       }));
       return json(res, 200, { profiles: out });
@@ -431,10 +437,30 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readJsonBody(req);
         const profile = await createFrpProfile(body);
-        return json(res, 200, { profile });
+        return json(res, 200, {
+          profile: {
+            id: profile.id,
+            name: profile.name,
+            server_addr: profile.server_addr,
+            server_port: profile.server_port,
+            created_at_unix: profile.created_at_unix,
+            has_token: !!(profile.token && String(profile.token).trim()),
+            token_masked: maskToken(profile.token),
+          },
+        });
       } catch (e) {
         return json(res, 400, { error: String(e?.message || e) });
       }
+    }
+    const mFrpToken = url.pathname.match(/^\/api\/frp\/profiles\/([^/]+)\/token$/);
+    if (mFrpToken && req.method === "GET") {
+      const id = decodeURIComponent(mFrpToken[1]);
+      const profiles = await listFrpProfiles();
+      const p = profiles.find((x) => x && x.id === id);
+      if (!p) return json(res, 404, { error: "not found" });
+      const token = String(p.token || "");
+      if (!token) return json(res, 404, { error: "no token set" });
+      return json(res, 200, { id, token });
     }
     const mFrp = url.pathname.match(/^\/api\/frp\/profiles\/([^/]+)$/);
     if (mFrp && req.method === "DELETE") {

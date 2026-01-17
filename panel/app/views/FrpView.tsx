@@ -13,9 +13,9 @@ export default function FrpView() {
     setTab,
     removeFrpProfile,
     copyText,
-    maskToken,
     fmtUnix,
     setProfilesStatus,
+    apiFetch,
   } = useAppCtx();
 
   return (
@@ -69,15 +69,22 @@ export default function FrpView() {
 
                   <div className="row" style={{ gap: 8, minWidth: 0 }}>
                     <span className="muted">token</span>
-                    <code>{maskToken(p.token)}</code>
+                    <code>{String(p.token_masked || "(none)")}</code>
                     <button
                       type="button"
                       onClick={async () => {
-                        await copyText(p.token || "");
-                        setProfilesStatus("Copied");
-                        setTimeout(() => setProfilesStatus(""), 800);
+                        try {
+                          const res = await apiFetch(`/api/frp/profiles/${encodeURIComponent(p.id)}/token`, { cache: "no-store" });
+                          const json = await res.json();
+                          if (!res.ok) throw new Error(json?.error || "failed");
+                          await copyText(String(json?.token || ""));
+                          setProfilesStatus("Copied");
+                          setTimeout(() => setProfilesStatus(""), 800);
+                        } catch (e: any) {
+                          setProfilesStatus(String(e?.message || e));
+                        }
                       }}
-                      disabled={!p.token}
+                      disabled={!p.has_token}
                     >
                       Copy
                     </button>

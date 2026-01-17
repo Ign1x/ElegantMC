@@ -98,6 +98,10 @@ const SESSION_COOKIE = "elegantmc_session";
 const SESSION_TTL_SEC = 60 * 60 * 24 * 7;
 const sessions = new Map(); // token -> { expiresAtUnix }
 
+const LOGIN_WINDOW_SEC = 5 * 60;
+const LOGIN_MAX_ATTEMPTS = 8;
+const loginAttempts = new Map(); // ip -> { count, resetAtUnix }
+
 let adminPassword = String(process.env.ELEGANTMC_PANEL_ADMIN_PASSWORD || "").trim();
 if (!adminPassword) {
   adminPassword = randomBytes(9).toString("base64url");
@@ -114,13 +118,44 @@ function safeEqual(a, b) {
   return timingSafeEqual(aa, bb);
 }
 
+function nowUnix() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function getClientIP(req) {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.trim()) {
+    return xff.split(",")[0].trim();
+  }
+  const ra = req.socket?.remoteAddress;
+  return typeof ra === "string" ? ra : "";
+}
+
+function checkLoginRateLimit(req, res) {
+  const ip = getClientIP(req) || "unknown";
+  const now = nowUnix();
+  let st = loginAttempts.get(ip);
+  if (!st || now >= (st.resetAtUnix || 0)) {
+    st = { count: 0, resetAtUnix: now + LOGIN_WINDOW_SEC };
+  }
+  st.count += 1;
+  loginAttempts.set(ip, st);
+  if (st.count > LOGIN_MAX_ATTEMPTS) {
+    const retryAfter = Math.max(1, (st.resetAtUnix || now) - now);
+    res.setHeader("Retry-After", String(retryAfter));
+    json(res, 429, { error: "rate limited", retry_after_sec: retryAfter });
+    return false;
+  }
+  return true;
+}
+
 function getSession(req) {
   const cookies = parseCookies(req);
   const token = String(cookies?.[SESSION_COOKIE] || "").trim();
   if (!token) return null;
   const session = sessions.get(token);
   if (!session) return null;
-  const now = Math.floor(Date.now() / 1000);
+  const now = nowUnix();
   if (session.expiresAtUnix && now > session.expiresAtUnix) {
     sessions.delete(token);
     return null;
@@ -142,9 +177,20 @@ const nextHandle = nextApp.getRequestHandler();
 await nextApp.prepare();
 await ensureReady();
 
+// Periodic GC for expired sessions and rate-limit buckets.
+setInterval(() => {
+  const now = nowUnix();
+  for (const [token, s] of sessions.entries()) {
+    if (s?.expiresAtUnix && now > s.expiresAtUnix) sessions.delete(token);
+  }
+  for (const [ip, st] of loginAttempts.entries()) {
+    if (!st?.resetAtUnix || now >= st.resetAtUnix) loginAttempts.delete(ip);
+  }
+}, 60_000).unref?.();
+
 let mcVersionsCache = { atUnix: 0, versions: null, error: "" };
 async function getMcVersions() {
-  const now = Math.floor(Date.now() / 1000);
+  const now = nowUnix();
   if (mcVersionsCache.versions && now-mcVersionsCache.atUnix < 600) {
     return mcVersionsCache.versions;
   }
@@ -246,6 +292,7 @@ const server = http.createServer(async (req, res) => {
       return ok ? json(res, 200, { authed: true }) : json(res, 401, { authed: false });
     }
     if (url.pathname === "/api/auth/login" && req.method === "POST") {
+      if (!checkLoginRateLimit(req, res)) return;
       try {
         const body = await readJsonBody(req);
         const password = String(body?.password || "");
@@ -253,8 +300,9 @@ const server = http.createServer(async (req, res) => {
           return json(res, 401, { error: "invalid password" });
         }
         const token = randomBytes(24).toString("base64url");
-        const now = Math.floor(Date.now() / 1000);
+        const now = nowUnix();
         sessions.set(token, { expiresAtUnix: now + SESSION_TTL_SEC });
+        loginAttempts.delete(getClientIP(req) || "unknown");
         res.setHeader(
           "Set-Cookie",
           serializeCookie(SESSION_COOKIE, token, {

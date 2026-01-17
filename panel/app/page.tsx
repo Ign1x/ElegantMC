@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AppCtxProvider } from "./appCtx";
+import AdvancedView from "./views/AdvancedView";
+import FilesView from "./views/FilesView";
+import FrpView from "./views/FrpView";
+import GamesView from "./views/GamesView";
+import NodesView from "./views/NodesView";
 
 type Daemon = {
   id: string;
@@ -1421,8 +1427,101 @@ export default function HomePage() {
 
   const activeTab = useMemo(() => tabs.find((t) => t.id === tab) || tabs[0], [tab]);
 
+  const appCtxValue = {
+    tab,
+    setTab,
+    daemons,
+    selected,
+    setSelected,
+    selectedDaemon,
+
+    // Nodes
+    nodes,
+    setNodes,
+    nodesStatus,
+    setNodesStatus,
+    openNodeDetails,
+    openAddNodeModal,
+
+    // Games
+    serverDirs,
+    serverDirsStatus,
+    refreshServerDirs,
+    instanceId,
+    setInstanceId,
+    openSettingsModal,
+    openInstallModal,
+    startServer,
+    stopServer,
+    restartServer,
+    deleteServer,
+    frpOpStatus,
+    serverOpStatus,
+    instanceStatus,
+    frpStatus,
+    localHost,
+    gamePort,
+    enableFrp,
+    selectedProfile,
+    frpRemotePort,
+    logView,
+    setLogView,
+    logs,
+    consoleLine,
+    setConsoleLine,
+    sendConsoleLine,
+
+    // FRP
+    profiles,
+    profilesStatus,
+    setProfilesStatus,
+    refreshProfiles,
+    openAddFrpModal,
+    removeFrpProfile,
+    setEnableFrp,
+    setFrpProfileId,
+
+    // Files
+    fsPath,
+    setFsPath,
+    fsBreadcrumbs,
+    fsStatus,
+    fsEntries,
+    fsSelectedFile,
+    setFsSelectedFile,
+    fsFileText,
+    setFsFileText,
+    openEntry,
+    saveFile,
+    uploadInputKey,
+    uploadFile,
+    setUploadFile,
+    uploadSelectedFile,
+    uploadStatus,
+    refreshFsNow,
+    deleteFsEntry,
+
+    // Advanced
+    cmdName,
+    setCmdName,
+    cmdArgs,
+    setCmdArgs,
+    cmdResult,
+    runAdvancedCommand,
+
+    // Helpers
+    apiFetch,
+    copyText,
+    maskToken,
+    pct,
+    fmtUnix,
+    fmtBytes,
+    joinRelPath,
+    parentRelPath,
+  };
+
   return (
-    <>
+    <AppCtxProvider value={appCtxValue}>
       {authed !== true ? (
         <div className="modalOverlay">
           <div className="modal" style={{ width: "min(560px, 100%)" }} onClick={(e) => e.stopPropagation()}>
@@ -2089,669 +2188,18 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {tab === "nodes" ? (
-        <div className="stack">
-          <div className="card">
-            <div className="toolbar">
-              <div className="toolbarLeft" style={{ alignItems: "center" }}>
-                <div>
-                  <h2>Nodes</h2>
-                  <div className="hint">这里的 Node 列表用于 Daemon 鉴权（daemon_id → token），保存在 Panel 数据目录。</div>
-                  {nodesStatus ? <div className="hint">{nodesStatus}</div> : null}
-                </div>
-              </div>
-              <div className="toolbarRight">
-                <button type="button" className="primary" onClick={openAddNodeModal}>
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setNodesStatus("Loading...");
-                    try {
-                      const res = await apiFetch("/api/nodes", { cache: "no-store" });
-                      const json = await res.json();
-                      if (!res.ok) throw new Error(json?.error || "failed");
-                      setNodes(json.nodes || []);
-                      setNodesStatus("");
-                    } catch (e: any) {
-                      setNodes([]);
-                      setNodesStatus(String(e?.message || e));
-                    }
-                  }}
-                >
-                  Refresh
-                </button>
-                <span className="badge">{nodes.length}</span>
-              </div>
-            </div>
+      {tab === "nodes" ? <NodesView /> : null}
 
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Status</th>
-                  <th>CPU</th>
-                  <th>Memory</th>
-                  <th>Instances</th>
-                  <th>Token</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {nodes.map((n: any) => {
-                  const hb = n.heartbeat || {};
-                  const cpu = hb?.cpu?.usage_percent;
-                  const mem = hb?.mem || {};
-                  const instances = Array.isArray(hb?.instances) ? hb.instances : [];
-                  const memPct = mem?.total_bytes ? pct(mem.used_bytes, mem.total_bytes) : 0;
-                  return (
-                    <tr key={n.id} style={{ opacity: n.connected ? 1 : 0.72 }}>
-                      <td>
-                        <div style={{ fontWeight: 650 }}>{n.id}</div>
-                        <div className="hint">last: {fmtUnix(n.lastSeenUnix)}</div>
-                      </td>
-                      <td>{n.connected ? <span className="badge ok">online</span> : <span className="badge">offline</span>}</td>
-                      <td>
-                        <span className="badge">{typeof cpu === "number" ? `${cpu.toFixed(1)}%` : "-"}</span>
-                      </td>
-                      <td>
-                        {mem?.total_bytes ? (
-                          <>
-                            <span className="badge">{memPct.toFixed(0)}%</span>
-                            <div className="hint">
-                              {fmtBytes(mem.used_bytes)}/{fmtBytes(mem.total_bytes)}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="badge">-</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className="badge">{instances.length}</span>
-                      </td>
-                      <td className="hint">
-                        <div className="row" style={{ gap: 8 }}>
-                          <code>{maskToken(n.token)}</code>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await copyText(n.token);
-                              setNodesStatus("Copied");
-                              setTimeout(() => setNodesStatus(""), 800);
-                            }}
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                          <button type="button" onClick={() => openNodeDetails(n.id)}>
-                            Details
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelected(n.id);
-                              setTab("games");
-                            }}
-                          >
-                            Manage
-                          </button>
-                          <button
-                            type="button"
-                            className="dangerBtn"
-                            onClick={async () => {
-                              if (!confirm(`Delete node ${n.id}?`)) return;
-                              setNodesStatus("");
-                              try {
-                                const res = await apiFetch(`/api/nodes/${encodeURIComponent(n.id)}`, { method: "DELETE" });
-                                const json = await res.json();
-                                if (!res.ok) throw new Error(json?.error || "failed");
-                                const res2 = await apiFetch("/api/nodes", { cache: "no-store" });
-                                const json2 = await res2.json();
-                                if (res2.ok) setNodes(json2.nodes || []);
-                              } catch (e: any) {
-                                setNodesStatus(String(e?.message || e));
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!nodes.length ? (
-                  <tr>
-                    <td colSpan={7} className="muted">
-                      暂无节点。点击右上角 Add 创建一个，然后在 Daemon 端使用对应 token 连接。
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
+      {tab === "games" ? <GamesView /> : null}
 
-      {tab === "games" ? (
-        <div className="stack">
-          <div className="card">
-            <h2>Game</h2>
+      {tab === "frp" ? <FrpView /> : null}
 
-            <div className="toolbar">
-              <div className="toolbarLeft">
-                <div className="field" style={{ flex: 1, minWidth: 260 }}>
-                  <label>Game</label>
-                  <select value={instanceId} onChange={(e) => setInstanceId(e.target.value)} disabled={!serverDirs.length}>
-                    {!serverDirs.length ? <option value="">No games installed</option> : null}
-                    {serverDirs.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="hint">
-                    installed: {serverDirs.length}
-                    {serverDirsStatus ? ` · ${serverDirsStatus}` : ""}
-                  </div>
-                </div>
-              </div>
+      {tab === "files" ? <FilesView /> : null}
 
-              <div className="toolbarRight">
-                <div className="btnGroup">
-                  <button type="button" onClick={openSettingsModal} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                    Settings
-                  </button>
-                  <button type="button" onClick={refreshServerDirs} disabled={!selectedDaemon?.connected}>
-                    Refresh
-                  </button>
-                  <button type="button" onClick={openInstallModal} disabled={!selectedDaemon?.connected}>
-                    Install
-                  </button>
-                </div>
-                <div className="btnGroup">
-                  <button className="primary" onClick={() => startServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                    Start
-                  </button>
-                  <button onClick={() => stopServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                    Stop
-                  </button>
-                  <button onClick={() => restartServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                    Restart
-                  </button>
-                  <button className="dangerBtn" onClick={() => deleteServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {frpOpStatus || serverOpStatus ? (
-              <div className="hint" style={{ marginTop: 8 }}>
-                {frpOpStatus ? <span style={{ marginRight: 10 }}>FRP: {frpOpStatus}</span> : null}
-                {serverOpStatus ? <span>MC: {serverOpStatus}</span> : null}
-              </div>
-            ) : null}
-
-            <div className="grid2">
-              <div className="kv">
-                <div className="k">Status</div>
-                <div className="v">
-                  {instanceStatus?.running ? (
-                    <span className="badge ok">running (pid {instanceStatus.pid || "-"})</span>
-                  ) : (
-                    <span className="badge">stopped</span>
-                  )}
-                </div>
-                <div className="hint">node: {selectedDaemon?.id || "-"}</div>
-              </div>
-
-	              <div className="kv">
-	                <div className="k">Socket</div>
-	                <div className="v">
-	                  {frpStatus?.running && frpStatus.remote_port ? (
-	                    <>
-	                      <code>
-	                        {frpStatus.remote_addr}:{frpStatus.remote_port}
-	                      </code>
-	                      <button type="button" onClick={() => copyText(`${frpStatus.remote_addr}:${frpStatus.remote_port}`)}>
-	                        Copy
-	                      </button>
-	                    </>
-	                  ) : (
-	                    <>
-	                      <code>
-	                        {localHost || "127.0.0.1"}
-	                        :{Math.round(Number(gamePort || 25565))}
-	                      </code>
-	                      <button
-	                        type="button"
-	                        onClick={() => {
-	                          const ip = localHost || "127.0.0.1";
-	                          copyText(`${ip}:${Math.round(Number(gamePort || 25565))}`);
-	                        }}
-	                      >
-	                        Copy
-	                      </button>
-	                    </>
-	                  )}
-	                </div>
-	                <div className="hint">
-	                  {frpStatus?.running && frpStatus.remote_port ? (
-	                    <span>FRP：公网连接地址（可直接复制）</span>
-	                  ) : enableFrp ? (
-	                    !selectedProfile ? (
-	                      <span>FRP 已开启但未选择服务器（去 FRP 标签保存一个 profile）</span>
-	                    ) : frpRemotePort <= 0 ? (
-	                      <span>FRP 已开启但 Remote Port=0（建议填写一个固定端口，方便朋友连接）</span>
-	                    ) : (
-	                      <span>
-	                        FRP 未运行（预计）：<code>{selectedProfile.server_addr}:{Math.round(Number(frpRemotePort || 0))}</code>
-	                      </span>
-	                    )
-	                  ) : (
-	                    <span>未使用 FRP：请用本地/LAN 连接</span>
-	                  )}
-	                  <br />
-	                  <span>
-	                    本地/LAN：<code>127.0.0.1:{Math.round(Number(gamePort || 25565))}</code>
-	                    {Array.isArray(selectedDaemon?.heartbeat?.net?.ipv4) && selectedDaemon.heartbeat.net.ipv4.length ? (
-	                      <>
-	                        {" "}
-	                        ·{" "}
-	                        {selectedDaemon.heartbeat.net.ipv4.slice(0, 4).map((ip: string) => (
-	                          <code key={ip} style={{ marginRight: 8 }}>
-	                            {ip}:{Math.round(Number(gamePort || 25565))}
-	                          </code>
-	                        ))}
-	                      </>
-	                    ) : null}
-	                  </span>
-	                </div>
-	              </div>
-
-              <div className="kv">
-                <div className="k">Game Port</div>
-                <div className="v">
-                  <span className="badge">{Math.round(Number(gamePort || 25565))}</span>
-                  <span className="hint">server-port (server.properties)</span>
-                </div>
-              </div>
-
-              <div className="kv">
-                <div className="k">Memory</div>
-                <div className="v">
-                  <span className="badge">
-                    Xms {xms || "-"} / Xmx {xmx || "-"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="kv">
-                <div className="k">FRP</div>
-                <div className="v">
-                  {enableFrp ? <span className="badge ok">enabled</span> : <span className="badge">disabled</span>}
-                  {frpStatus?.running ? <span className="badge ok">running</span> : <span className="badge">stopped</span>}
-                </div>
-              </div>
-
-              <div className="kv">
-                <div className="k">Last heartbeat</div>
-                <div className="v">{fmtUnix(selectedDaemon?.heartbeat?.server_time_unix)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2>Logs</h2>
-            <div className="toolbar">
-              <div className="toolbarLeft">
-                <div className="field" style={{ minWidth: 180 }}>
-                  <label>View</label>
-                  <select value={logView} onChange={(e) => setLogView(e.target.value as any)}>
-                    <option value="all">All</option>
-                    <option value="mc">MC</option>
-                    <option value="install">Install</option>
-                    <option value="frp">FRP</option>
-                  </select>
-                </div>
-              </div>
-              <div className="toolbarRight">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text =
-                      logs
-                        .filter((l) => {
-                          if (logView === "frp") return l.source === "frp";
-                          if (logView === "mc") return l.source === "mc" && l.instance === instanceId.trim();
-                          if (logView === "install") return l.source === "install" && l.instance === instanceId.trim();
-                          // all
-                          return (l.instance && l.instance === instanceId.trim()) || l.source === "frp";
-                        })
-                        .slice(-300)
-                        .map((l) => {
-                          const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
-                          const src = l.source || "daemon";
-                          const stream = l.stream || "";
-                          const inst = l.instance ? `(${l.instance})` : "";
-                          return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
-                        })
-                        .join("\n") || "";
-                    copyText(text || "<empty>");
-                  }}
-                >
-                  Copy
-                </button>
-              </div>
-            </div>
-            <pre style={{ maxHeight: 640, overflow: "auto" }}>
-              {logs.length
-                ? logs
-                    .filter((l) => {
-                      if (logView === "frp") return l.source === "frp";
-                      if (logView === "mc") return l.source === "mc" && l.instance === instanceId.trim();
-                      if (logView === "install") return l.source === "install" && l.instance === instanceId.trim();
-                      // all
-                      return (l.instance && l.instance === instanceId.trim()) || l.source === "frp";
-                    })
-                    .slice(-400)
-                    .map((l) => {
-                      const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
-                      const src = l.source || "daemon";
-                      const stream = l.stream || "";
-                      const inst = l.instance ? `(${l.instance})` : "";
-                      return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
-                    })
-                    .join("\n")
-                : "<no logs>"}
-            </pre>
-            <div className="hint">提示：All 会显示当前游戏 + FRP 的日志。</div>
-
-            <div className="row" style={{ marginTop: 12 }}>
-              <input
-                value={consoleLine}
-                onChange={(e) => setConsoleLine(e.target.value)}
-                placeholder="Console command (e.g. say hi)"
-                style={{ flex: 1, minWidth: 240 }}
-                disabled={!selectedDaemon?.connected || !instanceId.trim()}
-              />
-              <button onClick={sendConsoleLine} disabled={!consoleLine.trim() || !selectedDaemon?.connected || !instanceId.trim()}>
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {tab === "frp" ? (
-        <div className="stack">
-          <div className="card">
-            <div className="toolbar">
-              <div className="toolbarLeft" style={{ alignItems: "center" }}>
-                <div>
-                  <h2>Saved FRP Servers</h2>
-                  {profilesStatus ? <div className="hint">{profilesStatus}</div> : <div className="hint">保存后可在 Games 里一键复用</div>}
-                </div>
-              </div>
-              <div className="toolbarRight">
-                <button type="button" className="primary" onClick={openAddFrpModal}>
-                  Add
-                </button>
-                <button type="button" onClick={refreshProfiles}>
-                  Refresh
-                </button>
-              </div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Server</th>
-                  <th>Status</th>
-                  <th>Checked</th>
-                  <th>Token</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {profiles.map((p) => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight: 650 }}>{p.name}</td>
-                    <td>
-                      <code>
-                        {p.server_addr}:{p.server_port}
-                      </code>
-                    </td>
-                    <td>
-                      {p.status?.online === true ? (
-                        <span className="badge ok">online {Number(p.status.latencyMs || 0)}ms</span>
-                      ) : p.status?.online === false ? (
-                        <span className="badge">offline</span>
-                      ) : (
-                        <span className="badge">unknown</span>
-                      )}
-                      {p.status?.error && p.status?.online === false ? <div className="hint">{p.status.error}</div> : null}
-                    </td>
-                    <td className="hint">{fmtUnix(p.status?.checkedAtUnix || null)}</td>
-                    <td className="hint">
-                      <div className="row" style={{ gap: 8 }}>
-                        <code>{maskToken(p.token)}</code>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await copyText(p.token || "");
-                            setProfilesStatus("Copied");
-                            setTimeout(() => setProfilesStatus(""), 800);
-                          }}
-                          disabled={!p.token}
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEnableFrp(true);
-                            setFrpProfileId(p.id);
-                            setTab("games");
-                          }}
-                        >
-                          Use
-                        </button>
-                        <button type="button" className="dangerBtn" onClick={() => removeFrpProfile(p.id)}>
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!profiles.length ? (
-                  <tr>
-                    <td colSpan={6} className="muted">
-                      暂无配置。点击右上角 Add 保存一个 FRP Server profile。
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
-      {tab === "files" ? (
-        <div className="card">
-          <div className="toolbar">
-            <div className="toolbarLeft" style={{ alignItems: "center" }}>
-                <div>
-                  <h2>Files</h2>
-                <div className="hint">
-                  sandbox: <code>servers/</code>
-                </div>
-                <div className="hint" style={{ marginTop: 6 }}>
-                  {fsBreadcrumbs.map((c, idx) => (
-                    <span key={`${c.path}-${idx}`}>
-                      {idx ? <span className="muted"> / </span> : null}
-                      <button
-                        type="button"
-                        className="linkBtn"
-                        onClick={() => {
-                          setFsSelectedFile("");
-                          setFsFileText("");
-                          setFsPath(c.path);
-                        }}
-                      >
-                        {c.label}
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                {fsStatus ? <div className="hint">{fsStatus}</div> : null}
-              </div>
-            </div>
-            <div className="toolbarRight">
-              <button type="button" onClick={() => refreshFsNow()} disabled={!selected}>
-                Refresh
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFsSelectedFile("");
-                  setFsFileText("");
-                  setFsPath(parentRelPath(fsPath));
-                }}
-                disabled={!fsPath}
-              >
-                Up
-              </button>
-            </div>
-          </div>
-
-          <div className="row" style={{ marginTop: 10 }}>
-            <input
-              key={uploadInputKey}
-              type="file"
-              onChange={(e) => setUploadFile(e.target.files && e.target.files.length ? e.target.files[0] : null)}
-            />
-            <button type="button" onClick={uploadSelectedFile} disabled={!uploadFile}>
-              Upload
-            </button>
-            {uploadFile ? (
-              <span className="muted">
-                to: <code>{joinRelPath(fsPath, uploadFile.name)}</code>
-              </span>
-            ) : null}
-            {uploadStatus ? <span className="muted">{uploadStatus}</span> : null}
-          </div>
-
-          <div className="grid2" style={{ marginTop: 12, alignItems: "start" }}>
-            <div style={{ minWidth: 0 }}>
-              <h3>Entries</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Size</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {fsEntries.map((e) => (
-                    <tr key={`${e.name}-${e.isDir ? "d" : "f"}`}>
-                      <td>
-                        <button type="button" onClick={() => openEntry(e)} className="linkBtn">
-                          {e.name}
-                        </button>
-                      </td>
-                      <td>{e.isDir ? "dir" : "file"}</td>
-                      <td>{e.isDir ? "-" : fmtBytes(Number(e.size || 0))}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                          <button type="button" className="dangerBtn" onClick={() => deleteFsEntry(e)}>
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ minWidth: 0 }}>
-              <h3>Editor</h3>
-              <div className="row">
-                <span className="muted">
-                  file: <code>{fsSelectedFile || "-"}</code>
-                </span>
-                <button type="button" onClick={saveFile} disabled={!fsSelectedFile}>
-                  Save
-                </button>
-              </div>
-              <textarea
-                value={fsFileText}
-                onChange={(e) => setFsFileText(e.target.value)}
-                rows={16}
-                placeholder="Select a text file to edit (e.g. server.properties)"
-                style={{ width: "100%", marginTop: 8 }}
-                disabled={!fsSelectedFile}
-              />
-              <div className="hint">提示：大文件/二进制文件不会在编辑器打开，请用上传替换。</div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {tab === "advanced" ? (
-        <div className="card">
-          <h2>Advanced Command</h2>
-          <div className="grid2">
-            <div className="field">
-              <label>name</label>
-              <input value={cmdName} onChange={(e) => setCmdName(e.target.value)} placeholder="ping / frp_start / mc_start ..." />
-            </div>
-            <div className="field">
-              <label>daemon</label>
-              <select value={selected} onChange={(e) => setSelected(e.target.value)} disabled={authed !== true}>
-                {daemons.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.id} {d.connected ? "(online)" : "(offline)"}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <label>args (JSON)</label>
-              <textarea value={cmdArgs} onChange={(e) => setCmdArgs(e.target.value)} rows={8} />
-            </div>
-          </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="primary" onClick={runAdvancedCommand}>
-              Run
-            </button>
-            <span className="muted">
-              selected: <b>{selectedDaemon?.id || "-"}</b>
-            </span>
-          </div>
-          {cmdResult ? (
-            <div style={{ marginTop: 12 }}>
-              <h3>Result</h3>
-              <pre>{JSON.stringify(cmdResult, null, 2)}</pre>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {tab === "advanced" ? <AdvancedView /> : null}
         </div>
       </div>
       </div>
-    </>
+    </AppCtxProvider>
   );
 }

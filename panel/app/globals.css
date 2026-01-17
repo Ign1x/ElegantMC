@@ -338,7 +338,7 @@ button.navItem .badge {
 
 .btnGroup {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -378,7 +378,7 @@ button.navItem .badge {
 
 .row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -416,7 +416,7 @@ button {
 input,
 textarea,
 select {
-  padding: 10px 12px;
+  padding: 9px 12px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12) inset;
 }
 
@@ -451,8 +451,8 @@ select:focus {
 }
 
 button {
-  padding: 7px 9px;
-  font-size: 12.5px;
+  padding: 6px 9px;
+  font-size: 12px;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.02s ease;
 }

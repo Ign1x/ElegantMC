@@ -603,6 +603,21 @@ button.linkBtn:hover {
   background: rgba(52, 211, 153, 0.12);
 }
 
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.10);
+}
+
+.statusDot.ok {
+  border-color: var(--ok-border);
+  background: var(--ok);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
 .kv {
   display: flex;
   flex-direction: column;

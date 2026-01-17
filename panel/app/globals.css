@@ -35,6 +35,9 @@
 
   --scroll-thumb: rgba(255, 255, 255, 0.22);
 
+  --mc-grid: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 12px);
+
   --page-bg: radial-gradient(900px 620px at 18% 0%, rgba(139, 92, 246, 0.28), transparent 55%),
     radial-gradient(1000px 700px at 82% 18%, rgba(52, 211, 153, 0.14), transparent 60%),
     radial-gradient(1200px 800px at 65% 100%, rgba(59, 130, 246, 0.12), transparent 55%), var(--bg0);
@@ -74,6 +77,9 @@
 
   --scroll-thumb: rgba(15, 23, 42, 0.22);
 
+  --mc-grid: repeating-linear-gradient(0deg, rgba(15, 23, 42, 0.08) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, rgba(15, 23, 42, 0.08) 0 1px, transparent 1px 12px);
+
   --page-bg: radial-gradient(900px 620px at 18% 0%, rgba(124, 58, 237, 0.16), transparent 60%),
     radial-gradient(900px 700px at 82% 18%, rgba(34, 197, 94, 0.12), transparent 62%),
     radial-gradient(1200px 800px at 65% 100%, rgba(59, 130, 246, 0.10), transparent 60%), var(--bg0);
@@ -110,6 +116,8 @@
     --code-bg: rgba(15, 23, 42, 0.06);
     --code-border: rgba(15, 23, 42, 0.12);
     --scroll-thumb: rgba(15, 23, 42, 0.22);
+    --mc-grid: repeating-linear-gradient(0deg, rgba(15, 23, 42, 0.08) 0 1px, transparent 1px 12px),
+      repeating-linear-gradient(90deg, rgba(15, 23, 42, 0.08) 0 1px, transparent 1px 12px);
     --page-bg: radial-gradient(900px 620px at 18% 0%, rgba(124, 58, 237, 0.16), transparent 60%),
       radial-gradient(900px 700px at 82% 18%, rgba(34, 197, 94, 0.12), transparent 62%),
       radial-gradient(1200px 800px at 65% 100%, rgba(59, 130, 246, 0.10), transparent 60%), var(--bg0);
@@ -233,6 +241,22 @@ h3 {
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.016)), var(--card2);
   box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--mc-grid);
+  opacity: 0.18;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sidebar > * {
+  position: relative;
+  z-index: 1;
 }
 
 .sidebarHeader {
@@ -282,6 +306,27 @@ button.navItem {
   color: var(--muted);
 }
 
+button.navItem > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+button.navItem > span::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset;
+}
+
+button.navItem.active > span::before {
+  border-color: rgba(139, 92, 246, 0.55);
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.85), rgba(34, 197, 94, 0.50));
+}
+
 button.navItem:hover {
   background: var(--surface2);
 }
@@ -322,6 +367,23 @@ button.navItem .badge {
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.016)), var(--card2);
   box-shadow: var(--shadow2);
+  position: relative;
+  overflow: hidden;
+}
+
+.topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--mc-grid);
+  opacity: 0.10;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.topbar > * {
+  position: relative;
+  z-index: 1;
 }
 
 .topbarTitle {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppCtx } from "../appCtx";
+import Icon from "../ui/Icon";
 
 export default function FrpView() {
   const {
@@ -29,10 +30,12 @@ export default function FrpView() {
             </div>
           </div>
           <div className="toolbarRight">
-            <button type="button" className="primary" onClick={openAddFrpModal}>
+            <button type="button" className="primary iconBtn" onClick={openAddFrpModal}>
+              <Icon name="plus" />
               Add
             </button>
-            <button type="button" onClick={refreshProfiles}>
+            <button type="button" className="iconBtn" onClick={refreshProfiles}>
+              <Icon name="refresh" />
               Refresh
             </button>
           </div>
@@ -72,6 +75,7 @@ export default function FrpView() {
                     <code>{String(p.token_masked || "(none)")}</code>
                     <button
                       type="button"
+                      className="iconBtn"
                       onClick={async () => {
                         try {
                           const res = await apiFetch(`/api/frp/profiles/${encodeURIComponent(p.id)}/token`, { cache: "no-store" });
@@ -86,6 +90,7 @@ export default function FrpView() {
                       }}
                       disabled={!p.has_token}
                     >
+                      <Icon name="copy" />
                       Copy
                     </button>
                   </div>
@@ -103,7 +108,8 @@ export default function FrpView() {
                         Use
                       </button>
                     </div>
-                    <button type="button" className="dangerBtn" onClick={() => removeFrpProfile(p.id)}>
+                    <button type="button" className="dangerBtn iconBtn" onClick={() => removeFrpProfile(p.id)}>
+                      <Icon name="trash" />
                       Delete
                     </button>
                   </div>

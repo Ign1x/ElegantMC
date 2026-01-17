@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppCtx } from "../appCtx";
+import Icon from "../ui/Icon";
 
 export default function GamesView() {
   const {
@@ -103,13 +104,16 @@ export default function GamesView() {
 
           <div className="toolbarRight">
             <div className="btnGroup">
-              <button type="button" onClick={refreshServerDirs} disabled={!selectedDaemon?.connected}>
+              <button type="button" className="iconBtn" onClick={refreshServerDirs} disabled={!selectedDaemon?.connected}>
+                <Icon name="refresh" />
                 Refresh
               </button>
-              <button type="button" onClick={openInstallModal} disabled={!selectedDaemon?.connected}>
+              <button type="button" className="iconBtn" onClick={openInstallModal} disabled={!selectedDaemon?.connected}>
+                <Icon name="plus" />
                 Install
               </button>
-              <button type="button" onClick={openSettingsModal} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+              <button type="button" className="iconBtn" onClick={openSettingsModal} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+                <Icon name="settings" />
                 Settings
               </button>
             </div>
@@ -243,6 +247,7 @@ export default function GamesView() {
             </label>
             <button
               type="button"
+              className="iconBtn"
               onClick={() => {
                 const text =
                   filteredLogs
@@ -258,10 +263,12 @@ export default function GamesView() {
                 copyText(text || "<empty>");
               }}
             >
+              <Icon name="copy" />
               Copy
             </button>
             <button
               type="button"
+              className="iconBtn"
               onClick={() => {
                 const text =
                   filteredLogs
@@ -286,6 +293,7 @@ export default function GamesView() {
                 URL.revokeObjectURL(url);
               }}
             >
+              <Icon name="download" />
               Download
             </button>
           </div>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
+import Icon from "../ui/Icon";
 
 export default function NodesView() {
   const {
@@ -54,11 +55,13 @@ export default function NodesView() {
               placeholder="Search nodes…"
               style={{ width: 220 }}
             />
-            <button type="button" className="primary" onClick={openAddNodeModal}>
+            <button type="button" className="primary iconBtn" onClick={openAddNodeModal}>
+              <Icon name="plus" />
               Add
             </button>
             <button
               type="button"
+              className="iconBtn"
               onClick={async () => {
                 setNodesStatus("Loading...");
                 try {
@@ -73,6 +76,7 @@ export default function NodesView() {
                 }
               }}
             >
+              <Icon name="refresh" />
               Refresh
             </button>
             <span className="badge">
@@ -119,6 +123,7 @@ export default function NodesView() {
                       <code>{String(n.token_masked || "(hidden)")}</code>
                       <button
                         type="button"
+                        className="iconBtn"
                         onClick={async () => {
                           try {
                             const res = await apiFetch(`/api/nodes/${encodeURIComponent(n.id)}/token`, { cache: "no-store" });
@@ -132,6 +137,7 @@ export default function NodesView() {
                           }
                         }}
                       >
+                        <Icon name="copy" />
                         Copy
                       </button>
                     </div>

@@ -611,6 +611,17 @@ button {
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.02s ease;
 }
 
+button.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ico {
+  flex: 0 0 auto;
+  opacity: 0.92;
+}
+
 button:active {
   transform: translateY(1px);
 }

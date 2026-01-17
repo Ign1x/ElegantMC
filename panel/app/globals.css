@@ -757,6 +757,17 @@ code {
   word-break: break-word;
 }
 
+code.clickCopy {
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+code.clickCopy:hover {
+  border-color: rgba(139, 92, 246, 0.50);
+  background: rgba(139, 92, 246, 0.10);
+}
+
 pre {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;

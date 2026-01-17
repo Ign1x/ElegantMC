@@ -42,6 +42,14 @@ export default function GamesView() {
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const preRef = useRef<HTMLPreElement | null>(null);
 
+  const socketText = useMemo(() => {
+    if (frpStatus?.running && frpStatus.remote_port) {
+      return `${frpStatus.remote_addr}:${frpStatus.remote_port}`;
+    }
+    const ip = localHost || "127.0.0.1";
+    return `${ip}:${Math.round(Number(gamePort || 25565))}`;
+  }, [frpStatus, localHost, gamePort]);
+
   const filteredLogs = useMemo(() => {
     const inst = instanceId.trim();
     const q = logQuery.trim().toLowerCase();
@@ -157,32 +165,21 @@ export default function GamesView() {
           <div className="kv">
             <div className="k">Socket</div>
             <div className="v">
-              {frpStatus?.running && frpStatus.remote_port ? (
-                <>
-                  <code>
-                    {frpStatus.remote_addr}:{frpStatus.remote_port}
-                  </code>
-                  <button type="button" onClick={() => copyText(`${frpStatus.remote_addr}:${frpStatus.remote_port}`)}>
-                    Copy
-                  </button>
-                </>
-              ) : (
-                <>
-                  <code>
-                    {localHost || "127.0.0.1"}
-                    :{Math.round(Number(gamePort || 25565))}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const ip = localHost || "127.0.0.1";
-                      copyText(`${ip}:${Math.round(Number(gamePort || 25565))}`);
-                    }}
-                  >
-                    Copy
-                  </button>
-                </>
-              )}
+              <code
+                className="clickCopy"
+                role="button"
+                tabIndex={0}
+                title="Click to copy"
+                onClick={() => copyText(socketText)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    copyText(socketText);
+                  }
+                }}
+              >
+                {socketText}
+              </code>
             </div>
             <div className="hint">
               {frpStatus?.running && frpStatus.remote_port ? (

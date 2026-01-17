@@ -512,6 +512,58 @@ export default function HomePage() {
     }
   }, [themeMode]);
 
+  // Modal keyboard shortcuts
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (confirmOpen) {
+          e.preventDefault();
+          closeConfirm(false);
+          return;
+        }
+        if (copyOpen) {
+          e.preventDefault();
+          setCopyOpen(false);
+          return;
+        }
+        if (installOpen && !installRunning) {
+          e.preventDefault();
+          setInstallOpen(false);
+          return;
+        }
+        if (settingsOpen) {
+          e.preventDefault();
+          cancelEditSettings();
+          return;
+        }
+        if (nodeDetailsOpen) {
+          e.preventDefault();
+          setNodeDetailsOpen(false);
+          return;
+        }
+        if (addNodeOpen) {
+          e.preventDefault();
+          setAddNodeOpen(false);
+          return;
+        }
+        if (addFrpOpen) {
+          e.preventDefault();
+          setAddFrpOpen(false);
+          return;
+        }
+      }
+      if (e.key === "Enter" && confirmOpen && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        const tag = String((e.target as any)?.tagName || "").toUpperCase();
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+          e.preventDefault();
+          closeConfirm(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [confirmOpen, copyOpen, installOpen, installRunning, settingsOpen, nodeDetailsOpen, addNodeOpen, addFrpOpen]);
+
   // Panel auth (cookie-based)
   useEffect(() => {
     let cancelled = false;

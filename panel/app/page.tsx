@@ -24,6 +24,32 @@ type McVersion = {
   releaseTime?: string;
 };
 
+const INSTANCE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+function validateInstanceIDUI(id: string) {
+  const v = String(id || "").trim();
+  if (!v) return "instance_id is required";
+  if (!INSTANCE_ID_RE.test(v)) return "only A-Z a-z 0-9 . _ - (max 64), must start with alnum";
+  return "";
+}
+
+function validatePortUI(port: any, { allowZero }: { allowZero: boolean }) {
+  const n = Math.round(Number(port ?? 0));
+  if (!Number.isFinite(n)) return "port must be a number";
+  if (allowZero && n === 0) return "";
+  if (n < 1 || n > 65535) return "port must be in 1-65535";
+  return "";
+}
+
+function validateJarNameUI(name: string) {
+  const v = String(name || "").trim();
+  if (!v) return "jar_name is required";
+  if (v.length > 128) return "jar_name too long";
+  if (v.includes("/") || v.includes("\\")) return "jar_name must be a filename (no /)";
+  if (v.startsWith(".")) return "jar_name should not start with '.'";
+  return "";
+}
+
 type FrpProfile = {
   id: string;
   name: string;
@@ -440,6 +466,30 @@ export default function HomePage() {
     () => profiles.find((p) => p.id === frpProfileId) || null,
     [profiles, frpProfileId]
   );
+
+  const installValidation = useMemo(() => {
+    const instErr = validateInstanceIDUI(installForm.instanceId);
+    const verErr = String(installForm.version || "").trim() ? "" : "version is required";
+    const jarErr = validateJarNameUI(installForm.jarName);
+    const portErr = validatePortUI(installForm.gamePort, { allowZero: false });
+    const frpRemoteErr = validatePortUI(installForm.frpRemotePort, { allowZero: true });
+    const frpProfileErr =
+      installForm.enableFrp && (!String(installForm.frpProfileId || "").trim() || !profiles.length)
+        ? "select a FRP server (or disable FRP)"
+        : "";
+    const canInstall = !instErr && !verErr && !jarErr && !portErr && !frpRemoteErr;
+    const canInstallAndStart = canInstall && (!installForm.enableFrp || !frpProfileErr);
+    return { instErr, verErr, jarErr, portErr, frpRemoteErr, frpProfileErr, canInstall, canInstallAndStart };
+  }, [installForm, profiles]);
+
+  const settingsValidation = useMemo(() => {
+    const jar = String(jarPath || "").trim();
+    const jarErr = jar ? "" : "jar_path is required";
+    const portErr = validatePortUI(gamePort, { allowZero: false });
+    const frpRemoteErr = validatePortUI(frpRemotePort, { allowZero: true });
+    const ok = !jarErr && !portErr && !frpRemoteErr;
+    return { jarErr, portErr, frpRemoteErr, ok };
+  }, [jarPath, gamePort, frpRemotePort]);
 
   const nodeDetailsNode = useMemo(() => nodes.find((n: any) => n?.id === nodeDetailsId) || null, [nodes, nodeDetailsId]);
 
@@ -1973,7 +2023,13 @@ export default function HomePage() {
 	                      onChange={(e) => setInstallForm((f) => ({ ...f, instanceId: e.target.value }))}
 	                      placeholder="my-server"
 	                    />
-	                    <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
+	                    {installValidation.instErr ? (
+	                      <div className="hint" style={{ color: "var(--danger)" }}>
+	                        {installValidation.instErr}
+	                      </div>
+	                    ) : (
+	                      <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
+	                    )}
 	                  </div>
 	                  <div className="field">
 	                    <label>Type</label>
@@ -2040,7 +2096,13 @@ export default function HomePage() {
 	                      min={1}
 	                      max={65535}
 	                    />
-	                    <div className="hint">写入 server.properties 的 server-port（Docker 默认映射 25565-25600）</div>
+	                    {installValidation.portErr ? (
+	                      <div className="hint" style={{ color: "var(--danger)" }}>
+	                        {installValidation.portErr}
+	                      </div>
+	                    ) : (
+	                      <div className="hint">写入 server.properties 的 server-port（Docker 默认映射 25565-25600）</div>
+	                    )}
 	                  </div>
 
 	                  <div className="field">
@@ -2050,6 +2112,13 @@ export default function HomePage() {
 	                      onChange={(e) => setInstallForm((f) => ({ ...f, jarName: e.target.value }))}
 	                      placeholder="server.jar"
 	                    />
+	                    {installValidation.jarErr ? (
+	                      <div className="hint" style={{ color: "var(--danger)" }}>
+	                        {installValidation.jarErr}
+	                      </div>
+	                    ) : (
+	                      <div className="hint">只填文件名（不含路径），例如 server.jar</div>
+	                    )}
 	                  </div>
 	                  <div className="field">
 	                    <label>Java (optional)</label>
@@ -2094,7 +2163,13 @@ export default function HomePage() {
 	                      max={65535}
 	                      disabled={!installForm.enableFrp}
 	                    />
-	                    <div className="hint">填 0 表示不指定（由 FRP 服务端策略分配）</div>
+	                    {installValidation.frpRemoteErr ? (
+	                      <div className="hint" style={{ color: "var(--danger)" }}>
+	                        {installValidation.frpRemoteErr}
+	                      </div>
+	                    ) : (
+	                      <div className="hint">填 0 表示不指定（由 FRP 服务端策略分配）</div>
+	                    )}
 	                  </div>
 	                  <div className="field" style={{ gridColumn: "1 / -1" }}>
 	                    <label>FRP Server</label>
@@ -2109,21 +2184,39 @@ export default function HomePage() {
 	                        </option>
 	                      ))}
 	                    </select>
-                    <div className="hint">
-                      没有可用服务器？去{" "}
-                      <button className="linkBtn" onClick={() => setTab("frp")}>
-                        FRP
-                      </button>{" "}
-                      添加（不会关闭此窗口）
-                    </div>
+                    {installForm.enableFrp && installValidation.frpProfileErr ? (
+                      <div className="hint" style={{ color: "var(--danger)" }}>
+                        {installValidation.frpProfileErr}（去{" "}
+                        <button className="linkBtn" onClick={() => setTab("frp")}>
+                          FRP
+                        </button>{" "}
+                        添加，不会关闭此窗口）
+                      </div>
+                    ) : (
+                      <div className="hint">
+                        没有可用服务器？去{" "}
+                        <button className="linkBtn" onClick={() => setTab("frp")}>
+                          FRP
+                        </button>{" "}
+                        添加（不会关闭此窗口）
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="row" style={{ marginTop: 12 }}>
-                  <button className="primary" onClick={() => runInstall(false)} disabled={!selectedDaemon?.connected || installRunning}>
+                  <button
+                    className="primary"
+                    onClick={() => runInstall(false)}
+                    disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstall}
+                  >
                     Install
                   </button>
-                  <button className="primary" onClick={() => runInstall(true)} disabled={!selectedDaemon?.connected || installRunning}>
+                  <button
+                    className="primary"
+                    onClick={() => runInstall(true)}
+                    disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstallAndStart}
+                  >
                     Install & Start
                   </button>
                   <button
@@ -2182,6 +2275,13 @@ export default function HomePage() {
                   <div className="field">
                     <label>Jar path (relative)</label>
                     <input value={jarPath} onChange={(e) => setJarPath(e.target.value)} placeholder="server.jar" />
+                    {settingsValidation.jarErr ? (
+                      <div className="hint" style={{ color: "var(--danger)" }}>
+                        {settingsValidation.jarErr}
+                      </div>
+                    ) : (
+                      <div className="hint">相对路径（在 servers/&lt;instance&gt;/ 下），例如 server.jar</div>
+                    )}
                   </div>
                   <div className="field">
                     <label>Java (optional)</label>
@@ -2204,7 +2304,13 @@ export default function HomePage() {
                       min={1}
                       max={65535}
                     />
-                    <div className="hint">保存后会写入 server.properties（运行中需要重启生效）</div>
+                    {settingsValidation.portErr ? (
+                      <div className="hint" style={{ color: "var(--danger)" }}>
+                        {settingsValidation.portErr}
+                      </div>
+                    ) : (
+                      <div className="hint">保存后会写入 server.properties（运行中需要重启生效）</div>
+                    )}
                   </div>
 
                   <div className="field">
@@ -2225,7 +2331,13 @@ export default function HomePage() {
                       max={65535}
                       disabled={!enableFrp}
                     />
-                    <div className="hint">填 0 表示不指定（由 FRP 服务端策略分配）</div>
+                    {settingsValidation.frpRemoteErr ? (
+                      <div className="hint" style={{ color: "var(--danger)" }}>
+                        {settingsValidation.frpRemoteErr}
+                      </div>
+                    ) : (
+                      <div className="hint">填 0 表示不指定（由 FRP 服务端策略分配）</div>
+                    )}
                   </div>
                   <div className="field" style={{ gridColumn: "1 / -1" }}>
                     <label>FRP Server</label>
@@ -2240,7 +2352,12 @@ export default function HomePage() {
                 </div>
 
                 <div className="row" style={{ marginTop: 12 }}>
-                  <button className="primary" type="button" onClick={saveEditSettings} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+                  <button
+                    className="primary"
+                    type="button"
+                    onClick={saveEditSettings}
+                    disabled={!selectedDaemon?.connected || !instanceId.trim() || !settingsValidation.ok}
+                  >
                     Save
                   </button>
                   <button type="button" onClick={cancelEditSettings}>

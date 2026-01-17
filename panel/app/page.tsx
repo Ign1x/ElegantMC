@@ -1400,6 +1400,14 @@ export default function HomePage() {
           frpRemotePort: installForm.frpRemotePort,
         });
       }
+
+      // Refresh list + focus the newly installed instance.
+      setInstanceId(inst);
+      try {
+        await refreshServerDirs();
+      } catch {
+        // ignore
+      }
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
     } finally {
@@ -1579,6 +1587,12 @@ export default function HomePage() {
       }
       await callOkCommand("mc_delete", { instance_id: id }, 60_000);
       setServerOpStatus(`Deleted: ${id}`);
+      setInstanceId("");
+      try {
+        await refreshServerDirs();
+      } catch {
+        // ignore
+      }
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
     }

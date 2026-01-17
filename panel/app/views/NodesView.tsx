@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
 
 export default function NodesView() {
@@ -20,6 +21,21 @@ export default function NodesView() {
     confirmDialog,
   } = useAppCtx();
 
+  const [query, setQuery] = useState<string>("");
+
+  const viewNodes = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = Array.isArray(nodes) ? nodes.slice() : [];
+    list.sort((a: any, b: any) => {
+      const ac = a?.connected ? 1 : 0;
+      const bc = b?.connected ? 1 : 0;
+      if (ac !== bc) return bc - ac;
+      return String(a?.id || "").localeCompare(String(b?.id || ""));
+    });
+    if (!q) return list;
+    return list.filter((n: any) => String(n?.id || "").toLowerCase().includes(q));
+  }, [nodes, query]);
+
   return (
     <div className="stack">
       <div className="card">
@@ -32,6 +48,12 @@ export default function NodesView() {
             </div>
           </div>
           <div className="toolbarRight">
+            <input
+              value={query}
+              onChange={(e: any) => setQuery(e.target.value)}
+              placeholder="Search nodes…"
+              style={{ width: 220 }}
+            />
             <button type="button" className="primary" onClick={openAddNodeModal}>
               Add
             </button>
@@ -53,13 +75,15 @@ export default function NodesView() {
             >
               Refresh
             </button>
-            <span className="badge">{nodes.length}</span>
+            <span className="badge">
+              {viewNodes.length}/{nodes.length}
+            </span>
           </div>
         </div>
 
-        {nodes.length ? (
+        {viewNodes.length ? (
           <div className="cardGrid">
-            {nodes.map((n: any) => {
+            {viewNodes.map((n: any) => {
               const hb = n.heartbeat || {};
               const cpu = typeof hb?.cpu?.usage_percent === "number" ? hb.cpu.usage_percent : null;
               const mem = hb?.mem || {};
@@ -155,7 +179,9 @@ export default function NodesView() {
             })}
           </div>
         ) : (
-          <div className="emptyState">暂无节点。点击右上角 Add 创建一个，然后在 Daemon 端使用对应 token 连接。</div>
+          <div className="emptyState">
+            {nodes.length ? "No results." : "暂无节点。点击右上角 Add 创建一个，然后在 Daemon 端使用对应 token 连接。"}
+          </div>
         )}
       </div>
     </div>

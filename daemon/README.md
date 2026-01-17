@@ -1,0 +1,49 @@
+# ElegantMC Daemon (Go)
+
+Daemon 是被控端节点，负责：
+
+- 主动连接 Panel（WSS/WebSocket），周期性发送心跳（含 CPU/Mem/Disk + 实例状态）；
+- 接收 Panel 下发的命令并执行（安装/启动/停止/控制台、FRP 托管、文件读写与上传等）；
+- 默认严格限制文件系统访问在 `base_dir/servers` 下（沙箱）。
+
+协议见 `daemon/PROTOCOL.md`。
+
+## 配置（环境变量）
+
+必填：
+
+- `ELEGANTMC_PANEL_WS_URL`：例如 `wss://panel.example.com/ws/daemon`
+- `ELEGANTMC_TOKEN`：Panel 保存的 token
+
+常用：
+
+- `ELEGANTMC_BASE_DIR`：Daemon 工作目录（默认：当前目录）
+- `ELEGANTMC_DAEMON_ID`：节点 ID（默认：hostname）
+- `ELEGANTMC_HEARTBEAT_SEC`：心跳间隔秒（默认：10）
+
+Java（自动选择）：
+
+- `ELEGANTMC_JAVA_CANDIDATES`：逗号分隔的 Java 可执行（路径或命令名），默认 `java`
+  - Daemon 会从 `server.jar` 推断最低 Java major，然后选择 **最小满足版本** 的 Java 启动
+  - 也可在 `mc_start` args 里手动传 `java_path`
+
+FRP：
+
+- `ELEGANTMC_FRPC_PATH`：`frpc` 可执行文件路径（默认：`base_dir/bin/frpc` 或 `frpc.exe`）
+- `ELEGANTMC_FRP_WORK_DIR`：FRP 工作目录（默认：`base_dir/frp`）
+
+镜像/下载源（可选）：
+
+- `ELEGANTMC_MOJANG_META_BASE_URL`：默认 `https://piston-meta.mojang.com`（国内可改成 BMCLAPI）
+- `ELEGANTMC_MOJANG_DATA_BASE_URL`：默认 `https://piston-data.mojang.com`（国内可改成 BMCLAPI）
+- `ELEGANTMC_PAPER_API_BASE_URL`：默认 `https://api.papermc.io`
+
+## 运行（示例）
+
+```bash
+ELEGANTMC_PANEL_WS_URL="wss://example.com/ws/daemon" \
+ELEGANTMC_TOKEN="xxxx" \
+ELEGANTMC_DAEMON_ID="home-1" \
+ELEGANTMC_BASE_DIR="$HOME/elegantmc" \
+./elegantmc-daemon
+```

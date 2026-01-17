@@ -37,6 +37,7 @@ type Tab = "nodes" | "games" | "frp" | "files" | "advanced";
 
 type GameSettingsSnapshot = {
   jarPath: string;
+  javaPath: string;
   gamePort: number;
   xms: string;
   xmx: string;
@@ -47,11 +48,14 @@ type GameSettingsSnapshot = {
 
 type InstallForm = {
   instanceId: string;
+  kind: "vanilla" | "paper";
   version: string;
+  paperBuild: number;
   xms: string;
   xmx: string;
   gamePort: number;
   jarName: string;
+  javaPath: string;
   acceptEula: boolean;
   enableFrp: boolean;
   frpProfileId: string;
@@ -60,6 +64,7 @@ type InstallForm = {
 
 type StartOverride = Partial<{
   jarPath: string;
+  javaPath: string;
   gamePort: number;
   xms: string;
   xmx: string;
@@ -202,14 +207,40 @@ function isLocalLikeHost(hostname: string) {
   return false;
 }
 
-function pickBestLocalHost(uiHost: string, daemonIPv4: string[]) {
+function stripPortFromHost(host: string) {
+  const v = String(host || "").trim();
+  if (!v) return "";
+
+  // [ipv6]:port
+  if (v.startsWith("[") && v.includes("]")) {
+    const idx = v.indexOf("]");
+    const inside = v.slice(1, idx);
+    return inside || v;
+  }
+
+  // host:port (single colon)
+  const firstColon = v.indexOf(":");
+  const lastColon = v.lastIndexOf(":");
+  if (firstColon > 0 && firstColon === lastColon) {
+    const port = v.slice(lastColon + 1);
+    if (/^\d+$/.test(port)) return v.slice(0, lastColon);
+  }
+
+  return v;
+}
+
+function pickBestLocalHost(uiHost: string, preferredAddrs: string[], daemonIPv4: string[]) {
   const host = String(uiHost || "").trim();
+  const preferred = Array.isArray(preferredAddrs)
+    ? preferredAddrs.map((v) => stripPortFromHost(String(v || "").trim())).filter(Boolean)
+    : [];
   const ips = Array.isArray(daemonIPv4) ? daemonIPv4.map((v) => String(v || "").trim()).filter(Boolean) : [];
 
+  if (preferred.length) return preferred[0];
   if (isLocalLikeHost(host)) return host;
 
-  const preferred = ips.find((ip) => ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("169.254."));
-  if (preferred) return preferred;
+  const preferredIP = ips.find((ip) => ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("169.254."));
+  if (preferredIP) return preferredIP;
 
   const first = ips.find((ip) => !ip.startsWith("127.")) || ips[0] || "";
   if (first) {
@@ -310,6 +341,7 @@ export default function HomePage() {
   // Server controls
   const [instanceId, setInstanceId] = useState<string>("");
   const [jarPath, setJarPath] = useState<string>("server.jar");
+  const [javaPath, setJavaPath] = useState<string>("");
   const [gamePort, setGamePort] = useState<number>(25565);
   const [xms, setXms] = useState<string>("1G");
   const [xmx, setXmx] = useState<string>("2G");
@@ -323,11 +355,14 @@ export default function HomePage() {
   const [installInstance, setInstallInstance] = useState<string>("");
   const [installForm, setInstallForm] = useState<InstallForm>(() => ({
     instanceId: "",
+    kind: "vanilla",
     version: "1.20.1",
+    paperBuild: 0,
     xms: "1G",
     xmx: "2G",
     gamePort: 25565,
     jarName: "server.jar",
+    javaPath: "",
     acceptEula: true,
     enableFrp: true,
     frpProfileId: "",
@@ -390,7 +425,26 @@ export default function HomePage() {
     const list = selectedDaemon?.heartbeat?.net?.ipv4;
     return Array.isArray(list) ? list.map((v: any) => String(v || "").trim()).filter(Boolean) : [];
   }, [selectedDaemon]);
-  const localHost = useMemo(() => pickBestLocalHost(uiHost, daemonIPv4), [uiHost, daemonIPv4]);
+  const preferredConnectAddrs = useMemo(() => {
+    const list = selectedDaemon?.heartbeat?.net?.preferred_connect_addrs;
+    return Array.isArray(list) ? list.map((v: any) => String(v || "").trim()).filter(Boolean) : [];
+  }, [selectedDaemon]);
+  const localHost = useMemo(() => pickBestLocalHost(uiHost, preferredConnectAddrs, daemonIPv4), [uiHost, preferredConnectAddrs, daemonIPv4]);
+  const fsBreadcrumbs = useMemo(() => {
+    const norm = String(fsPath || "")
+      .replace(/\\+/g, "/")
+      .replace(/\/+/g, "/")
+      .replace(/^\/+/, "")
+      .replace(/\/+$/, "");
+    const parts = norm ? norm.split("/").filter(Boolean) : [];
+    const out: { label: string; path: string }[] = [{ label: "servers", path: "" }];
+    let cur = "";
+    for (const p of parts) {
+      cur = joinRelPath(cur, p);
+      out.push({ label: p, path: cur });
+    }
+    return out;
+  }, [fsPath]);
 
   // Panel auth (cookie-based)
   useEffect(() => {
@@ -526,12 +580,14 @@ export default function HomePage() {
     const cleanInst = String(inst || "").trim();
     if (!cleanInst) throw new Error("instance_id 不能为空");
     const jar = normalizeJarPath(cleanInst, String(cfg?.jar_path ?? jarPath));
+    const java = String(cfg?.java_path ?? javaPath).trim();
     const gamePortRaw = Math.round(Number(cfg?.game_port ?? gamePort));
     const gamePortVal = Number.isFinite(gamePortRaw) && gamePortRaw >= 1 && gamePortRaw <= 65535 ? gamePortRaw : 25565;
     const frpRemoteRaw = Math.round(Number(cfg?.frp_remote_port ?? frpRemotePort));
     const frpRemoteVal = Number.isFinite(frpRemoteRaw) && frpRemoteRaw >= 0 && frpRemoteRaw <= 65535 ? frpRemoteRaw : 0;
     const payload = {
       jar_path: jar,
+      ...(java ? { java_path: java } : {}),
       game_port: gamePortVal,
       xms: String(cfg?.xms ?? xms).trim(),
       xmx: String(cfg?.xmx ?? xmx).trim(),
@@ -677,6 +733,7 @@ export default function HomePage() {
         if (!cfg || typeof cfg !== "object") return;
         const c: any = cfg;
         if (typeof c.jar_path === "string" && c.jar_path.trim()) setJarPath(normalizeJarPath(inst, c.jar_path));
+        if (typeof c.java_path === "string") setJavaPath(c.java_path);
         if (typeof c.xms === "string" && c.xms.trim()) setXms(c.xms);
         if (typeof c.xmx === "string" && c.xmx.trim()) setXmx(c.xmx);
         if (typeof c.enable_frp === "boolean") setEnableFrp(c.enable_frp);
@@ -700,6 +757,12 @@ export default function HomePage() {
     setSettingsSnapshot(null);
     setServerOpStatus("");
     setConsoleLine("");
+    // Reset to defaults, then load per-instance config/props best-effort.
+    setJarPath("server.jar");
+    setJavaPath("");
+    setGamePort(25565);
+    setXms("1G");
+    setXmx("2G");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId]);
 
@@ -832,6 +895,43 @@ export default function HomePage() {
     };
   }, [selected, fsPath, tab]);
 
+  async function refreshFsNow(pathOverride?: string) {
+    if (!selected) return;
+    const p = pathOverride != null ? String(pathOverride) : fsPath;
+    setFsStatus("Loading...");
+    try {
+      const payload = await callOkCommand("fs_list", { path: p });
+      setFsEntries(payload.entries || []);
+      setFsStatus("");
+    } catch (e: any) {
+      setFsEntries([]);
+      setFsStatus(String(e?.message || e));
+    }
+  }
+
+  async function deleteFsEntry(entry: any) {
+    const name = String(entry?.name || "");
+    if (!name) return;
+    const isDir = !!entry?.isDir;
+    const target = joinRelPath(fsPath, name);
+    const label = isDir ? `folder ${target} (recursive)` : `file ${target}`;
+    if (!confirm(`Delete ${label}?`)) return;
+
+    setFsStatus(`Deleting ${target} ...`);
+    try {
+      await callOkCommand("fs_delete", { path: target }, 60_000);
+      if (fsSelectedFile === target || fsSelectedFile.startsWith(`${target}/`)) {
+        setFsSelectedFile("");
+        setFsFileText("");
+      }
+      await refreshFsNow();
+      setFsStatus("Deleted");
+      setTimeout(() => setFsStatus(""), 900);
+    } catch (e: any) {
+      setFsStatus(String(e?.message || e));
+    }
+  }
+
   async function openEntry(entry: any) {
     const name = entry?.name || "";
     if (!name) return;
@@ -946,11 +1046,14 @@ export default function HomePage() {
       profiles.find((p) => p.id === frpProfileId)?.id || profiles[0]?.id || "";
     setInstallForm((prev) => ({
       instanceId: suggested,
+      kind: prev?.kind === "paper" ? "paper" : "vanilla",
       version: String(prev?.version || "1.20.1"),
+      paperBuild: Number.isFinite(Number(prev?.paperBuild)) ? Number(prev?.paperBuild) : 0,
       xms,
       xmx,
       gamePort,
       jarName,
+      javaPath,
       acceptEula: prev?.acceptEula ?? true,
       enableFrp,
       frpProfileId: profileId,
@@ -984,10 +1087,21 @@ export default function HomePage() {
 
     try {
       const jarName = normalizeJarName(installForm.jarName);
-      setServerOpStatus(`Installing Vanilla ${ver} ...`);
+      const kind = installForm.kind === "paper" ? "paper" : "vanilla";
+      const build = Math.round(Number(installForm.paperBuild || 0));
+      const cmdName = kind === "paper" ? "mc_install_paper" : "mc_install_vanilla";
+      setServerOpStatus(
+        kind === "paper" && build > 0 ? `Installing Paper ${ver} (build ${build}) ...` : `Installing ${kind === "paper" ? "Paper" : "Vanilla"} ${ver} ...`
+      );
       const out = await callOkCommand(
-        "mc_install_vanilla",
-        { instance_id: inst, version: ver, jar_name: jarName, accept_eula: !!installForm.acceptEula },
+        cmdName,
+        {
+          instance_id: inst,
+          version: ver,
+          ...(kind === "paper" ? { build: Number.isFinite(build) ? build : 0 } : {}),
+          jar_name: jarName,
+          accept_eula: !!installForm.acceptEula,
+        },
         10 * 60_000
       );
       const installedJar = String(out.jar_path || jarName);
@@ -1000,6 +1114,7 @@ export default function HomePage() {
 
       setInstanceId(inst);
       setJarPath(installedJar);
+      setJavaPath(String(installForm.javaPath || "").trim());
       setGamePort(installForm.gamePort);
       setXms(installForm.xms);
       setXmx(installForm.xmx);
@@ -1010,6 +1125,7 @@ export default function HomePage() {
       setSettingsSnapshot(null);
       await writeInstanceConfig(inst, {
         jar_path: installedJar,
+        java_path: String(installForm.javaPath || "").trim(),
         game_port: installForm.gamePort,
         xms: installForm.xms,
         xmx: installForm.xmx,
@@ -1022,6 +1138,7 @@ export default function HomePage() {
       if (andStart) {
         await startServer(inst, {
           jarPath: installedJar,
+          javaPath: String(installForm.javaPath || "").trim(),
           gamePort: installForm.gamePort,
           xms: installForm.xms,
           xmx: installForm.xmx,
@@ -1041,6 +1158,7 @@ export default function HomePage() {
     if (!instanceId.trim()) return;
     setSettingsSnapshot({
       jarPath,
+      javaPath,
       gamePort,
       xms,
       xmx,
@@ -1055,6 +1173,7 @@ export default function HomePage() {
   function cancelEditSettings() {
     if (settingsSnapshot) {
       setJarPath(settingsSnapshot.jarPath);
+      setJavaPath(settingsSnapshot.javaPath);
       setGamePort(settingsSnapshot.gamePort);
       setXms(settingsSnapshot.xms);
       setXmx(settingsSnapshot.xmx);
@@ -1103,12 +1222,14 @@ export default function HomePage() {
       const jar = normalizeJarPath(inst, String(override?.jarPath ?? jarPath));
       const xmsVal = String(override?.xms ?? xms);
       const xmxVal = String(override?.xmx ?? xmx);
+      const java = String(override?.javaPath ?? javaPath).trim();
       const enable = !!(override?.enableFrp ?? enableFrp);
       const pid = String(override?.frpProfileId ?? frpProfileId);
       const remotePort = Math.round(Number(override?.frpRemotePort ?? frpRemotePort ?? 0));
 
       await writeInstanceConfig(inst, {
         jar_path: jar,
+        ...(java ? { java_path: java } : {}),
         game_port: port,
         xms: xmsVal,
         xmx: xmxVal,
@@ -1117,7 +1238,11 @@ export default function HomePage() {
         frp_remote_port: Number.isFinite(remotePort) ? remotePort : 0,
       });
 
-      await callOkCommand("mc_start", { instance_id: inst, jar_path: jar, xms: xmsVal, xmx: xmxVal }, 30_000);
+      await callOkCommand(
+        "mc_start",
+        { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms: xmsVal, xmx: xmxVal },
+        30_000
+      );
       setServerOpStatus("MC started");
 
       if (enable) {
@@ -1205,8 +1330,9 @@ export default function HomePage() {
       }
       await applyServerPort(inst, gamePort);
       const jar = normalizeJarPath(inst, jarPath);
-      await writeInstanceConfig(inst, { jar_path: jar, game_port: gamePort });
-      await callOkCommand("mc_restart", { instance_id: inst, jar_path: jar, xms, xmx }, 60_000);
+      const java = String(javaPath || "").trim();
+      await writeInstanceConfig(inst, { jar_path: jar, ...(java ? { java_path: java } : {}), game_port: gamePort });
+      await callOkCommand("mc_restart", { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms, xmx }, 60_000);
       setServerOpStatus("MC restarted");
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
@@ -1418,7 +1544,7 @@ export default function HomePage() {
               <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modalHeader">
 	                  <div>
-	                    <div style={{ fontWeight: 700 }}>Install (Vanilla)</div>
+	                    <div style={{ fontWeight: 700 }}>Install</div>
 	                    <div className="hint">
 	                      node: <code>{selectedDaemon?.id || "-"}</code> · instance: <code>{installForm.instanceId.trim() || "-"}</code>
 	                    </div>
@@ -1439,14 +1565,23 @@ export default function HomePage() {
 	                    <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
 	                  </div>
 	                  <div className="field">
+	                    <label>Type</label>
+	                    <select value={installForm.kind} onChange={(e) => setInstallForm((f) => ({ ...f, kind: e.target.value as any }))}>
+	                      <option value="vanilla">Vanilla</option>
+	                      <option value="paper">Paper</option>
+	                    </select>
+	                    <div className="hint">Paper 支持插件且性能更好；Vanilla 为官方原版</div>
+	                  </div>
+
+	                  <div className="field" style={{ gridColumn: installForm.kind === "paper" ? undefined : "1 / -1" }}>
 	                    <label>Version</label>
 	                    <input
 	                      value={installForm.version}
 	                      onChange={(e) => setInstallForm((f) => ({ ...f, version: e.target.value }))}
-	                      list="vanilla-versions"
+	                      list="mc-versions"
 	                      placeholder="1.20.1"
 	                    />
-                    <datalist id="vanilla-versions">
+                    <datalist id="mc-versions">
                       {versions.map((v) => (
                         <option key={`${v.id}-${v.type || ""}`} value={v.id}>
                           {v.type || ""}
@@ -1455,6 +1590,19 @@ export default function HomePage() {
                     </datalist>
                     {versionsStatus ? <div className="hint">版本列表：{versionsStatus}</div> : <div className="hint">可直接手输任意版本号</div>}
                   </div>
+                  {installForm.kind === "paper" ? (
+                    <div className="field">
+                      <label>Paper Build (optional)</label>
+                      <input
+                        type="number"
+                        value={Number.isFinite(installForm.paperBuild) ? installForm.paperBuild : 0}
+                        onChange={(e) => setInstallForm((f) => ({ ...f, paperBuild: Number(e.target.value) }))}
+                        placeholder="0 (latest)"
+                        min={0}
+                      />
+                      <div className="hint">填 0 表示下载最新 build</div>
+                    </div>
+                  ) : null}
 
 	                  <div className="field">
 	                    <label>Memory</label>
@@ -1491,6 +1639,15 @@ export default function HomePage() {
 	                      onChange={(e) => setInstallForm((f) => ({ ...f, jarName: e.target.value }))}
 	                      placeholder="server.jar"
 	                    />
+	                  </div>
+	                  <div className="field">
+	                    <label>Java (optional)</label>
+	                    <input
+	                      value={installForm.javaPath}
+	                      onChange={(e) => setInstallForm((f) => ({ ...f, javaPath: e.target.value }))}
+	                      placeholder="java / /opt/jdk21/bin/java"
+	                    />
+	                    <div className="hint">留空则由 Daemon 自动选择（推荐）</div>
 	                  </div>
 	                  <div className="field">
 	                    <label>EULA</label>
@@ -1616,6 +1773,11 @@ export default function HomePage() {
                     <input value={jarPath} onChange={(e) => setJarPath(e.target.value)} placeholder="server.jar" />
                   </div>
                   <div className="field">
+                    <label>Java (optional)</label>
+                    <input value={javaPath} onChange={(e) => setJavaPath(e.target.value)} placeholder="java / /opt/jdk21/bin/java" />
+                    <div className="hint">留空则由 Daemon 自动选择（推荐）</div>
+                  </div>
+                  <div className="field">
                     <label>Memory</label>
                     <div className="row">
                       <input value={xms} onChange={(e) => setXms(e.target.value)} placeholder="Xms (e.g. 1G)" />
@@ -1726,6 +1888,12 @@ export default function HomePage() {
 	                    {Array.isArray(nodeDetailsNode.heartbeat?.net?.ipv4) && nodeDetailsNode.heartbeat.net.ipv4.length ? (
 	                      <div className="hint" style={{ marginTop: 8 }}>
 	                        IPv4: {nodeDetailsNode.heartbeat.net.ipv4.slice(0, 6).join(", ")}
+	                      </div>
+	                    ) : null}
+	                    {Array.isArray(nodeDetailsNode.heartbeat?.net?.preferred_connect_addrs) &&
+	                    nodeDetailsNode.heartbeat.net.preferred_connect_addrs.length ? (
+	                      <div className="hint" style={{ marginTop: 8 }}>
+	                        Connect: {nodeDetailsNode.heartbeat.net.preferred_connect_addrs.slice(0, 6).join(", ")}
 	                      </div>
 	                    ) : null}
 	                  </div>
@@ -2422,15 +2590,36 @@ export default function HomePage() {
         <div className="card">
           <div className="toolbar">
             <div className="toolbarLeft" style={{ alignItems: "center" }}>
-              <div>
-                <h2>Files</h2>
+                <div>
+                  <h2>Files</h2>
                 <div className="hint">
-                  sandbox: <code>servers/</code> · path: <code>{fsPath || "."}</code>
+                  sandbox: <code>servers/</code>
+                </div>
+                <div className="hint" style={{ marginTop: 6 }}>
+                  {fsBreadcrumbs.map((c, idx) => (
+                    <span key={`${c.path}-${idx}`}>
+                      {idx ? <span className="muted"> / </span> : null}
+                      <button
+                        type="button"
+                        className="linkBtn"
+                        onClick={() => {
+                          setFsSelectedFile("");
+                          setFsFileText("");
+                          setFsPath(c.path);
+                        }}
+                      >
+                        {c.label}
+                      </button>
+                    </span>
+                  ))}
                 </div>
                 {fsStatus ? <div className="hint">{fsStatus}</div> : null}
               </div>
             </div>
             <div className="toolbarRight">
+              <button type="button" onClick={() => refreshFsNow()} disabled={!selected}>
+                Refresh
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -2471,6 +2660,7 @@ export default function HomePage() {
                     <th>Name</th>
                     <th>Type</th>
                     <th>Size</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -2483,6 +2673,13 @@ export default function HomePage() {
                       </td>
                       <td>{e.isDir ? "dir" : "file"}</td>
                       <td>{e.isDir ? "-" : fmtBytes(Number(e.size || 0))}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                          <button type="button" className="dangerBtn" onClick={() => deleteFsEntry(e)}>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

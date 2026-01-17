@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppCtx } from "../appCtx";
 
 export default function GamesView() {
@@ -35,6 +36,46 @@ export default function GamesView() {
     setConsoleLine,
     sendConsoleLine,
   } = useAppCtx();
+
+  const [logQuery, setLogQuery] = useState<string>("");
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
+  const preRef = useRef<HTMLPreElement | null>(null);
+
+  const filteredLogs = useMemo(() => {
+    const inst = instanceId.trim();
+    const q = logQuery.trim().toLowerCase();
+    const list = (logs || []).filter((l: any) => {
+      if (logView === "frp") return l.source === "frp";
+      if (logView === "mc") return l.source === "mc" && l.instance === inst;
+      if (logView === "install") return l.source === "install" && l.instance === inst;
+      // all
+      return (l.instance && l.instance === inst) || l.source === "frp";
+    });
+    if (!q) return list;
+    return list.filter((l: any) => String(l?.line || "").toLowerCase().includes(q));
+  }, [logs, logView, instanceId, logQuery]);
+
+  const logText = useMemo(() => {
+    return filteredLogs.length
+      ? filteredLogs
+          .slice(-400)
+          .map((l: any) => {
+            const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
+            const src = l.source || "daemon";
+            const stream = l.stream || "";
+            const inst = l.instance ? `(${l.instance})` : "";
+            return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
+          })
+          .join("\n")
+      : "<no logs>";
+  }, [filteredLogs]);
+
+  useEffect(() => {
+    if (!autoScroll) return;
+    const el = preRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [logText, autoScroll]);
 
   return (
     <div className="stack">
@@ -191,18 +232,20 @@ export default function GamesView() {
             </div>
           </div>
           <div className="toolbarRight">
+            <input
+              value={logQuery}
+              onChange={(e: any) => setLogQuery(e.target.value)}
+              placeholder="Search logs…"
+              style={{ width: 220 }}
+            />
+            <label className="checkRow" style={{ userSelect: "none" }}>
+              <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} /> autoscroll
+            </label>
             <button
               type="button"
               onClick={() => {
                 const text =
-                  logs
-                    .filter((l: any) => {
-                      if (logView === "frp") return l.source === "frp";
-                      if (logView === "mc") return l.source === "mc" && l.instance === instanceId.trim();
-                      if (logView === "install") return l.source === "install" && l.instance === instanceId.trim();
-                      // all
-                      return (l.instance && l.instance === instanceId.trim()) || l.source === "frp";
-                    })
+                  filteredLogs
                     .slice(-300)
                     .map((l: any) => {
                       const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
@@ -219,27 +262,7 @@ export default function GamesView() {
             </button>
           </div>
         </div>
-        <pre style={{ maxHeight: 640, overflow: "auto" }}>
-          {logs.length
-            ? logs
-                .filter((l: any) => {
-                  if (logView === "frp") return l.source === "frp";
-                  if (logView === "mc") return l.source === "mc" && l.instance === instanceId.trim();
-                  if (logView === "install") return l.source === "install" && l.instance === instanceId.trim();
-                  // all
-                  return (l.instance && l.instance === instanceId.trim()) || l.source === "frp";
-                })
-                .slice(-400)
-                .map((l: any) => {
-                  const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
-                  const src = l.source || "daemon";
-                  const stream = l.stream || "";
-                  const inst = l.instance ? `(${l.instance})` : "";
-                  return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
-                })
-                .join("\n")
-            : "<no logs>"}
-        </pre>
+        <pre ref={preRef} style={{ maxHeight: 640, overflow: "auto" }}>{logText}</pre>
         <div className="hint">提示：All 会显示当前游戏 + FRP 的日志。</div>
 
         <div className="row" style={{ marginTop: 12 }}>

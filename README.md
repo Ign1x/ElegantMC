@@ -35,25 +35,30 @@ ElegantMC 是一个「公网 Web Panel + 本地 Daemon」的 Minecraft 开服与
 
 ## Docker 一键启动（推荐）
 
-### 1) 配置 `.env`
-
-```bash
-cp .env.example .env
-```
-
-至少需要设置：
-
-- `ELEGANTMC_DAEMON_ID`：节点 ID（例如 `home-1`）
-- `ELEGANTMC_TOKEN`：节点 token（任意随机字符串也行）
-- `ELEGANTMC_PANEL_ADMIN_PASSWORD`：Panel 管理员密码（用于 Web 登录）
-
-### 2) 启动
+### 1) 启动（默认无需 `.env`）
 
 ```bash
 docker compose up -d --build
 ```
 
 然后访问 `http://127.0.0.1:3000`。
+
+> 默认会创建一个本地节点：`daemon_id=local-node`、`token=local-dev-token`（仅用于本机体验，生产环境务必修改）。
+
+如果你没有设置 `ELEGANTMC_PANEL_ADMIN_PASSWORD`，Panel 会在启动日志里生成一个随机密码：
+
+```bash
+docker compose logs panel
+```
+
+你也可以直接用环境变量覆盖（无需 `.env`）：
+
+```bash
+ELEGANTMC_PANEL_ADMIN_PASSWORD='change-me' \
+ELEGANTMC_DAEMON_ID='home-1' \
+ELEGANTMC_TOKEN='your-strong-token' \
+docker compose up -d --build
+```
 
 > 直连端口：`docker-compose.yml` 默认把 Daemon 容器的 `25565-25600` 映射到宿主机同端口（方便在 Panel 里调整 Game Port 并从本机/LAN 直连）。
 
@@ -75,17 +80,17 @@ DOCKER_BUILDKIT=0 docker compose up -d --build
 
 适用于你已经把镜像发布到 DockerHub（或其他 registry）的场景。
 
-1) 先配置 `.env`（同上），再额外设置镜像名（示例）：
+1) 启动（默认使用 `ign1x/*:latest`）：
 
 ```bash
-ELEGANTMC_PANEL_IMAGE=YOUR_DOCKERHUB_USER/elegantmc-panel
-ELEGANTMC_DAEMON_IMAGE=YOUR_DOCKERHUB_USER/elegantmc-daemon
-ELEGANTMC_IMAGE_TAG=latest
+docker compose -f docker-compose.images.yml up -d
 ```
 
-2) 启动：
+2) 覆盖 tag / 管理员密码（示例）：
 
 ```bash
+ELEGANTMC_IMAGE_TAG='v1.0.0' \
+ELEGANTMC_PANEL_ADMIN_PASSWORD='change-me' \
 docker compose -f docker-compose.images.yml up -d
 ```
 

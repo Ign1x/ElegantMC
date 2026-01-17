@@ -757,6 +757,43 @@ pre {
   margin-bottom: 12px;
 }
 
+.toastWrap {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: none;
+  min-width: 220px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border2);
+  background: rgba(16, 20, 36, 0.90);
+  color: var(--text);
+  box-shadow: var(--shadow2);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+}
+
+:root[data-theme="light"] .toast {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.toast.ok {
+  border-color: var(--ok-border);
+}
+
+.toast.error {
+  border-color: var(--danger-border);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

@@ -348,6 +348,10 @@ export default function HomePage() {
   const [copyOpen, setCopyOpen] = useState<boolean>(false);
   const [copyValue, setCopyValue] = useState<string>("");
 
+  // Toasts
+  const [toasts, setToasts] = useState<{ id: string; kind: "info" | "ok" | "error"; message: string }[]>([]);
+  const toastSeq = useRef<number>(0);
+
   // Logs
   const [logs, setLogs] = useState<any[]>([]);
 
@@ -755,11 +759,22 @@ export default function HomePage() {
     try {
       await navigator.clipboard.writeText(t);
       setServerOpStatus("Copied");
+      pushToast("Copied", "ok");
       return;
     } catch {
       // ignore
     }
     openCopyModal(t);
+  }
+
+  function pushToast(message: string, kind: "info" | "ok" | "error" = "info", ttlMs = 2200) {
+    const msg = String(message || "").trim();
+    if (!msg) return;
+    const id = `${Date.now()}-${toastSeq.current++}`;
+    setToasts((prev) => [...prev, { id, kind, message: msg }].slice(-6));
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, Math.max(800, Math.min(20_000, ttlMs)));
   }
 
   // Daemon polling
@@ -1815,6 +1830,16 @@ export default function HomePage() {
 	              </button>
 	            </div>
 	          </div>
+	        </div>
+	      ) : null}
+
+	      {toasts.length ? (
+	        <div className="toastWrap" aria-live="polite" aria-relevant="additions">
+	          {toasts.map((t) => (
+	            <div key={t.id} className={`toast ${t.kind}`}>
+	              {t.message}
+	            </div>
+	          ))}
 	        </div>
 	      ) : null}
 

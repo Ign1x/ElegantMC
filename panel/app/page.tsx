@@ -68,6 +68,8 @@ type StartOverride = Partial<{
   frpRemotePort: number;
 }>;
 
+const INSTANCE_CONFIG_NAME = ".elegantmc.json";
+
 function joinRelPath(a: string, b: string) {
   const left = (a || "")
     .replace(/\\+/g, "/")
@@ -520,6 +522,28 @@ export default function HomePage() {
     await callOkCommand("fs_write", { path, b64: b64EncodeUtf8(next) }, 10_000);
   }
 
+  async function writeInstanceConfig(inst: string, cfg: any) {
+    const cleanInst = String(inst || "").trim();
+    if (!cleanInst) throw new Error("instance_id 不能为空");
+    const jar = normalizeJarPath(cleanInst, String(cfg?.jar_path ?? jarPath));
+    const gamePortRaw = Math.round(Number(cfg?.game_port ?? gamePort));
+    const gamePortVal = Number.isFinite(gamePortRaw) && gamePortRaw >= 1 && gamePortRaw <= 65535 ? gamePortRaw : 25565;
+    const frpRemoteRaw = Math.round(Number(cfg?.frp_remote_port ?? frpRemotePort));
+    const frpRemoteVal = Number.isFinite(frpRemoteRaw) && frpRemoteRaw >= 0 && frpRemoteRaw <= 65535 ? frpRemoteRaw : 0;
+    const payload = {
+      jar_path: jar,
+      game_port: gamePortVal,
+      xms: String(cfg?.xms ?? xms).trim(),
+      xmx: String(cfg?.xmx ?? xmx).trim(),
+      enable_frp: !!(cfg?.enable_frp ?? enableFrp),
+      frp_profile_id: String(cfg?.frp_profile_id ?? frpProfileId),
+      frp_remote_port: frpRemoteVal,
+      updated_at_unix: Math.floor(Date.now() / 1000),
+    };
+    const path = joinRelPath(cleanInst, INSTANCE_CONFIG_NAME);
+    await callOkCommand("fs_write", { path, b64: b64EncodeUtf8(JSON.stringify(payload, null, 2) + "\n") }, 10_000);
+  }
+
   async function copyText(text: string) {
     const t = String(text || "");
     if (!t) return;
@@ -633,6 +657,37 @@ export default function HomePage() {
       }
     }
     if (tab === "games") loadPort();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, selected, instanceId, authed]);
+
+  // Load per-instance settings from servers/<instance_id>/.elegantmc.json (best-effort).
+  useEffect(() => {
+    if (authed !== true) return;
+    let cancelled = false;
+    async function loadCfg() {
+      const inst = instanceId.trim();
+      if (!selected || !inst) return;
+      try {
+        const out = await callOkCommand("fs_read", { path: joinRelPath(inst, INSTANCE_CONFIG_NAME) }, 10_000);
+        if (cancelled) return;
+        const raw = b64DecodeUtf8(String(out.b64 || ""));
+        const cfg = raw ? JSON.parse(raw) : null;
+        if (!cfg || typeof cfg !== "object") return;
+        const c: any = cfg;
+        if (typeof c.jar_path === "string" && c.jar_path.trim()) setJarPath(normalizeJarPath(inst, c.jar_path));
+        if (typeof c.xms === "string" && c.xms.trim()) setXms(c.xms);
+        if (typeof c.xmx === "string" && c.xmx.trim()) setXmx(c.xmx);
+        if (typeof c.enable_frp === "boolean") setEnableFrp(c.enable_frp);
+        if (typeof c.frp_profile_id === "string") setFrpProfileId(c.frp_profile_id);
+        if (Number.isFinite(Number(c.frp_remote_port))) setFrpRemotePort(Number(c.frp_remote_port));
+        if (Number.isFinite(Number(c.game_port))) setGamePort(Number(c.game_port));
+      } catch {
+        // ignore
+      }
+    }
+    if (tab === "games") loadCfg();
     return () => {
       cancelled = true;
     };
@@ -953,6 +1008,15 @@ export default function HomePage() {
       setFrpRemotePort(installForm.frpRemotePort);
       setSettingsOpen(false);
       setSettingsSnapshot(null);
+      await writeInstanceConfig(inst, {
+        jar_path: installedJar,
+        game_port: installForm.gamePort,
+        xms: installForm.xms,
+        xmx: installForm.xmx,
+        enable_frp: !!installForm.enableFrp,
+        frp_profile_id: installForm.frpProfileId,
+        frp_remote_port: installForm.frpRemotePort,
+      });
 
       setServerOpStatus(`Installed: ${installedJar}`);
       if (andStart) {
@@ -1010,6 +1074,7 @@ export default function HomePage() {
       const inst = instanceId.trim();
       if (!inst) throw new Error("instance_id 不能为空");
       await applyServerPort(inst, gamePort);
+      await writeInstanceConfig(inst, {});
       setSettingsOpen(false);
       setSettingsSnapshot(null);
       setServerOpStatus("Saved");
@@ -1038,18 +1103,29 @@ export default function HomePage() {
       const jar = normalizeJarPath(inst, String(override?.jarPath ?? jarPath));
       const xmsVal = String(override?.xms ?? xms);
       const xmxVal = String(override?.xmx ?? xmx);
+      const enable = !!(override?.enableFrp ?? enableFrp);
+      const pid = String(override?.frpProfileId ?? frpProfileId);
+      const remotePort = Math.round(Number(override?.frpRemotePort ?? frpRemotePort ?? 0));
+
+      await writeInstanceConfig(inst, {
+        jar_path: jar,
+        game_port: port,
+        xms: xmsVal,
+        xmx: xmxVal,
+        enable_frp: enable,
+        frp_profile_id: pid,
+        frp_remote_port: Number.isFinite(remotePort) ? remotePort : 0,
+      });
+
       await callOkCommand("mc_start", { instance_id: inst, jar_path: jar, xms: xmsVal, xmx: xmxVal }, 30_000);
       setServerOpStatus("MC started");
 
-      const enable = !!(override?.enableFrp ?? enableFrp);
       if (enable) {
-        const pid = String(override?.frpProfileId ?? frpProfileId);
         const profile = profiles.find((p) => p.id === pid) || null;
         if (!profile) {
           setFrpOpStatus("FRP enabled but no profile selected");
           return;
         }
-        const remotePort = Number(override?.frpRemotePort ?? frpRemotePort ?? 0);
         const args: any = {
           name: "mc",
           server_addr: profile.server_addr,
@@ -1129,6 +1205,7 @@ export default function HomePage() {
       }
       await applyServerPort(inst, gamePort);
       const jar = normalizeJarPath(inst, jarPath);
+      await writeInstanceConfig(inst, { jar_path: jar, game_port: gamePort });
       await callOkCommand("mc_restart", { instance_id: inst, jar_path: jar, xms, xmx }, 60_000);
       setServerOpStatus("MC restarted");
     } catch (e: any) {
@@ -1523,6 +1600,9 @@ export default function HomePage() {
                     <div style={{ fontWeight: 700 }}>Settings</div>
                     <div className="hint">
                       game: <code>{instanceId.trim() || "-"}</code>
+                    </div>
+                    <div className="hint">
+                      saved: <code>{joinRelPath(instanceId.trim() || ".", INSTANCE_CONFIG_NAME)}</code>
                     </div>
                   </div>
                   <button type="button" onClick={cancelEditSettings}>

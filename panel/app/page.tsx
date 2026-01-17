@@ -344,6 +344,7 @@ export default function HomePage() {
   // FRP profiles (saved on panel)
   const [profiles, setProfiles] = useState<FrpProfile[]>([]);
   const [profilesStatus, setProfilesStatus] = useState<string>("");
+  const [addFrpOpen, setAddFrpOpen] = useState<boolean>(false);
   const [newProfileName, setNewProfileName] = useState<string>("");
   const [newProfileAddr, setNewProfileAddr] = useState<string>("");
   const [newProfilePort, setNewProfilePort] = useState<number>(7000);
@@ -360,6 +361,8 @@ export default function HomePage() {
   const [nodesStatus, setNodesStatus] = useState<string>("");
   const [nodeDetailsOpen, setNodeDetailsOpen] = useState<boolean>(false);
   const [nodeDetailsId, setNodeDetailsId] = useState<string>("");
+  const [addNodeOpen, setAddNodeOpen] = useState<boolean>(false);
+  const [createdNode, setCreatedNode] = useState<{ id: string; token: string } | null>(null);
   const [newNodeId, setNewNodeId] = useState<string>("");
   const [newNodeToken, setNewNodeToken] = useState<string>("");
 
@@ -464,6 +467,23 @@ export default function HomePage() {
   async function openNodeDetails(id: string) {
     setNodeDetailsId(id);
     setNodeDetailsOpen(true);
+  }
+
+  function openAddNodeModal() {
+    setCreatedNode(null);
+    setNewNodeId("");
+    setNewNodeToken("");
+    setNodesStatus("");
+    setAddNodeOpen(true);
+  }
+
+  function openAddFrpModal() {
+    setNewProfileName("");
+    setNewProfileAddr("");
+    setNewProfilePort(7000);
+    setNewProfileToken("");
+    setProfilesStatus("");
+    setAddFrpOpen(true);
   }
 
   async function refreshServerDirs() {
@@ -1148,6 +1168,7 @@ export default function HomePage() {
       await refreshProfiles();
       setProfilesStatus("Saved");
       setTimeout(() => setProfilesStatus(""), 800);
+      setAddFrpOpen(false);
     } catch (e: any) {
       setProfilesStatus(String(e?.message || e));
     }
@@ -1690,8 +1711,138 @@ export default function HomePage() {
 	        </div>
 	      ) : null}
 
+      {addNodeOpen ? (
+        <div className="modalOverlay" onClick={() => setAddNodeOpen(false)}>
+          <div className="modal" style={{ width: "min(640px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div style={{ fontWeight: 800 }}>Add Node</div>
+                <div className="hint">创建后会生成/保存 token；如需换 token，请先删除再创建。</div>
+                {nodesStatus ? <div className="hint">{nodesStatus}</div> : null}
+              </div>
+              <button type="button" onClick={() => setAddNodeOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="grid2" style={{ alignItems: "start" }}>
+              <div className="field">
+                <label>daemon_id</label>
+                <input value={newNodeId} onChange={(e) => setNewNodeId(e.target.value)} placeholder="my-node" />
+                <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
+              </div>
+              <div className="field">
+                <label>token (optional)</label>
+                <input value={newNodeToken} onChange={(e) => setNewNodeToken(e.target.value)} placeholder="留空则自动生成" />
+              </div>
+            </div>
+
+            <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+              <button
+                className="primary"
+                type="button"
+                disabled={!newNodeId.trim()}
+                onClick={async () => {
+                  setNodesStatus("");
+                  setCreatedNode(null);
+                  try {
+                    const res = await apiFetch("/api/nodes", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id: newNodeId, token: newNodeToken }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json?.error || "failed");
+                    const node = json.node;
+                    setCreatedNode({ id: node.id, token: node.token });
+                    setNewNodeId("");
+                    setNewNodeToken("");
+                    setNodesStatus(`Created: ${node.id}`);
+                    const res2 = await apiFetch("/api/nodes", { cache: "no-store" });
+                    const json2 = await res2.json();
+                    if (res2.ok) setNodes(json2.nodes || []);
+                  } catch (e: any) {
+                    setNodesStatus(String(e?.message || e));
+                  }
+                }}
+              >
+                Create
+              </button>
+            </div>
+
+            {createdNode ? (
+              <div className="card" style={{ marginTop: 12 }}>
+                <h3>Token</h3>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <code>{createdNode.token}</code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await copyText(createdNode.token);
+                      setNodesStatus("Copied");
+                      setTimeout(() => setNodesStatus(""), 800);
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {addFrpOpen ? (
+        <div className="modalOverlay" onClick={() => setAddFrpOpen(false)}>
+          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div style={{ fontWeight: 800 }}>Add FRP Server</div>
+                <div className="hint">保存后可在 Games 一键复用。</div>
+                {profilesStatus ? <div className="hint">{profilesStatus}</div> : null}
+              </div>
+              <button type="button" onClick={() => setAddFrpOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="grid2" style={{ alignItems: "start" }}>
+              <div className="field">
+                <label>Name</label>
+                <input value={newProfileName} onChange={(e) => setNewProfileName(e.target.value)} placeholder="My FRP" />
+              </div>
+              <div className="field">
+                <label>Server Addr</label>
+                <input value={newProfileAddr} onChange={(e) => setNewProfileAddr(e.target.value)} placeholder="frp.example.com" />
+              </div>
+              <div className="field">
+                <label>Server Port</label>
+                <input
+                  type="number"
+                  value={Number.isFinite(newProfilePort) ? newProfilePort : 7000}
+                  onChange={(e) => setNewProfilePort(Number(e.target.value))}
+                  placeholder="7000"
+                  min={1}
+                  max={65535}
+                />
+              </div>
+              <div className="field">
+                <label>Token (optional)</label>
+                <input value={newProfileToken} onChange={(e) => setNewProfileToken(e.target.value)} placeholder="******" />
+              </div>
+            </div>
+
+            <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+              <button className="primary" type="button" disabled={!newProfileName.trim() || !newProfileAddr.trim()} onClick={addFrpProfile}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {tab === "nodes" ? (
-        <div className="grid2">
+        <div className="stack">
           <div className="card">
             <div className="toolbar">
               <div className="toolbarLeft" style={{ alignItems: "center" }}>
@@ -1702,24 +1853,27 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="toolbarRight">
-              <button
-                type="button"
-                onClick={async () => {
-                  setNodesStatus("Loading...");
-                  try {
-                    const res = await apiFetch("/api/nodes", { cache: "no-store" });
-                    const json = await res.json();
-                    if (!res.ok) throw new Error(json?.error || "failed");
-                    setNodes(json.nodes || []);
-                    setNodesStatus("");
-                  } catch (e: any) {
-                    setNodes([]);
-                    setNodesStatus(String(e?.message || e));
-                  }
-                }}
-              >
-                Refresh
-              </button>
+                <button type="button" className="primary" onClick={openAddNodeModal}>
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setNodesStatus("Loading...");
+                    try {
+                      const res = await apiFetch("/api/nodes", { cache: "no-store" });
+                      const json = await res.json();
+                      if (!res.ok) throw new Error(json?.error || "failed");
+                      setNodes(json.nodes || []);
+                      setNodesStatus("");
+                    } catch (e: any) {
+                      setNodes([]);
+                      setNodesStatus(String(e?.message || e));
+                    }
+                  }}
+                >
+                  Refresh
+                </button>
                 <span className="badge">{nodes.length}</span>
               </div>
             </div>
@@ -1769,7 +1923,19 @@ export default function HomePage() {
                         <span className="badge">{instances.length}</span>
                       </td>
                       <td className="hint">
-                        <code>{maskToken(n.token)}</code>
+                        <div className="row" style={{ gap: 8 }}>
+                          <code>{maskToken(n.token)}</code>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await copyText(n.token);
+                              setNodesStatus("Copied");
+                              setTimeout(() => setNodesStatus(""), 800);
+                            }}
+                          >
+                            Copy
+                          </button>
+                        </div>
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
@@ -1813,56 +1979,12 @@ export default function HomePage() {
                 {!nodes.length ? (
                   <tr>
                     <td colSpan={7} className="muted">
-                      暂无节点。先在右侧添加一个，然后在 Daemon 端使用对应 token 连接。
+                      暂无节点。点击右上角 Add 创建一个，然后在 Daemon 端使用对应 token 连接。
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
-          </div>
-
-          <div className="card">
-            <h2>Add Node</h2>
-            <div className="field">
-              <label>daemon_id</label>
-              <input value={newNodeId} onChange={(e) => setNewNodeId(e.target.value)} placeholder="my-node" />
-              <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
-            </div>
-            <div className="field">
-              <label>token (optional)</label>
-              <input value={newNodeToken} onChange={(e) => setNewNodeToken(e.target.value)} placeholder="留空则自动生成" />
-            </div>
-            <div className="row" style={{ marginTop: 12 }}>
-              <button
-                className="primary"
-                onClick={async () => {
-                  setNodesStatus("");
-                  try {
-                    const res = await apiFetch("/api/nodes", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ id: newNodeId, token: newNodeToken }),
-                    });
-                    const json = await res.json();
-                    if (!res.ok) throw new Error(json?.error || "failed");
-                    const node = json.node;
-                    setNewNodeId("");
-                    setNewNodeToken("");
-                    setNodesStatus(`Created: ${node.id} (token: ${node.token})`);
-                    const res2 = await apiFetch("/api/nodes", { cache: "no-store" });
-                    const json2 = await res2.json();
-                    if (res2.ok) setNodes(json2.nodes || []);
-                  } catch (e: any) {
-                    setNodesStatus(String(e?.message || e));
-                  }
-                }}
-              >
-                Create
-              </button>
-            </div>
-            <div className="hint" style={{ marginTop: 10 }}>
-              说明：Node 创建后不会被覆盖（如需换 token，请先删除再创建）。
-            </div>
           </div>
         </div>
       ) : null}
@@ -2119,7 +2241,7 @@ export default function HomePage() {
       ) : null}
 
       {tab === "frp" ? (
-        <div className="grid2">
+        <div className="stack">
           <div className="card">
             <div className="toolbar">
               <div className="toolbarLeft" style={{ alignItems: "center" }}>
@@ -2129,6 +2251,9 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="toolbarRight">
+                <button type="button" className="primary" onClick={openAddFrpModal}>
+                  Add
+                </button>
                 <button type="button" onClick={refreshProfiles}>
                   Refresh
                 </button>
@@ -2166,7 +2291,20 @@ export default function HomePage() {
                     </td>
                     <td className="hint">{fmtUnix(p.status?.checkedAtUnix || null)}</td>
                     <td className="hint">
-                      <code>{maskToken(p.token)}</code>
+                      <div className="row" style={{ gap: 8 }}>
+                        <code>{maskToken(p.token)}</code>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await copyText(p.token || "");
+                            setProfilesStatus("Copied");
+                            setTimeout(() => setProfilesStatus(""), 800);
+                          }}
+                          disabled={!p.token}
+                        >
+                          Copy
+                        </button>
+                      </div>
                     </td>
                     <td style={{ textAlign: "right" }}>
                       <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
@@ -2190,51 +2328,12 @@ export default function HomePage() {
                 {!profiles.length ? (
                   <tr>
                     <td colSpan={6} className="muted">
-                      暂无配置。先在右侧保存一个 FRP Server profile。
+                      暂无配置。点击右上角 Add 保存一个 FRP Server profile。
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
-          </div>
-
-          <div className="card">
-            <h2>Add FRP Server</h2>
-            <div className="field">
-              <label>Name</label>
-              <input value={newProfileName} onChange={(e) => setNewProfileName(e.target.value)} placeholder="My FRP" />
-            </div>
-            <div className="field">
-              <label>Server Addr</label>
-              <input value={newProfileAddr} onChange={(e) => setNewProfileAddr(e.target.value)} placeholder="frp.example.com" />
-            </div>
-            <div className="grid2">
-              <div className="field">
-                <label>Server Port</label>
-                <input
-                  type="number"
-                  value={Number.isFinite(newProfilePort) ? newProfilePort : 7000}
-                  onChange={(e) => setNewProfilePort(Number(e.target.value))}
-                  placeholder="7000"
-                  min={1}
-                  max={65535}
-                />
-              </div>
-              <div className="field">
-                <label>Token (optional)</label>
-                <input value={newProfileToken} onChange={(e) => setNewProfileToken(e.target.value)} placeholder="******" />
-              </div>
-            </div>
-            <div className="row" style={{ marginTop: 12 }}>
-              <button className="primary" onClick={addFrpProfile}>
-                Save
-              </button>
-              <button onClick={refreshProfiles}>Refresh</button>
-              {profilesStatus ? <span className="muted">{profilesStatus}</span> : null}
-            </div>
-            <div className="hint" style={{ marginTop: 10 }}>
-              配置保存在 Panel 的数据目录（Docker 默认挂载到 volume），重启不会丢。
-            </div>
           </div>
         </div>
       ) : null}

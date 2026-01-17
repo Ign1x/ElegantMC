@@ -54,6 +54,7 @@ func main() {
 		MC:     mcMgr,
 		Daemon: cfg.DaemonID,
 		FRPC:   cfg.FRPCPath,
+		PreferredConnectAddrs: cfg.PreferredConnectAddrs,
 		Mojang: commands.MojangConfig{
 			MetaBaseURL: cfg.MojangMetaBaseURL,
 			DataBaseURL: cfg.MojangDataBaseURL,

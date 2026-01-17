@@ -55,6 +55,7 @@ type DiskStat struct {
 type NetInfo struct {
 	Hostname string   `json:"hostname,omitempty"`
 	IPv4     []string `json:"ipv4,omitempty"`
+	PreferredConnectAddrs []string `json:"preferred_connect_addrs,omitempty"`
 }
 
 type FRPStatus struct {

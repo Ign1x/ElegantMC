@@ -20,6 +20,7 @@ type Config struct {
 	FRPWorkDir string
 
 	JavaCandidates []string
+	PreferredConnectAddrs []string
 
 	MojangMetaBaseURL string
 	MojangDataBaseURL string
@@ -69,6 +70,8 @@ func LoadFromEnv() (Config, error) {
 	if len(cfg.JavaCandidates) == 0 {
 		cfg.JavaCandidates = []string{"java"}
 	}
+
+	cfg.PreferredConnectAddrs = splitListEnv(os.Getenv("ELEGANTMC_PREFERRED_CONNECT_ADDRS"))
 
 	cfg.MojangMetaBaseURL = strings.TrimSpace(os.Getenv("ELEGANTMC_MOJANG_META_BASE_URL"))
 	if cfg.MojangMetaBaseURL == "" {

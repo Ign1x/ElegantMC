@@ -61,7 +61,7 @@ Daemon 主动连接 Panel 的 WebSocket：
     "cpu": {"usage_percent": 12.3},
     "mem": {"total_bytes": 17179869184, "used_bytes": 4294967296, "free_bytes": 12884901888},
     "disk": {"path": "/data", "total_bytes": 107374182400, "used_bytes": 123456789, "free_bytes": 107250725611},
-    "net": {"hostname": "my-host", "ipv4": ["192.168.1.10"]},
+    "net": {"hostname": "my-host", "ipv4": ["192.168.1.10"], "preferred_connect_addrs": ["192.168.1.10", "mc.example.com"]},
     "instances": [
       {"id": "server1", "running": true, "pid": 12345}
     ]
@@ -171,6 +171,13 @@ Daemon 主动连接 Panel 的 WebSocket：
 列目录：
 
 - args: `{ "path": "server1" }`
+
+### `fs_delete`
+
+删除文件/目录（递归），路径必须在 `servers` 根目录下：
+
+- args: `{ "path": "server1/plugins/SomePlugin.jar" }`
+- output: `{ "path": "...", "deleted": true, "is_dir": false }`
 
 ### `fs_download`
 

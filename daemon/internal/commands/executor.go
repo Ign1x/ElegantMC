@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"elegantmc/daemon/internal/download"
@@ -38,6 +39,7 @@ type ExecutorDeps struct {
 	MC     *mc.Manager
 	Daemon string
 	FRPC   string
+	PreferredConnectAddrs []string
 
 	Mojang MojangConfig
 	Paper  PaperConfig
@@ -93,10 +95,59 @@ func (e *Executor) HeartbeatSnapshot() protocol.Heartbeat {
 	}
 
 	// Network (best-effort).
-	if ips := sysinfo.ListLocalIPv4(); len(ips) > 0 || sysinfo.Hostname() != "" {
-		hb.Net = &protocol.NetInfo{
-			Hostname: sysinfo.Hostname(),
-			IPv4:     ips,
+	{
+		host := sysinfo.Hostname()
+		ips := sysinfo.ListLocalIPv4()
+		var preferred []string
+		seen := make(map[string]struct{})
+		add := func(v string) {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				return
+			}
+			if _, ok := seen[v]; ok {
+				return
+			}
+			seen[v] = struct{}{}
+			preferred = append(preferred, v)
+		}
+		for _, v := range e.deps.PreferredConnectAddrs {
+			add(v)
+		}
+		if len(ips) > 0 {
+			tmp := append([]string(nil), ips...)
+			rank := func(ip string) int {
+				if strings.HasPrefix(ip, "10.") || strings.HasPrefix(ip, "192.168.") {
+					return 0
+				}
+				if strings.HasPrefix(ip, "172.") {
+					parts := strings.Split(ip, ".")
+					if len(parts) >= 2 {
+						if n, err := strconv.Atoi(parts[1]); err == nil && n >= 16 && n <= 31 {
+							return 0
+						}
+					}
+				}
+				return 1
+			}
+			sort.SliceStable(tmp, func(i, j int) bool {
+				ri := rank(tmp[i])
+				rj := rank(tmp[j])
+				if ri != rj {
+					return ri < rj
+				}
+				return tmp[i] < tmp[j]
+			})
+			for _, ip := range tmp {
+				add(ip)
+			}
+		}
+		if len(ips) > 0 || host != "" || len(preferred) > 0 {
+			hb.Net = &protocol.NetInfo{
+				Hostname:              host,
+				IPv4:                  ips,
+				PreferredConnectAddrs: preferred,
+			}
 		}
 	}
 
@@ -146,6 +197,8 @@ func (e *Executor) Execute(ctx context.Context, cmd protocol.Command) protocol.C
 		return e.fsWrite(cmd)
 	case "fs_list":
 		return e.fsList(cmd)
+	case "fs_delete":
+		return e.fsDelete(cmd)
 	case "fs_upload_begin":
 		return e.fsUploadBegin(ctx, cmd)
 	case "fs_upload_chunk":
@@ -428,6 +481,37 @@ func (e *Executor) fsList(cmd protocol.Command) protocol.CommandResult {
 		})
 	}
 	return ok(map[string]any{"path": path, "entries": out})
+}
+
+func (e *Executor) fsDelete(cmd protocol.Command) protocol.CommandResult {
+	path, _ := asString(cmd.Args["path"])
+	if strings.TrimSpace(path) == "" {
+		return fail("path is required")
+	}
+	if e.deps.FS == nil {
+		return fail("servers filesystem not configured")
+	}
+
+	abs, err := e.deps.FS.Resolve(path)
+	if err != nil {
+		return fail(err.Error())
+	}
+	if filepath.Clean(abs) == filepath.Clean(e.deps.FS.Root()) {
+		return fail("refuse to delete root")
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fail("not found")
+		}
+		return fail(err.Error())
+	}
+
+	if err := os.RemoveAll(abs); err != nil {
+		return fail(err.Error())
+	}
+	return ok(map[string]any{"path": path, "deleted": true, "is_dir": info.IsDir()})
 }
 
 func (e *Executor) mcStart(ctx context.Context, cmd protocol.Command) protocol.CommandResult {

@@ -20,6 +20,7 @@ Daemon 是被控端节点，负责：
 - `ELEGANTMC_BASE_DIR`：Daemon 工作目录（默认：当前目录）
 - `ELEGANTMC_DAEMON_ID`：节点 ID（默认：hostname）
 - `ELEGANTMC_HEARTBEAT_SEC`：心跳间隔秒（默认：10）
+- `ELEGANTMC_PREFERRED_CONNECT_ADDRS`：逗号分隔的对外连接地址（可选），会在 heartbeat 里上报给 Panel 用于展示「Socket」（例如 `192.168.1.10` 或 `mc.example.com`）
 
 Java（自动选择）：
 

@@ -12,4 +12,4 @@ id,priority,area,status,title,problem,done_when,commit_message
 11,P1,panel,done,Add Paper install option in install modal,Users want more than vanilla; paper already supported by daemon,Install modal supports Vanilla/Paper selection and parameters,"feat(panel): add paper install flow"
 12,P1,panel,done,Improve file manager UX (breadcrumbs + delete),File manager lacks delete/rename and navigation feels rough,Breadcrumb navigation; delete file/folder; safer confirmations,"feat(files): breadcrumbs + delete"
 13,P2,security,done,Hardening: session cleanup + basic rate limit,Auth is minimal; should avoid brute-force and unbounded session map,Login attempts rate-limited; expired sessions cleaned up periodically,"sec(panel): rate limit login + session GC"
-14,P2,docs,todo,Write deployment guide (China/VPS/FRP),Need step-by-step for公网Panel+家用Daemon+FRP,README includes full deployment + troubleshooting + security checklist,"docs: deployment guide"
+14,P2,docs,done,Write deployment guide (China/VPS/FRP),Need step-by-step for公网Panel+家用Daemon+FRP,README includes full deployment + troubleshooting + security checklist,"docs: deployment guide"

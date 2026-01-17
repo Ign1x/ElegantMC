@@ -117,6 +117,12 @@ export default function FrpView() {
               );
             })}
           </div>
+        ) : profilesStatus === "Loading..." ? (
+          <div className="cardGrid">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="skeleton" />
+            ))}
+          </div>
         ) : (
           <div className="emptyState">暂无配置。点击右上角 Add 保存一个 FRP Server profile。</div>
         )}

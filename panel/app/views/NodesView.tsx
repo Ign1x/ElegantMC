@@ -184,6 +184,12 @@ export default function NodesView() {
               );
             })}
           </div>
+        ) : nodesStatus === "Loading..." ? (
+          <div className="cardGrid">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="skeleton" />
+            ))}
+          </div>
         ) : (
           <div className="emptyState">
             {nodes.length ? "No results." : "暂无节点。点击右上角 Add 创建一个，然后在 Daemon 端使用对应 token 连接。"}

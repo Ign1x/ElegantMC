@@ -1993,18 +1993,21 @@ export default function HomePage() {
             </div>
           </div>
 
-	          <div className="row" style={{ alignItems: "center" }}>
-	            <div className="field" style={{ minWidth: 220 }}>
-	              <label>Daemon</label>
-	              <select value={selected} onChange={(e) => setSelected(e.target.value)} disabled={authed !== true}>
-                {daemons.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.id} {d.connected ? "(online)" : "(offline)"}
-                  </option>
-                ))}
+	          <div className="field" style={{ minWidth: 240 }}>
+	            <label>Daemon</label>
+	            <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
+	              <select value={selected} onChange={(e) => setSelected(e.target.value)} disabled={authed !== true} style={{ flex: 1 }}>
+	                {daemons.map((d) => (
+	                  <option key={d.id} value={d.id}>
+	                    {d.id} {d.connected ? "(online)" : "(offline)"}
+	                  </option>
+	                ))}
 	              </select>
+	              <span
+	                className={`statusDot ${selectedDaemon?.connected ? "ok" : ""}`}
+	                title={selectedDaemon?.connected ? "online" : "offline"}
+	              />
 	            </div>
-	            <span className={`statusDot ${selectedDaemon?.connected ? "ok" : ""}`} title={selectedDaemon?.connected ? "online" : "offline"} />
 	          </div>
 	        </div>
 

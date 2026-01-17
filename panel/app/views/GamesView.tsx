@@ -62,25 +62,25 @@ export default function GamesView() {
 
           <div className="toolbarRight">
             <div className="btnGroup">
-              <button type="button" onClick={openSettingsModal} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                Settings
-              </button>
               <button type="button" onClick={refreshServerDirs} disabled={!selectedDaemon?.connected}>
                 Refresh
               </button>
               <button type="button" onClick={openInstallModal} disabled={!selectedDaemon?.connected}>
                 Install
               </button>
+              <button type="button" onClick={openSettingsModal} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+                Settings
+              </button>
             </div>
             <div className="btnGroup">
               <button className="primary" onClick={() => startServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
                 Start
               </button>
-              <button onClick={() => stopServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                Stop
-              </button>
               <button onClick={() => restartServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
                 Restart
+              </button>
+              <button onClick={() => stopServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+                Stop
               </button>
               <button className="dangerBtn" onClick={() => deleteServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
                 Delete

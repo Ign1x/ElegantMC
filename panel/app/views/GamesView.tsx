@@ -260,6 +260,34 @@ export default function GamesView() {
             >
               Copy
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                const text =
+                  filteredLogs
+                    .slice(-2000)
+                    .map((l: any) => {
+                      const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
+                      const src = l.source || "daemon";
+                      const stream = l.stream || "";
+                      const inst = l.instance ? `(${l.instance})` : "";
+                      return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
+                    })
+                    .join("\n") || "";
+                const blob = new Blob([text || "<empty>"], { type: "text/plain;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                const name = instanceId.trim() ? `elegantmc-${instanceId.trim()}-logs.txt` : `elegantmc-logs.txt`;
+                a.download = name;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Download
+            </button>
           </div>
         </div>
         <pre ref={preRef} style={{ maxHeight: 640, overflow: "auto" }}>{logText}</pre>

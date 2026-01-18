@@ -31,46 +31,50 @@ type McVersion = {
 
 const INSTANCE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-function validateInstanceIDUI(id: string) {
+type TrFn = (en: string, zh: string) => string;
+
+function validateInstanceIDUI(id: string, tr?: TrFn) {
   const v = String(id || "").trim();
-  if (!v) return "instance_id is required";
-  if (!INSTANCE_ID_RE.test(v)) return "only A-Z a-z 0-9 . _ - (max 64), must start with alnum";
+  if (!v) return tr ? tr("instance_id is required", "instance_id 不能为空") : "instance_id is required";
+  if (!INSTANCE_ID_RE.test(v))
+    return tr ? tr("only A-Z a-z 0-9 . _ - (max 64), must start with alnum", "仅允许 A-Z a-z 0-9 . _ -（最长 64），且必须以字母或数字开头") : "only A-Z a-z 0-9 . _ - (max 64), must start with alnum";
   return "";
 }
 
-function validatePortUI(port: any, { allowZero }: { allowZero: boolean }) {
+function validatePortUI(port: any, { allowZero }: { allowZero: boolean }, tr?: TrFn) {
   const n = Math.round(Number(port ?? 0));
-  if (!Number.isFinite(n)) return "port must be a number";
+  if (!Number.isFinite(n)) return tr ? tr("port must be a number", "端口必须是数字") : "port must be a number";
   if (allowZero && n === 0) return "";
-  if (n < 1 || n > 65535) return "port must be in 1-65535";
+  if (n < 1 || n > 65535) return tr ? tr("port must be in 1-65535", "端口必须在 1-65535 范围内") : "port must be in 1-65535";
   return "";
 }
 
-function validateJarNameUI(name: string) {
+function validateJarNameUI(name: string, tr?: TrFn) {
   const v = String(name || "").trim();
-  if (!v) return "jar_name is required";
-  if (v.length > 128) return "jar_name too long";
-  if (v.includes("/") || v.includes("\\")) return "jar_name must be a filename (no /)";
-  if (v.startsWith(".")) return "jar_name should not start with '.'";
+  if (!v) return tr ? tr("jar_name is required", "jar_name 不能为空") : "jar_name is required";
+  if (v.length > 128) return tr ? tr("jar_name too long", "jar_name 过长") : "jar_name too long";
+  if (v.includes("/") || v.includes("\\")) return tr ? tr("jar_name must be a filename (no /)", "jar_name 必须是文件名（不能包含 /）") : "jar_name must be a filename (no /)";
+  if (v.startsWith(".")) return tr ? tr("jar_name should not start with '.'", "jar_name 不应以 '.' 开头") : "jar_name should not start with '.'";
   return "";
 }
 
-function validateJarPathUI(jarPath: string) {
+function validateJarPathUI(jarPath: string, tr?: TrFn) {
   const raw = String(jarPath || "").trim();
-  if (!raw) return "jar_path is required";
-  if (raw.length > 256) return "jar_path too long";
+  if (!raw) return tr ? tr("jar_path is required", "jar_path 不能为空") : "jar_path is required";
+  if (raw.length > 256) return tr ? tr("jar_path too long", "jar_path 过长") : "jar_path too long";
   const v = raw
     .replace(/\\+/g, "/")
     .replace(/\/+/g, "/")
     .replace(/^\/+/, "")
     .replace(/^(\.\/)+/, "");
-  if (!v) return "jar_path is required";
-  if (v.startsWith(".")) return "jar_path should not start with '.'";
-  if (v.endsWith("/")) return "jar_path must be a file path";
+  if (!v) return tr ? tr("jar_path is required", "jar_path 不能为空") : "jar_path is required";
+  if (v.startsWith(".")) return tr ? tr("jar_path should not start with '.'", "jar_path 不应以 '.' 开头") : "jar_path should not start with '.'";
+  if (v.endsWith("/")) return tr ? tr("jar_path must be a file path", "jar_path 必须是文件路径") : "jar_path must be a file path";
   const parts = v.split("/").filter(Boolean);
-  if (!parts.length) return "jar_path is required";
+  if (!parts.length) return tr ? tr("jar_path is required", "jar_path 不能为空") : "jar_path is required";
   for (const p of parts) {
-    if (p === "." || p === "..") return "jar_path must not contain '.' or '..'";
+    if (p === "." || p === "..")
+      return tr ? tr("jar_path must not contain '.' or '..'", "jar_path 不能包含 '.' 或 '..'") : "jar_path must not contain '.' or '..'";
   }
   return "";
 }
@@ -747,30 +751,35 @@ export default function HomePage() {
   }, [modpackProviders, panelSettings]);
 
 	  const installValidation = useMemo(() => {
-	    const instErr = validateInstanceIDUI(installForm.instanceId);
-	    const verErr = installForm.kind === "vanilla" || installForm.kind === "paper" ? (String(installForm.version || "").trim() ? "" : "version is required") : "";
+	    const instErr = validateInstanceIDUI(installForm.instanceId, t.tr);
+	    const verErr =
+	      installForm.kind === "vanilla" || installForm.kind === "paper"
+	        ? String(installForm.version || "").trim()
+	          ? ""
+	          : t.tr("version is required", "version 不能为空")
+	        : "";
 	    const kindErr = "";
 	    const jarErr =
 	      installForm.kind === "zip" || installForm.kind === "zip_url" || installForm.kind === "modrinth" || installForm.kind === "curseforge"
-	        ? validateJarPathUI(installForm.jarName)
-	        : validateJarNameUI(installForm.jarName);
-	    const zipErr = installForm.kind === "zip" && !installZipFile ? "zip/mrpack file is required" : "";
+	        ? validateJarPathUI(installForm.jarName, t.tr)
+	        : validateJarNameUI(installForm.jarName, t.tr);
+	    const zipErr = installForm.kind === "zip" && !installZipFile ? t.tr("zip/mrpack file is required", "需要选择 zip/mrpack 文件") : "";
 	    const remoteErr = (() => {
 	      const url = String(installForm.remoteUrl || "").trim();
-	      if (installForm.kind === "zip_url") return url ? "" : "remote url is required";
-	      if (installForm.kind === "modrinth" || installForm.kind === "curseforge") return url ? "" : "select a modpack file first";
+	      if (installForm.kind === "zip_url") return url ? "" : t.tr("remote url is required", "需要填写远程 URL");
+	      if (installForm.kind === "modrinth" || installForm.kind === "curseforge") return url ? "" : t.tr("select a modpack file first", "请先选择整合包文件");
 	      return "";
 	    })();
-	    const portErr = validatePortUI(installForm.gamePort, { allowZero: false });
-	    const frpRemoteErr = validatePortUI(installForm.frpRemotePort, { allowZero: true });
+	    const portErr = validatePortUI(installForm.gamePort, { allowZero: false }, t.tr);
+	    const frpRemoteErr = validatePortUI(installForm.frpRemotePort, { allowZero: true }, t.tr);
 	    const frpProfileErr =
 	      installForm.enableFrp && (!String(installForm.frpProfileId || "").trim() || !profiles.length)
-	        ? "select a FRP server (or disable FRP)"
+	        ? t.tr("select a FRP server (or disable FRP)", "请选择 FRP 服务器（或禁用 FRP）")
 	        : "";
 	    const canInstall = !kindErr && !instErr && !verErr && !jarErr && !zipErr && !remoteErr && !portErr && !frpRemoteErr;
 	    const canInstallAndStart = canInstall && (!installForm.enableFrp || !frpProfileErr);
 	    return { kindErr, instErr, verErr, jarErr, zipErr, remoteErr, portErr, frpRemoteErr, frpProfileErr, canInstall, canInstallAndStart };
-	  }, [installForm, installZipFile, profiles]);
+	  }, [installForm, installZipFile, profiles, t]);
 
 	  const installWizardStep1Ok = useMemo(() => {
 	    return (
@@ -796,12 +805,12 @@ export default function HomePage() {
 
   const settingsValidation = useMemo(() => {
     const jar = String(jarPath || "").trim();
-    const jarErr = jar ? "" : "jar_path is required";
-    const portErr = validatePortUI(gamePort, { allowZero: false });
-    const frpRemoteErr = validatePortUI(frpRemotePort, { allowZero: true });
+    const jarErr = jar ? "" : t.tr("jar_path is required", "jar_path 不能为空");
+    const portErr = validatePortUI(gamePort, { allowZero: false }, t.tr);
+    const frpRemoteErr = validatePortUI(frpRemotePort, { allowZero: true }, t.tr);
     const ok = !jarErr && !portErr && !frpRemoteErr;
     return { jarErr, portErr, frpRemoteErr, ok };
-  }, [jarPath, gamePort, frpRemotePort]);
+  }, [jarPath, gamePort, frpRemotePort, t]);
 
   const settingsSearchQ = settingsSearch.trim().toLowerCase();
   const showSettingsField = (...terms: string[]) =>
@@ -1293,11 +1302,11 @@ export default function HomePage() {
   }
 
   async function refreshModpackProviders() {
-    setModpackProvidersStatus("Loading...");
+    setModpackProvidersStatus(t.tr("Loading...", "加载中..."));
     try {
       const res = await apiFetch("/api/modpacks/providers", { cache: "no-store" });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       setModpackProviders(Array.isArray(json?.providers) ? json.providers : []);
       setModpackProvidersStatus("");
     } catch (e: any) {
@@ -1307,11 +1316,11 @@ export default function HomePage() {
   }
 
   async function refreshPanelSettings() {
-    setPanelSettingsStatus("Loading...");
+    setPanelSettingsStatus(t.tr("Loading...", "加载中..."));
     try {
       const res = await apiFetch("/api/panel/settings", { cache: "no-store" });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       setPanelSettings(json?.settings || null);
       setPanelSettingsStatus("");
       refreshModpackProviders();
@@ -1322,7 +1331,7 @@ export default function HomePage() {
   }
 
   async function savePanelSettings(next: any) {
-    setPanelSettingsStatus("Saving...");
+    setPanelSettingsStatus(t.tr("Saving...", "保存中..."));
     try {
       const res = await apiFetch("/api/panel/settings", {
         method: "POST",
@@ -1330,10 +1339,10 @@ export default function HomePage() {
         body: JSON.stringify(next ?? {}),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       setPanelSettings(json?.settings || null);
       refreshModpackProviders();
-      setPanelSettingsStatus("Saved");
+      setPanelSettingsStatus(t.tr("Saved", "已保存"));
       setTimeout(() => setPanelSettingsStatus(""), 900);
     } catch (e: any) {
       setPanelSettingsStatus(String(e?.message || e));
@@ -1341,26 +1350,26 @@ export default function HomePage() {
   }
 
   async function loadSchedule() {
-    if (!selectedDaemon?.connected) throw new Error("daemon offline");
+    if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
     return await callOkCommand("schedule_get", {}, 30_000);
   }
 
   async function saveScheduleJson(jsonText: string) {
-    if (!selectedDaemon?.connected) throw new Error("daemon offline");
+    if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
     const text = String(jsonText || "").trim();
-    if (!text) throw new Error("json is required");
+    if (!text) throw new Error(t.tr("json is required", "json 不能为空"));
     return await callOkCommand("schedule_set", { json: text }, 30_000);
   }
 
   async function runScheduleTask(taskId: string) {
-    if (!selectedDaemon?.connected) throw new Error("daemon offline");
+    if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
     const id = String(taskId || "").trim();
-    if (!id) throw new Error("task_id is required");
+    if (!id) throw new Error(t.tr("task_id is required", "task_id 不能为空"));
     return await callOkCommand("schedule_run_task", { task_id: id }, 60 * 60_000);
   }
 
   async function login() {
-    setLoginStatus("Logging in...");
+    setLoginStatus(t.tr("Logging in...", "登录中..."));
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -1369,7 +1378,7 @@ export default function HomePage() {
         credentials: "include",
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "login failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("login failed", "登录失败"));
       setAuthed(true);
       setLoginPassword("");
       setLoginStatus("");
@@ -1392,8 +1401,8 @@ export default function HomePage() {
   async function callCommand(name: string, args: any, timeoutMs = 60_000) {
     const daemonId = String(selected || "").trim();
     if (!daemonId) {
-      pushToast("No daemon selected", "error", 7000, `command=${name}`);
-      throw new Error("no daemon selected");
+      pushToast(t.tr("No daemon selected", "未选择 Daemon"), "error", 7000, `command=${name}`);
+      throw new Error(t.tr("no daemon selected", "未选择 Daemon"));
     }
 
     let res: Response;
@@ -1408,7 +1417,7 @@ export default function HomePage() {
     } catch (e: any) {
       const msg = String(e?.message || e);
       pushToast(
-        `Command ${name} failed`,
+        t.tr(`Command ${name} failed`, `命令 ${name} 执行失败`),
         "error",
         9000,
         JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, error: msg }, null, 2)
@@ -1417,9 +1426,9 @@ export default function HomePage() {
     }
 
     if (!res.ok) {
-      const msg = String(json?.error || "request failed");
+      const msg = String(json?.error || t.tr("request failed", "请求失败"));
       pushToast(
-        `Command ${name} failed: ${msg}`,
+        t.tr(`Command ${name} failed: ${msg}`, `命令 ${name} 执行失败：${msg}`),
         "error",
         9000,
         JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, status: res.status, error: msg }, null, 2)
@@ -1450,7 +1459,7 @@ export default function HomePage() {
     } catch (e: any) {
       const msg = String(e?.message || e);
       pushToast(
-        `Advanced command ${name} failed`,
+        t.tr(`Advanced command ${name} failed`, `高级命令 ${name} 执行失败`),
         "error",
         9000,
         JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, error: msg }, null, 2)
@@ -1459,9 +1468,9 @@ export default function HomePage() {
     }
 
     if (!res.ok) {
-      const msg = String(json?.error || "request failed");
+      const msg = String(json?.error || t.tr("request failed", "请求失败"));
       pushToast(
-        `Advanced command ${name} failed: ${msg}`,
+        t.tr(`Advanced command ${name} failed: ${msg}`, `高级命令 ${name} 执行失败：${msg}`),
         "error",
         9000,
         JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, status: res.status, error: msg }, null, 2)
@@ -1475,9 +1484,9 @@ export default function HomePage() {
   async function callOkCommand(name: string, args: any, timeoutMs = 60_000) {
     const result = await callCommand(name, args, timeoutMs);
     if (!result?.ok) {
-      const msg = String(result?.error || "command failed");
+      const msg = String(result?.error || t.tr("command failed", "命令执行失败"));
       pushToast(
-        `Command ${name} failed: ${msg}`,
+        t.tr(`Command ${name} failed: ${msg}`, `命令 ${name} 执行失败：${msg}`),
         "error",
         9000,
         JSON.stringify({ daemon: String(selected || "").trim(), name, args: sanitizeForToast(args), timeoutMs, error: msg }, null, 2)
@@ -1527,7 +1536,7 @@ export default function HomePage() {
 
   async function refreshServerDirs() {
     if (!selected) return;
-    setServerDirsStatus("Loading...");
+    setServerDirsStatus(t.tr("Loading...", "加载中..."));
     try {
       const out = await callOkCommand("fs_list", { path: "" }, 30_000);
       const dirs = (out.entries || [])
@@ -1575,15 +1584,15 @@ export default function HomePage() {
     const inst = String(instOverride ?? instanceId).trim();
     if (!inst || !selectedDaemon?.connected) {
       setJarCandidates([]);
-      setJarCandidatesStatus(inst ? "daemon offline" : "");
+      setJarCandidatesStatus(inst ? t.tr("daemon offline", "daemon 离线") : "");
       return;
     }
-    setJarCandidatesStatus("Scanning jars...");
+    setJarCandidatesStatus(t.tr("Scanning jars...", "扫描 Jar 中..."));
     try {
       const out = await callOkCommand("mc_detect_jar", { instance_id: inst }, 30_000);
       const jars = (Array.isArray(out?.jars) ? out.jars : []).map((j: any) => String(j || "")).filter(Boolean);
       setJarCandidates(jars);
-      setJarCandidatesStatus(jars.length ? "" : "No .jar files found");
+      setJarCandidatesStatus(jars.length ? "" : t.tr("No .jar files found", "未找到 .jar 文件"));
     } catch (e: any) {
       setJarCandidates([]);
       setJarCandidatesStatus(String(e?.message || e));
@@ -1592,7 +1601,7 @@ export default function HomePage() {
 
   async function applyServerPort(instance: string, port: number) {
     const p = Math.round(Number(port || 0));
-    if (!Number.isFinite(p) || p < 1 || p > 65535) throw new Error("port invalid (1-65535)");
+    if (!Number.isFinite(p) || p < 1 || p > 65535) throw new Error(t.tr("port invalid (1-65535)", "端口无效（1-65535）"));
     const path = joinRelPath(instance, "server.properties");
 
     let cur = "";
@@ -1609,7 +1618,7 @@ export default function HomePage() {
 
   async function writeInstanceConfig(inst: string, cfg: any) {
     const cleanInst = String(inst || "").trim();
-    if (!cleanInst) throw new Error("instance_id 不能为空");
+    if (!cleanInst) throw new Error(t.tr("instance_id is required", "instance_id 不能为空"));
     const jar = normalizeJarPath(cleanInst, String(cfg?.jar_path ?? jarPath));
     const java = String(cfg?.java_path ?? javaPath).trim();
     const gamePortRaw = Math.round(Number(cfg?.game_port ?? gamePort));
@@ -1653,11 +1662,11 @@ export default function HomePage() {
     if (!msg) return false;
     return new Promise<boolean>((resolve) => {
       confirmResolveRef.current = resolve;
-      setConfirmTitle(opts.title || "Confirm");
+      setConfirmTitle(opts.title || t.tr("Confirm", "确认"));
       setConfirmMessage(msg);
       setConfirmDanger(!!opts.danger);
-      setConfirmConfirmLabel(opts.confirmLabel || (opts.danger ? "Delete" : "OK"));
-      setConfirmCancelLabel(opts.cancelLabel || "Cancel");
+      setConfirmConfirmLabel(opts.confirmLabel || (opts.danger ? t.tr("Delete", "删除") : t.tr("OK", "确定")));
+      setConfirmCancelLabel(opts.cancelLabel || t.tr("Cancel", "取消"));
       setConfirmOpen(true);
     });
   }
@@ -1674,12 +1683,12 @@ export default function HomePage() {
   ) {
     return new Promise<string | null>((resolve) => {
       promptResolveRef.current = resolve;
-      setPromptTitle(opts.title || "Input");
+      setPromptTitle(opts.title || t.tr("Input", "输入"));
       setPromptMessage(String(opts.message || ""));
       setPromptPlaceholder(String(opts.placeholder || ""));
       setPromptValue(String(opts.defaultValue || ""));
-      setPromptOkLabel(opts.okLabel || "OK");
-      setPromptCancelLabel(opts.cancelLabel || "Cancel");
+      setPromptOkLabel(opts.okLabel || t.tr("OK", "确定"));
+      setPromptCancelLabel(opts.cancelLabel || t.tr("Cancel", "取消"));
       setPromptOpen(true);
     });
   }
@@ -1693,11 +1702,11 @@ export default function HomePage() {
     setChangelogOpen(true);
     setChangelogStatus("");
     if (changelogText) return;
-    setChangelogStatus("Loading...");
+    setChangelogStatus(t.tr("Loading...", "加载中..."));
     try {
       const res = await apiFetch("/api/changelog", { cache: "no-store" });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       setChangelogText(String(json?.latest || json?.full || "").trim());
       setChangelogStatus("");
     } catch (e: any) {
@@ -1715,11 +1724,11 @@ export default function HomePage() {
     const key = String(name || "").trim().toLowerCase();
     if (!key) return;
     setHelpDoc(key);
-    setHelpDocStatus("Loading...");
+    setHelpDocStatus(t.tr("Loading...", "加载中..."));
     try {
       const res = await apiFetch(`/api/docs?name=${encodeURIComponent(key)}`, { cache: "no-store" });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       setHelpDocTitle(String(json?.title || key));
       setHelpDocText(String(json?.text || ""));
       setHelpDocStatus("");
@@ -1742,8 +1751,8 @@ export default function HomePage() {
     if (!t) return;
     try {
       await navigator.clipboard.writeText(t);
-      setServerOpStatus("Copied");
-      pushToast("Copied", "ok");
+      setServerOpStatus(t.tr("Copied", "已复制"));
+      pushToast(t.tr("Copied", "已复制"), "ok");
       return;
     } catch {
       // ignore
@@ -1802,7 +1811,7 @@ export default function HomePage() {
         const res = await apiFetch("/api/daemons", { cache: "no-store" });
         const json = await res.json();
         if (cancelled) return;
-        if (!res.ok) throw new Error(json?.error || "failed");
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
         setDaemons(json.daemons || []);
         if (!selected && (json.daemons || []).length > 0) setSelected(json.daemons[0].id);
         setError("");
@@ -1995,7 +2004,7 @@ export default function HomePage() {
         const res = await apiFetch("/api/nodes", { cache: "no-store" });
         const json = await res.json();
         if (cancelled) return;
-        if (!res.ok) throw new Error(json?.error || "failed");
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
         setNodes(json.nodes || []);
         setNodesStatus("");
       } catch (e: any) {
@@ -2048,12 +2057,12 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
     async function loadVersions() {
-      setVersionsStatus("Loading...");
+      setVersionsStatus(t.tr("Loading...", "加载中..."));
       try {
         const res = await fetch("/api/mc/versions", { cache: "no-store" });
         const json = await res.json();
         if (cancelled) return;
-        if (!res.ok) throw new Error(json?.error || "failed");
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
         setVersions(json.versions || []);
         setVersionsStatus("");
       } catch (e: any) {
@@ -2069,12 +2078,12 @@ export default function HomePage() {
   }, []);
 
   async function refreshProfiles(opts: { force?: boolean } = {}) {
-    setProfilesStatus("Loading...");
+    setProfilesStatus(t.tr("Loading...", "加载中..."));
     try {
       const qs = opts.force ? "?force=1" : "";
       const res = await apiFetch(`/api/frp/profiles${qs}`, { cache: "no-store" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       const list = (json.profiles || []) as FrpProfile[];
       setProfiles(list);
       if (!frpProfileId && list.length) setFrpProfileId(list[0].id);
@@ -2091,7 +2100,7 @@ export default function HomePage() {
     if (!id) return "";
     const res = await apiFetch(`/api/frp/profiles/${encodeURIComponent(id)}/token`, { cache: "no-store" });
     const json = await res.json();
-    if (!res.ok) throw new Error(json?.error || "failed to load frp token");
+    if (!res.ok) throw new Error(json?.error || t.tr("failed to load frp token", "加载 FRP token 失败"));
     return String(json?.token || "");
   }
 
@@ -2156,7 +2165,7 @@ export default function HomePage() {
     let cancelled = false;
     async function refresh() {
       if (!selected) return;
-      setFsStatus("Loading...");
+      setFsStatus(t.tr("Loading...", "加载中..."));
       try {
         const payload = await callOkCommand("fs_list", { path: fsPath });
         if (cancelled) return;
@@ -2177,7 +2186,7 @@ export default function HomePage() {
   async function refreshFsNow(pathOverride?: string) {
     if (!selected) return;
     const p = pathOverride != null ? String(pathOverride) : fsPath;
-    setFsStatus("Loading...");
+    setFsStatus(t.tr("Loading...", "加载中..."));
     try {
       const payload = await callOkCommand("fs_list", { path: p });
       setFsEntries(payload.entries || []);
@@ -2190,25 +2199,25 @@ export default function HomePage() {
 
   function validateFsNameSegment(name: string) {
     const v = String(name || "").trim();
-    if (!v) return "name is required";
-    if (v.length > 128) return "name too long";
-    if (v === "." || v === "..") return "invalid name";
-    if (v.includes("/") || v.includes("\\")) return "name must not contain '/'";
-    if (v.includes("\u0000")) return "name contains invalid characters";
+    if (!v) return t.tr("name is required", "名称不能为空");
+    if (v.length > 128) return t.tr("name too long", "名称过长");
+    if (v === "." || v === "..") return t.tr("invalid name", "无效名称");
+    if (v.includes("/") || v.includes("\\")) return t.tr("name must not contain '/' or '\\\\'", "名称不能包含 / 或 \\\\");
+    if (v.includes("\u0000")) return t.tr("name contains invalid characters", "名称包含非法字符");
     return "";
   }
 
   async function mkdirFsHere() {
     if (!selected) {
-      setFsStatus("请选择 Daemon");
+      setFsStatus(t.tr("Select a daemon first", "请先选择 Daemon"));
       return;
     }
     const name = await promptDialog({
-      title: "New Folder",
-      message: `Create a folder under servers/${fsPath || ""}`,
-      placeholder: "folder name",
-      okLabel: "Create",
-      cancelLabel: "Cancel",
+      title: t.tr("New Folder", "新建文件夹"),
+      message: t.tr(`Create a folder under servers/${fsPath || ""}`, `在 servers/${fsPath || ""} 下创建文件夹`),
+      placeholder: t.tr("folder name", "文件夹名"),
+      okLabel: t.tr("Create", "创建"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (name == null) return;
     const err = validateFsNameSegment(name);
@@ -2217,11 +2226,11 @@ export default function HomePage() {
       return;
     }
     const target = joinRelPath(fsPath, name);
-    setFsStatus(`Creating ${target} ...`);
+    setFsStatus(t.tr(`Creating ${target} ...`, `创建中 ${target} ...`));
     try {
       await callOkCommand("fs_mkdir", { path: target }, 30_000);
       await refreshFsNow();
-      setFsStatus("Created");
+      setFsStatus(t.tr("Created", "已创建"));
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -2230,15 +2239,15 @@ export default function HomePage() {
 
   async function createFileHere() {
     if (!selected) {
-      setFsStatus("请选择 Daemon");
+      setFsStatus(t.tr("Select a daemon first", "请先选择 Daemon"));
       return;
     }
     const name = await promptDialog({
-      title: "New File",
-      message: `Create a file under servers/${fsPath || ""}`,
-      placeholder: "filename (e.g. server.properties)",
-      okLabel: "Create",
-      cancelLabel: "Cancel",
+      title: t.tr("New File", "新建文件"),
+      message: t.tr(`Create a file under servers/${fsPath || ""}`, `在 servers/${fsPath || ""} 下创建文件`),
+      placeholder: t.tr("filename (e.g. server.properties)", "文件名（例如 server.properties）"),
+      okLabel: t.tr("Create", "创建"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (name == null) return;
     const err = validateFsNameSegment(name);
@@ -2248,19 +2257,19 @@ export default function HomePage() {
     }
     const fileName = String(name || "").trim();
     if (fsEntries.find((e: any) => String(e?.name || "") === fileName)) {
-      setFsStatus("File already exists");
+      setFsStatus(t.tr("File already exists", "文件已存在"));
       return;
     }
 
     const target = joinRelPath(fsPath, fileName);
-    setFsStatus(`Creating ${target} ...`);
+    setFsStatus(t.tr(`Creating ${target} ...`, `创建中 ${target} ...`));
     try {
       await callOkCommand("fs_write", { path: target, b64: b64EncodeUtf8("") }, 30_000);
       await refreshFsNow();
       setFsSelectedFile(target);
       setFsFileText("");
       setFsSelectedFileMode("text");
-      setFsStatus("Created");
+      setFsStatus(t.tr("Created", "已创建"));
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -2272,12 +2281,12 @@ export default function HomePage() {
     if (!name) return;
     const from = joinRelPath(fsPath, name);
     const next = await promptDialog({
-      title: "Rename",
-      message: `Rename ${entry?.isDir ? "folder" : "file"}:\n${from}`,
+      title: t.tr("Rename", "重命名"),
+      message: t.tr(`Rename ${entry?.isDir ? "folder" : "file"}:\n${from}`, `重命名${entry?.isDir ? "文件夹" : "文件"}：\n${from}`),
       defaultValue: name,
-      placeholder: "new name",
-      okLabel: "Rename",
-      cancelLabel: "Cancel",
+      placeholder: t.tr("new name", "新名称"),
+      okLabel: t.tr("Rename", "重命名"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (next == null) return;
     const toName = String(next || "").trim();
@@ -2287,12 +2296,12 @@ export default function HomePage() {
       return;
     }
     if (toName === name) {
-      setFsStatus("No changes");
+      setFsStatus(t.tr("No changes", "没有变化"));
       setTimeout(() => setFsStatus(""), 700);
       return;
     }
     const to = joinRelPath(fsPath, toName);
-    setFsStatus(`Renaming ${from} -> ${to} ...`);
+    setFsStatus(t.tr(`Renaming ${from} -> ${to} ...`, `重命名中 ${from} -> ${to} ...`));
     try {
       await callOkCommand("fs_move", { from, to }, 60_000);
       if (fsSelectedFile === from || fsSelectedFile.startsWith(`${from}/`)) {
@@ -2300,7 +2309,7 @@ export default function HomePage() {
         setFsSelectedFile(`${to}${suffix}`);
       }
       await refreshFsNow();
-      setFsStatus("Renamed");
+      setFsStatus(t.tr("Renamed", "已重命名"));
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -2313,31 +2322,34 @@ export default function HomePage() {
     const from = joinRelPath(fsPath, name);
 
     const next = await promptDialog({
-      title: "Move",
-      message: `Move ${entry?.isDir ? "folder" : "file"}:\n${from}\n\nTarget path is relative to servers/ (use /).`,
+      title: t.tr("Move", "移动"),
+      message: t.tr(
+        `Move ${entry?.isDir ? "folder" : "file"}:\n${from}\n\nTarget path is relative to servers/ (use /).`,
+        `移动${entry?.isDir ? "文件夹" : "文件"}：\n${from}\n\n目标路径为 servers/ 下的相对路径（使用 /）。`
+      ),
       defaultValue: from,
-      placeholder: "target/path",
-      okLabel: "Move",
-      cancelLabel: "Cancel",
+      placeholder: t.tr("target/path", "目标/路径"),
+      okLabel: t.tr("Move", "移动"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (next == null) return;
     const toRaw = normalizeRelFilePath(next);
     if (!toRaw) {
-      setFsStatus("invalid target path");
+      setFsStatus(t.tr("invalid target path", "目标路径无效"));
       return;
     }
     const to = toRaw;
     if (to === from) {
-      setFsStatus("No changes");
+      setFsStatus(t.tr("No changes", "没有变化"));
       setTimeout(() => setFsStatus(""), 700);
       return;
     }
 
-    setFsStatus(`Moving ${from} -> ${to} ...`);
+    setFsStatus(t.tr(`Moving ${from} -> ${to} ...`, `移动中 ${from} -> ${to} ...`));
     try {
       try {
         await callOkCommand("fs_stat", { path: to }, 10_000);
-        setFsStatus("destination exists");
+        setFsStatus(t.tr("destination exists", "目标已存在"));
         return;
       } catch {
         // ok: target not found
@@ -2348,7 +2360,7 @@ export default function HomePage() {
         setFsSelectedFile(`${to}${suffix}`);
       }
       await refreshFsNow();
-      setFsStatus("Moved");
+      setFsStatus(t.tr("Moved", "已移动"));
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -2362,11 +2374,16 @@ export default function HomePage() {
     const size = Math.max(0, Number(entry?.size || 0));
     const max = 15 * 1024 * 1024;
     if (size > max) {
-      setFsStatus(`File too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)})`);
+      setFsStatus(
+        t.tr(
+          `File too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)})`,
+          `文件过大，无法在浏览器中下载（${fmtBytes(size)} > ${fmtBytes(max)}）`
+        )
+      );
       return;
     }
 
-    setFsStatus(`Downloading ${path} ...`);
+    setFsStatus(t.tr(`Downloading ${path} ...`, `下载中 ${path} ...`));
     try {
       const payload = await callOkCommand("fs_read", { path }, 60_000);
       const bytes = b64DecodeBytes(String(payload?.b64 || ""));
@@ -2380,7 +2397,7 @@ export default function HomePage() {
       a.remove();
       URL.revokeObjectURL(url);
       setFsStatus("");
-      pushToast(`Downloaded: ${name}`, "ok");
+      pushToast(t.tr(`Downloaded: ${name}`, `已下载：${name}`), "ok");
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
     }
@@ -2391,21 +2408,26 @@ export default function HomePage() {
     if (!name || !entry?.isDir) return;
     const dirPath = joinRelPath(fsPath, name);
 
-    setFsStatus(`Zipping ${dirPath} ...`);
+    setFsStatus(t.tr(`Zipping ${dirPath} ...`, `打包中 ${dirPath} ...`));
     let zipPath = "";
     try {
       const out = await callOkCommand("fs_zip", { path: dirPath }, 10 * 60_000);
       zipPath = String(out?.zip_path || "").trim();
-      if (!zipPath) throw new Error("zip_path missing");
+      if (!zipPath) throw new Error(t.tr("zip_path missing", "zip_path 缺失"));
 
       const st = await callOkCommand("fs_stat", { path: zipPath }, 10_000);
       const size = Math.max(0, Number(st?.size || 0));
       const max = 50 * 1024 * 1024;
       if (size > max) {
-        throw new Error(`Zip too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)}). File: ${zipPath}`);
+        throw new Error(
+          t.tr(
+            `Zip too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)}). File: ${zipPath}`,
+            `Zip 过大，无法在浏览器中下载（${fmtBytes(size)} > ${fmtBytes(max)}）。文件：${zipPath}`
+          )
+        );
       }
 
-      setFsStatus(`Downloading ${zipPath} ...`);
+      setFsStatus(t.tr(`Downloading ${zipPath} ...`, `下载中 ${zipPath} ...`));
       const payload = await callOkCommand("fs_read", { path: zipPath }, 5 * 60_000);
       const bytes = b64DecodeBytes(String(payload?.b64 || ""));
       const blob = new Blob([bytes], { type: "application/zip" });
@@ -2418,7 +2440,7 @@ export default function HomePage() {
       a.remove();
       URL.revokeObjectURL(url);
       setFsStatus("");
-      pushToast(`Downloaded: ${a.download}`, "ok");
+      pushToast(t.tr(`Downloaded: ${a.download}`, `已下载：${a.download}`), "ok");
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
     } finally {
@@ -2438,11 +2460,16 @@ export default function HomePage() {
 	    const isDir = !!entry?.isDir;
 	    const target = joinRelPath(fsPath, name);
 	    const label = isDir ? `folder ${target} (recursive)` : `file ${target}`;
-	    const ok = await confirmDialog(`Delete ${label}?`, { title: "Delete", confirmLabel: "Delete", danger: true });
+	    const ok = await confirmDialog(t.tr(`Delete ${label}?`, `删除 ${label}？`), {
+	      title: t.tr("Delete", "删除"),
+	      confirmLabel: t.tr("Delete", "删除"),
+	      cancelLabel: t.tr("Cancel", "取消"),
+	      danger: true,
+	    });
 	    if (!ok) return;
 
 	    const inTrash = target === "_trash" || target.startsWith("_trash/");
-	    setFsStatus(inTrash ? `Deleting ${target} ...` : `Moving to trash: ${target} ...`);
+	    setFsStatus(inTrash ? t.tr(`Deleting ${target} ...`, `删除中 ${target} ...`) : t.tr(`Moving to trash: ${target} ...`, `移入回收站：${target} ...`));
 	    try {
 	      if (inTrash) {
 	        await callOkCommand("fs_delete", { path: target }, 60_000);
@@ -2454,7 +2481,7 @@ export default function HomePage() {
         setFsFileText("");
       }
       await refreshFsNow();
-      setFsStatus(inTrash ? "Deleted" : "Moved to trash");
+      setFsStatus(inTrash ? t.tr("Deleted", "已删除") : t.tr("Moved to trash", "已移入回收站"));
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -2466,9 +2493,9 @@ export default function HomePage() {
     if (!name) return;
     if (fsDirty) {
       const ok = await confirmDialog(`Discard unsaved changes in ${fsSelectedFile}?`, {
-        title: "Unsaved Changes",
-        confirmLabel: "Discard",
-        cancelLabel: "Cancel",
+        title: t.tr("Unsaved Changes", "未保存更改"),
+        confirmLabel: t.tr("Discard", "放弃"),
+        cancelLabel: t.tr("Cancel", "取消"),
         danger: true,
       });
       if (!ok) return;
@@ -2511,10 +2538,10 @@ export default function HomePage() {
       setFsFileText("");
       setFsFileTextSaved("");
       setFsSelectedFileMode("binary");
-      setFsStatus("Binary/large file: download-only");
+      setFsStatus(t.tr("Binary/large file: download-only", "二进制/大文件：仅支持下载"));
       return;
     }
-    setFsStatus(`Reading ${filePath} ...`);
+    setFsStatus(t.tr(`Reading ${filePath} ...`, `读取中 ${filePath} ...`));
     try {
       const payload = await callOkCommand("fs_read", { path: filePath });
       const bytes = b64DecodeBytes(String(payload?.b64 || ""));
@@ -2523,7 +2550,7 @@ export default function HomePage() {
         setFsFileText("");
         setFsFileTextSaved("");
         setFsSelectedFileMode("binary");
-        setFsStatus("Binary file: download-only");
+        setFsStatus(t.tr("Binary file: download-only", "二进制文件：仅支持下载"));
         return;
       }
       const text = new TextDecoder().decode(bytes);
@@ -2545,14 +2572,14 @@ export default function HomePage() {
       .replace(/\/+$/, "");
     if (!p) return;
     if (!selected) {
-      setFsStatus("请选择 Daemon");
+      setFsStatus(t.tr("Select a daemon first", "请先选择 Daemon"));
       return;
     }
     if (fsDirty) {
       const ok = await confirmDialog(`Discard unsaved changes in ${fsSelectedFile}?`, {
-        title: "Unsaved Changes",
-        confirmLabel: "Discard",
-        cancelLabel: "Cancel",
+        title: t.tr("Unsaved Changes", "未保存更改"),
+        confirmLabel: t.tr("Discard", "放弃"),
+        cancelLabel: t.tr("Cancel", "取消"),
         danger: true,
       });
       if (!ok) return;
@@ -2567,14 +2594,14 @@ export default function HomePage() {
     setFsFileText("");
     setFsFileTextSaved("");
     setFsSelectedFileMode("none");
-    setFsStatus(`Opening ${p} ...`);
+    setFsStatus(t.tr(`Opening ${p} ...`, `打开中 ${p} ...`));
 
     try {
       const payload = await callOkCommand("fs_list", { path: dir }, 30_000);
       setFsEntries(payload.entries || []);
 
       const entry = (payload.entries || []).find((e: any) => String(e?.name || "") === name) || null;
-      if (!entry) throw new Error("file not found");
+      if (!entry) throw new Error(t.tr("file not found", "未找到文件"));
       if (entry?.isDir) {
         setFsPath(p);
         setFsStatus("");
@@ -2611,7 +2638,7 @@ export default function HomePage() {
         setFsFileText("");
         setFsFileTextSaved("");
         setFsSelectedFileMode("binary");
-        setFsStatus("Binary/large file: download-only");
+        setFsStatus(t.tr("Binary/large file: download-only", "二进制/大文件：仅支持下载"));
         return;
       }
 
@@ -2622,7 +2649,7 @@ export default function HomePage() {
         setFsFileText("");
         setFsFileTextSaved("");
         setFsSelectedFileMode("binary");
-        setFsStatus("Binary file: download-only");
+        setFsStatus(t.tr("Binary file: download-only", "二进制文件：仅支持下载"));
         return;
       }
       const text = new TextDecoder().decode(bytes);
@@ -2639,11 +2666,11 @@ export default function HomePage() {
   async function setServerJarFromFile(filePath: string) {
     const inst = instanceId.trim();
     if (!inst) {
-      setFsStatus("Select a game first");
+      setFsStatus(t.tr("Select a game first", "请先选择游戏实例"));
       return;
     }
     if (!selectedDaemon?.connected) {
-      setFsStatus("daemon offline");
+      setFsStatus(t.tr("daemon offline", "daemon 离线"));
       return;
     }
     const p = String(filePath || "")
@@ -2652,20 +2679,20 @@ export default function HomePage() {
       .replace(/^\/+/, "")
       .replace(/\/+$/, "");
     if (!p || !p.toLowerCase().endsWith(".jar")) {
-      setFsStatus("Not a .jar file");
+      setFsStatus(t.tr("Not a .jar file", "不是 .jar 文件"));
       return;
     }
     if (p !== inst && !p.startsWith(`${inst}/`)) {
-      setFsStatus(`Jar must be under servers/${inst}/`);
+      setFsStatus(t.tr(`Jar must be under servers/${inst}/`, `Jar 必须位于 servers/${inst}/ 下`));
       return;
     }
     const jarRel = normalizeJarPath(inst, p);
-    setFsStatus(`Setting server jar: ${jarRel} ...`);
+    setFsStatus(t.tr(`Setting server jar: ${jarRel} ...`, `设置服务端 Jar：${jarRel} ...`));
     try {
       await writeInstanceConfig(inst, { jar_path: jarRel });
       setJarPath(jarRel);
-      setFsStatus("Server jar updated");
-      pushToast(`Server jar: ${jarRel}`, "ok");
+      setFsStatus(t.tr("Server jar updated", "服务端 Jar 已更新"));
+      pushToast(t.tr(`Server jar: ${jarRel}`, `服务端 Jar：${jarRel}`), "ok");
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -2674,18 +2701,18 @@ export default function HomePage() {
 
   async function saveFile() {
     if (!fsSelectedFile) {
-      setFsStatus("No file selected");
+      setFsStatus(t.tr("No file selected", "未选择文件"));
       return;
     }
     if (fsSelectedFileMode !== "text") {
-      setFsStatus("Binary file: edit disabled (download instead)");
+      setFsStatus(t.tr("Binary file: edit disabled (download instead)", "二进制文件：已禁用编辑（请下载）"));
       return;
     }
-    setFsStatus(`Saving ${fsSelectedFile} ...`);
+    setFsStatus(t.tr(`Saving ${fsSelectedFile} ...`, `保存中 ${fsSelectedFile} ...`));
     try {
       await callOkCommand("fs_write", { path: fsSelectedFile, b64: b64EncodeUtf8(fsFileText) });
       setFsFileTextSaved(fsFileText);
-      setFsStatus("Saved");
+      setFsStatus(t.tr("Saved", "已保存"));
       setTimeout(() => setFsStatus(""), 800);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -2696,11 +2723,11 @@ export default function HomePage() {
     const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike || []);
     const list = files.filter(Boolean);
     if (!list.length) {
-      setUploadStatus("请选择文件");
+      setUploadStatus(t.tr("Select file(s) first", "请先选择文件"));
       return;
     }
     if (!selected) {
-      setUploadStatus("请选择 Daemon");
+      setUploadStatus(t.tr("Select a daemon first", "请先选择 Daemon"));
       return;
     }
 
@@ -2715,23 +2742,28 @@ export default function HomePage() {
       const chunkSize = 256 * 1024; // 256KB
 
       let uploadID = "";
-      setUploadStatus(`Begin: ${destPath} (${file.size} bytes)`);
+      setUploadStatus(t.tr(`Begin: ${destPath} (${file.size} bytes)`, `开始：${destPath}（${file.size} bytes）`));
 
       try {
         const begin = await callOkCommand("fs_upload_begin", { path: destPath });
         uploadID = String(begin.upload_id || "");
-        if (!uploadID) throw new Error("upload_id missing");
+        if (!uploadID) throw new Error(t.tr("upload_id missing", "upload_id 缺失"));
 
         for (let off = 0; off < file.size; off += chunkSize) {
           const end = Math.min(off + chunkSize, file.size);
           const ab = await file.slice(off, end).arrayBuffer();
           const b64 = b64EncodeBytes(new Uint8Array(ab));
           await callOkCommand("fs_upload_chunk", { upload_id: uploadID, b64 });
-          setUploadStatus(`Uploading ${destPath}: ${end}/${file.size} bytes`);
+          setUploadStatus(t.tr(`Uploading ${destPath}: ${end}/${file.size} bytes`, `上传中 ${destPath}: ${end}/${file.size} bytes`));
         }
 
         const commit = await callOkCommand("fs_upload_commit", { upload_id: uploadID });
-        setUploadStatus(`Done: ${commit.path || destPath} (${commit.bytes || file.size} bytes)`);
+        setUploadStatus(
+          t.tr(
+            `Done: ${commit.path || destPath} (${commit.bytes || file.size} bytes)`,
+            `完成：${commit.path || destPath}（${commit.bytes || file.size} bytes）`
+          )
+        );
       } catch (e: any) {
         if (uploadID) {
           try {
@@ -2740,7 +2772,7 @@ export default function HomePage() {
             // ignore
           }
         }
-        setUploadStatus(`Upload failed: ${String(e?.message || e)}`);
+        setUploadStatus(t.tr(`Upload failed: ${String(e?.message || e)}`, `上传失败：${String(e?.message || e)}`));
         return;
       }
     }
@@ -2757,7 +2789,7 @@ export default function HomePage() {
 
   async function uploadSelectedFile() {
     if (!uploadFile) {
-      setUploadStatus("请选择文件");
+      setUploadStatus(t.tr("Select file first", "请先选择文件"));
       return;
     }
     await uploadFilesNow([uploadFile]);
@@ -2765,29 +2797,29 @@ export default function HomePage() {
 
   async function uploadZipAndExtractHere() {
     if (!uploadFile) {
-      setUploadStatus("请选择 zip 文件");
+      setUploadStatus(t.tr("Select a zip file first", "请先选择 zip 文件"));
       return;
     }
     if (!selected) {
-      setUploadStatus("请选择 Daemon");
+      setUploadStatus(t.tr("Select a daemon first", "请先选择 Daemon"));
       return;
     }
     if (!fsPath) {
-      setUploadStatus("请选择一个目标文件夹（不能解压到 servers/ 根目录）");
+      setUploadStatus(t.tr("Select a target folder first (cannot extract into servers/ root).", "请先选择目标文件夹（不能解压到 servers/ 根目录）"));
       return;
     }
 
     const file = uploadFile;
     const name = String(file.name || "").toLowerCase();
     if (!name.endsWith(".zip")) {
-      setUploadStatus("只支持 .zip 文件");
+      setUploadStatus(t.tr("Only .zip files are supported", "只支持 .zip 文件"));
       return;
     }
 
     const destPath = joinRelPath(fsPath, file.name);
     try {
       await uploadFilesNow([file]);
-      setUploadStatus(`Extracting ${destPath} ...`);
+      setUploadStatus(t.tr(`Extracting ${destPath} ...`, `解压中 ${destPath} ...`));
       await callOkCommand("fs_unzip", { zip_path: destPath, dest_dir: fsPath, instance_id: fsPath, strip_top_level: false }, 10 * 60_000);
       try {
         await callOkCommand("fs_delete", { path: destPath }, 60_000);
@@ -2795,7 +2827,7 @@ export default function HomePage() {
         // ignore
       }
       await refreshFsNow();
-      setUploadStatus("Extracted");
+      setUploadStatus(t.tr("Extracted", "已解压"));
       setTimeout(() => setUploadStatus(""), 1200);
     } catch (e: any) {
       setUploadStatus(String(e?.message || e));
@@ -2816,13 +2848,13 @@ export default function HomePage() {
     const provider = installForm.kind;
     if (provider !== "modrinth" && provider !== "curseforge") return;
     if (provider === "curseforge" && !curseforgeEnabled) {
-      setMarketStatus("CurseForge is disabled (configure API key in Panel settings)");
+      setMarketStatus(t.tr("CurseForge is disabled (configure API key in Panel settings)", "CurseForge 已禁用（请在 Panel 设置中配置 API Key）"));
       return;
     }
     const q = String(marketQuery || "").trim();
     if (!q) return;
 
-    setMarketStatus("Searching...");
+    setMarketStatus(t.tr("Searching...", "搜索中..."));
     setMarketResults([]);
     setMarketSelected(null);
     setMarketVersions([]);
@@ -2838,10 +2870,10 @@ export default function HomePage() {
       params.set("offset", "0");
       const res = await apiFetch(`/api/modpacks/search?${params.toString()}`);
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "search failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("search failed", "搜索失败"));
       const results = Array.isArray(json?.results) ? json.results : [];
       setMarketResults(results);
-      setMarketStatus(results.length ? `Found ${results.length} result(s)` : "No results");
+      setMarketStatus(results.length ? t.tr(`Found ${results.length} result(s)`, `找到 ${results.length} 条结果`) : t.tr("No results", "无结果"));
     } catch (e: any) {
       setMarketStatus(String(e?.message || e));
     }
@@ -2853,23 +2885,23 @@ export default function HomePage() {
     if (!inputUrl) return;
 
     setCfResolveBusy(true);
-    setCfResolveStatus("Resolving...");
+    setCfResolveStatus(t.tr("Resolving...", "解析中..."));
     try {
       const params = new URLSearchParams();
       params.set("url", inputUrl);
       const res = await apiFetch(`/api/modpacks/curseforge/resolve-url?${params.toString()}`);
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "resolve failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("resolve failed", "解析失败"));
 
       const resolved = String(json?.resolved || "").trim();
       const fileName = String(json?.file_name || "").trim();
-      if (!resolved) throw new Error("no resolved url");
+      if (!resolved) throw new Error(t.tr("no resolved url", "未获取到解析后的链接"));
       setInstallForm((f) => ({
         ...f,
         remoteUrl: resolved,
         remoteFileName: f.remoteFileName || fileName,
       }));
-      setCfResolveStatus("Resolved");
+      setCfResolveStatus(t.tr("Resolved", "已解析"));
       window.setTimeout(() => setCfResolveStatus(""), 1200);
     } catch (e: any) {
       setCfResolveStatus(String(e?.message || e));
@@ -2958,7 +2990,7 @@ export default function HomePage() {
         if (!rel) return null;
         const downloads = Array.isArray(f?.downloads) ? f.downloads : [];
         const url = String(downloads[0] || "").trim();
-        if (!url) throw new Error(`mrpack file missing download url: ${rel}`);
+        if (!url) throw new Error(t.tr(`mrpack file missing download url: ${rel}`, `mrpack 文件缺少下载链接：${rel}`));
         const sha1 = String(f?.hashes?.sha1 || "").trim();
         return { rel, url, sha1 };
       })
@@ -2966,7 +2998,7 @@ export default function HomePage() {
 
     const total = queue.length;
     let done = 0;
-    if (total) setServerOpStatus(`Downloading mrpack files: 0/${total} ...`);
+    if (total) setServerOpStatus(t.tr(`Downloading mrpack files: 0/${total} ...`, `下载 mrpack 文件：0/${total} ...`));
 
     const concurrency = Math.max(1, Math.min(4, total));
     let failed: any = null;
@@ -2981,9 +3013,9 @@ export default function HomePage() {
             10 * 60_000
           );
           done++;
-          if (total) setServerOpStatus(`Downloading mrpack files: ${done}/${total} ...`);
+          if (total) setServerOpStatus(t.tr(`Downloading mrpack files: ${done}/${total} ...`, `下载 mrpack 文件：${done}/${total} ...`));
         } catch (e) {
-          failed = e || new Error("download failed");
+          failed = e || new Error(t.tr("download failed", "下载失败"));
           throw failed;
         }
       }
@@ -2992,28 +3024,28 @@ export default function HomePage() {
 
     // Install loader server launcher jar.
     if (loaderKind === "quilt") {
-      setServerOpStatus(`Installing Quilt server (${mc} / loader ${loaderVer}) ...`);
+      setServerOpStatus(t.tr(`Installing Quilt server (${mc} / loader ${loaderVer}) ...`, `安装 Quilt 服务端（${mc} / loader ${loaderVer}）...`));
       const res = await apiFetch(
         `/api/mc/quilt/server-jar?mc=${encodeURIComponent(mc)}&loader=${encodeURIComponent(loaderVer)}`,
         { cache: "no-store" }
       );
       const resolved = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(resolved?.error || "failed to resolve Quilt server jar");
+      if (!res.ok) throw new Error(resolved?.error || t.tr("failed to resolve Quilt server jar", "解析 Quilt 服务端 Jar 失败"));
 
       const serverJarUrl = String(resolved?.url || "").trim();
-      if (!serverJarUrl) throw new Error("quilt server jar url missing");
+      if (!serverJarUrl) throw new Error(t.tr("quilt server jar url missing", "Quilt 服务端 Jar URL 缺失"));
       await callOkCommand("fs_download", { path: joinRelPath(inst, jarRel), url: serverJarUrl, instance_id: inst }, 10 * 60_000);
     } else {
-      setServerOpStatus(`Installing Fabric server (${mc} / loader ${loaderVer}) ...`);
+      setServerOpStatus(t.tr(`Installing Fabric server (${mc} / loader ${loaderVer}) ...`, `安装 Fabric 服务端（${mc} / loader ${loaderVer}）...`));
       const res = await apiFetch(
         `/api/mc/fabric/server-jar?mc=${encodeURIComponent(mc)}&loader=${encodeURIComponent(loaderVer)}`,
         { cache: "no-store" }
       );
       const resolved = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(resolved?.error || "failed to resolve Fabric server jar");
+      if (!res.ok) throw new Error(resolved?.error || t.tr("failed to resolve Fabric server jar", "解析 Fabric 服务端 Jar 失败"));
 
       const serverJarUrl = String(resolved?.url || "").trim();
-      if (!serverJarUrl) throw new Error("fabric server jar url missing");
+      if (!serverJarUrl) throw new Error(t.tr("fabric server jar url missing", "Fabric 服务端 Jar URL 缺失"));
       await callOkCommand("fs_download", { path: joinRelPath(inst, jarRel), url: serverJarUrl, instance_id: inst }, 10 * 60_000);
     }
 
@@ -3036,7 +3068,7 @@ export default function HomePage() {
     const name = String(file?.filename || "").trim();
     if (!url) {
       setInstallForm((f) => ({ ...f, remoteUrl: "", remoteFileName: "" }));
-      setMarketStatus("No downloadable file for this version");
+      setMarketStatus(t.tr("No downloadable file for this version", "该版本没有可下载的文件"));
       return;
     }
     setInstallForm((f) => ({ ...f, remoteUrl: url, remoteFileName: name }));
@@ -3053,13 +3085,13 @@ export default function HomePage() {
     const file = (Array.isArray(list) ? list : []).find((x: any) => String(x?.id || "") === id) || null;
     const name = String(file?.file_name || file?.display_name || "").trim();
 
-    setMarketStatus("Resolving download url...");
+    setMarketStatus(t.tr("Resolving download url...", "解析下载链接中..."));
     try {
       const res = await apiFetch(`/api/modpacks/curseforge/files/${encodeURIComponent(id)}/download-url`);
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+      if (!res.ok) throw new Error(json?.error || t.tr(`fetch failed: ${res.status}`, `获取失败：${res.status}`));
       const url = String(json?.url || "").trim();
-      if (!url) throw new Error("no download url");
+      if (!url) throw new Error(t.tr("no download url", "没有下载链接"));
       setInstallForm((f) => ({ ...f, remoteUrl: url, remoteFileName: name }));
       setMarketStatus("");
     } catch (e: any) {
@@ -3081,30 +3113,30 @@ export default function HomePage() {
 
     try {
       if (provider === "modrinth") {
-        setMarketStatus("Loading versions...");
+        setMarketStatus(t.tr("Loading versions...", "加载版本中..."));
         const res = await apiFetch(`/api/modpacks/modrinth/${encodeURIComponent(id)}/versions`);
         const json = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(json?.error || "fetch versions failed");
+        if (!res.ok) throw new Error(json?.error || t.tr("fetch versions failed", "获取版本失败"));
         const versions = Array.isArray(json?.versions) ? json.versions : [];
         setMarketVersions(versions);
         const first = versions[0];
         if (first?.id) pickModrinthVersion(String(first.id), versions);
-        else setMarketStatus("No versions");
+        else setMarketStatus(t.tr("No versions", "暂无版本"));
         return;
       }
 
-      setMarketStatus("Loading files...");
+      setMarketStatus(t.tr("Loading files...", "加载文件中..."));
       const params = new URLSearchParams();
       params.set("limit", "25");
       params.set("offset", "0");
       const res = await apiFetch(`/api/modpacks/curseforge/${encodeURIComponent(id)}/files?${params.toString()}`);
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "fetch files failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("fetch files failed", "获取文件失败"));
       const files = Array.isArray(json?.files) ? json.files : [];
       setMarketVersions(files);
       const first = files[0];
       if (first?.id) await pickCurseForgeFile(String(first.id), files);
-      else setMarketStatus("No files");
+      else setMarketStatus(t.tr("No files", "暂无文件"));
     } catch (e: any) {
       setMarketStatus(String(e?.message || e));
     }
@@ -3169,24 +3201,24 @@ export default function HomePage() {
 	  async function runInstall(andStart: boolean) {
 	    setServerOpStatus("");
 	    if (!selectedDaemon?.connected) {
-	      setServerOpStatus("daemon offline");
+	      setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
 	      return;
 	    }
 	    const inst = installForm.instanceId.trim();
 	    if (!inst) {
-	      setServerOpStatus("instance_id 不能为空");
+	      setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
 	      return;
 	    }
 	    const kind = installForm.kind;
 	    const ver = String(installForm.version || "").trim();
 	    if ((kind === "vanilla" || kind === "paper") && !ver) {
-	      setServerOpStatus("version 不能为空");
+	      setServerOpStatus(t.tr("version is required", "version 不能为空"));
 	      return;
 	    }
 	    const jarErr =
 	      kind === "zip" || kind === "zip_url" || kind === "modrinth" || kind === "curseforge"
-	        ? validateJarPathUI(installForm.jarName)
-	        : validateJarNameUI(installForm.jarName);
+	        ? validateJarPathUI(installForm.jarName, t.tr)
+	        : validateJarNameUI(installForm.jarName, t.tr);
 	    if (jarErr) {
 	      setServerOpStatus(jarErr);
 	      return;
@@ -3203,7 +3235,7 @@ export default function HomePage() {
 	      let installedJar = jarRel;
 	      if (kind === "zip") {
 	        const file = installZipFile;
-	        if (!file) throw new Error("zip/mrpack file is required");
+	        if (!file) throw new Error(t.tr("zip/mrpack file is required", "需要选择 zip/mrpack 文件"));
 
 	        // Ensure instance dir exists, then upload + extract.
 	        await callOkCommand("fs_mkdir", { path: inst }, 30_000);
@@ -3212,18 +3244,18 @@ export default function HomePage() {
 	        const zipRel = joinRelPath(inst, uploadName);
 	        const chunkSize = 256 * 1024; // 256KB
 	        let uploadID = "";
-	        setServerOpStatus(`Uploading ${uploadName}: 0/${file.size} bytes`);
+	        setServerOpStatus(t.tr(`Uploading ${uploadName}: 0/${file.size} bytes`, `上传中 ${uploadName}: 0/${file.size} bytes`));
 	        try {
 	          const begin = await callOkCommand("fs_upload_begin", { path: zipRel }, 30_000);
 	          uploadID = String(begin.upload_id || "");
-	          if (!uploadID) throw new Error("upload_id missing");
+	          if (!uploadID) throw new Error(t.tr("upload_id missing", "upload_id 缺失"));
 
 	          for (let off = 0; off < file.size; off += chunkSize) {
 	            const end = Math.min(off + chunkSize, file.size);
 	            const ab = await file.slice(off, end).arrayBuffer();
 	            const b64 = b64EncodeBytes(new Uint8Array(ab));
 	            await callOkCommand("fs_upload_chunk", { upload_id: uploadID, b64 }, 60_000);
-	            setServerOpStatus(`Uploading ${uploadName}: ${end}/${file.size} bytes`);
+	            setServerOpStatus(t.tr(`Uploading ${uploadName}: ${end}/${file.size} bytes`, `上传中 ${uploadName}: ${end}/${file.size} bytes`));
 	          }
 
 	          await callOkCommand("fs_upload_commit", { upload_id: uploadID }, 60_000);
@@ -3239,10 +3271,10 @@ export default function HomePage() {
 	        }
 
 	        if (uploadName.toLowerCase().endsWith(".mrpack")) {
-	          setServerOpStatus(`Installing ${uploadName} (.mrpack) ...`);
+	          setServerOpStatus(t.tr(`Installing ${uploadName} (.mrpack) ...`, `安装中 ${uploadName}（.mrpack）...`));
 	          await installModrinthMrpack(inst, zipRel, jarRel);
 	        } else {
-	          setServerOpStatus(`Extracting ${uploadName} ...`);
+	          setServerOpStatus(t.tr(`Extracting ${uploadName} ...`, `解压中 ${uploadName} ...`));
 	          await callOkCommand(
 	            "fs_unzip",
 	            { zip_path: zipRel, dest_dir: inst, instance_id: inst, strip_top_level: true },
@@ -3259,7 +3291,7 @@ export default function HomePage() {
 		        setInstallZipInputKey((k) => k + 1);
 		      } else if (kind === "zip_url" || kind === "modrinth" || kind === "curseforge") {
 		        const remoteUrl = String(installForm.remoteUrl || "").trim();
-		        if (!remoteUrl) throw new Error("remote url is required");
+		        if (!remoteUrl) throw new Error(t.tr("remote url is required", "需要填写远程 URL"));
 
 		        // Ensure instance dir exists, then download + extract.
 		        await callOkCommand("fs_mkdir", { path: inst }, 30_000);
@@ -3275,14 +3307,14 @@ export default function HomePage() {
 		        const fileName = normalizeDownloadName(String(installForm.remoteFileName || "").trim(), defaultName);
 		        const zipRel = joinRelPath(inst, fileName);
 
-		        setServerOpStatus(`Downloading ${fileName} ...`);
+		        setServerOpStatus(t.tr(`Downloading ${fileName} ...`, `下载中 ${fileName} ...`));
 		        await callOkCommand("fs_download", { path: zipRel, url: remoteUrl, instance_id: inst }, 10 * 60_000);
 
 		        if ((kind === "modrinth" || kind === "zip_url") && fileName.toLowerCase().endsWith(".mrpack")) {
-		          setServerOpStatus(`Installing ${fileName} (.mrpack) ...`);
+		          setServerOpStatus(t.tr(`Installing ${fileName} (.mrpack) ...`, `安装中 ${fileName}（.mrpack）...`));
 		          await installModrinthMrpack(inst, zipRel, jarRel);
 		        } else {
-		          setServerOpStatus(`Extracting ${fileName} ...`);
+		          setServerOpStatus(t.tr(`Extracting ${fileName} ...`, `解压中 ${fileName} ...`));
 		          await callOkCommand(
 		            "fs_unzip",
 		            { zip_path: zipRel, dest_dir: inst, instance_id: inst, strip_top_level: true },
@@ -3299,8 +3331,13 @@ export default function HomePage() {
 		        const build = Math.round(Number(installForm.paperBuild || 0));
 		        const cmdName = kind === "paper" ? "mc_install_paper" : "mc_install_vanilla";
 		        setServerOpStatus(
-		          kind === "paper" && build > 0 ? `Installing Paper ${ver} (build ${build}) ...` : `Installing ${kind === "paper" ? "Paper" : "Vanilla"} ${ver} ...`
-	        );
+		          kind === "paper" && build > 0
+		            ? t.tr(`Installing Paper ${ver} (build ${build}) ...`, `正在安装 Paper ${ver}（build ${build}）...`)
+		            : t.tr(
+		              `Installing ${kind === "paper" ? "Paper" : "Vanilla"} ${ver} ...`,
+		              `正在安装 ${kind === "paper" ? "Paper" : "原版"} ${ver} ...`
+		            )
+		        );
 	        const out = await callOkCommand(
 	          cmdName,
 	          {
@@ -3316,7 +3353,7 @@ export default function HomePage() {
 	      }
 
 	      if ((kind === "zip" || kind === "zip_url" || kind === "modrinth" || kind === "curseforge") && installForm.acceptEula) {
-	        setServerOpStatus("Writing eula.txt ...");
+	        setServerOpStatus(t.tr("Writing eula.txt ...", "写入 eula.txt ..."));
 	        await callOkCommand(
 	          "fs_write",
 	          { path: joinRelPath(inst, "eula.txt"), b64: b64EncodeUtf8("eula=true\n") },
@@ -3352,7 +3389,7 @@ export default function HomePage() {
         frp_remote_port: installForm.frpRemotePort,
       });
 
-      setServerOpStatus(`Installed: ${installedJar}`);
+      setServerOpStatus(t.tr(`Installed: ${installedJar}`, `已安装：${installedJar}`));
       if (andStart) {
         await startServer(inst, {
           jarPath: installedJar,
@@ -3416,14 +3453,14 @@ export default function HomePage() {
   async function saveEditSettings() {
     setServerOpStatus("");
     try {
-      if (!selectedDaemon?.connected) throw new Error("daemon offline");
+      if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
       const inst = instanceId.trim();
-      if (!inst) throw new Error("instance_id 不能为空");
+      if (!inst) throw new Error(t.tr("instance_id is required", "instance_id 不能为空"));
       await applyServerPort(inst, gamePort);
       await writeInstanceConfig(inst, {});
       setSettingsOpen(false);
       setSettingsSnapshot(null);
-      setServerOpStatus("Saved");
+      setServerOpStatus(t.tr("Saved", "已保存"));
       setTimeout(() => setServerOpStatus(""), 900);
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
@@ -3438,7 +3475,7 @@ export default function HomePage() {
     try {
       const inst = String(instanceOverride ?? instanceId).trim();
       if (!inst) {
-        setServerOpStatus("instance_id 不能为空");
+        setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
         return;
       }
 
@@ -3474,26 +3511,32 @@ export default function HomePage() {
         const v = String(getPropValue(text, "eula") || "").trim().toLowerCase();
         if (v !== "true") {
           const ok = await confirmDialog(
-            `Minecraft requires accepting the Mojang EULA.\n\nWrite servers/${inst}/eula.txt with eula=true?`,
-            { title: "Accept EULA", confirmLabel: "Accept", cancelLabel: "Cancel" }
+            t.tr(
+              `Minecraft requires accepting the Mojang EULA.\n\nWrite servers/${inst}/eula.txt with eula=true?`,
+              `Minecraft 需要接受 Mojang EULA。\n\n是否写入 servers/${inst}/eula.txt 为 eula=true？`
+            ),
+            { title: t.tr("Accept EULA", "接受 EULA"), confirmLabel: t.tr("Accept", "接受"), cancelLabel: t.tr("Cancel", "取消") }
           );
           if (!ok) {
-            setServerOpStatus("Cancelled");
+            setServerOpStatus(t.tr("Cancelled", "已取消"));
             return;
           }
-          setServerOpStatus("Writing eula.txt ...");
+          setServerOpStatus(t.tr("Writing eula.txt ...", "写入 eula.txt ..."));
           await callOkCommand("fs_write", { path: eulaPath, b64: b64EncodeUtf8("eula=true\n") }, 10_000);
         }
       } catch (e: any) {
         const ok = await confirmDialog(
-          `Minecraft requires accepting the Mojang EULA.\n\nWrite servers/${inst}/eula.txt with eula=true?`,
-          { title: "Accept EULA", confirmLabel: "Accept", cancelLabel: "Cancel" }
+          t.tr(
+            `Minecraft requires accepting the Mojang EULA.\n\nWrite servers/${inst}/eula.txt with eula=true?`,
+            `Minecraft 需要接受 Mojang EULA。\n\n是否写入 servers/${inst}/eula.txt 为 eula=true？`
+          ),
+          { title: t.tr("Accept EULA", "接受 EULA"), confirmLabel: t.tr("Accept", "接受"), cancelLabel: t.tr("Cancel", "取消") }
         );
         if (!ok) {
-          setServerOpStatus("Cancelled");
+          setServerOpStatus(t.tr("Cancelled", "已取消"));
           return;
         }
-        setServerOpStatus("Writing eula.txt ...");
+        setServerOpStatus(t.tr("Writing eula.txt ...", "写入 eula.txt ..."));
         await callOkCommand("fs_write", { path: eulaPath, b64: b64EncodeUtf8("eula=true\n") }, 10_000);
       }
 
@@ -3502,12 +3545,12 @@ export default function HomePage() {
         { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms: xmsVal, xmx: xmxVal },
         10 * 60_000
       );
-      setServerOpStatus("MC started");
+      setServerOpStatus(t.tr("MC started", "MC 已启动"));
 
       if (enable) {
         const profile = profiles.find((p) => p.id === pid) || null;
         if (!profile) {
-          setFrpOpStatus("FRP enabled but no profile selected");
+          setFrpOpStatus(t.tr("FRP enabled but no profile selected", "已开启 FRP，但未选择服务器"));
           return;
         }
         let token = "";
@@ -3525,7 +3568,7 @@ export default function HomePage() {
           remote_port: Number.isFinite(remotePort) ? remotePort : 0,
         };
         await callOkCommand("frp_start", args, 30_000);
-        setFrpOpStatus("FRP started");
+        setFrpOpStatus(t.tr("FRP started", "FRP 已启动"));
       }
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
@@ -3541,17 +3584,17 @@ export default function HomePage() {
     try {
       const inst = String(instanceOverride ?? instanceId).trim();
       if (!inst) {
-        setServerOpStatus("instance_id 不能为空");
+        setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
         return;
       }
       try {
         await callOkCommand("frp_stop", { instance_id: inst }, 30_000);
-        setFrpOpStatus("FRP stopped");
+        setFrpOpStatus(t.tr("FRP stopped", "FRP 已停止"));
       } catch {
         // ignore
       }
       await callOkCommand("mc_stop", { instance_id: inst }, 30_000);
-      setServerOpStatus("MC stopped");
+      setServerOpStatus(t.tr("MC stopped", "MC 已停止"));
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
     } finally {
@@ -3566,19 +3609,19 @@ export default function HomePage() {
 	    try {
 	      const id = String(instanceOverride ?? instanceId).trim();
 	      if (!id) {
-	        setServerOpStatus("instance_id 不能为空");
+	        setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
 	        return;
 	      }
-	      const ok = await confirmDialog(`Delete server ${id}? This will remove its folder under servers/`, {
-	        title: "Delete Server",
-	        confirmLabel: "Delete",
+	      const ok = await confirmDialog(t.tr(`Delete server ${id}? This will remove its folder under servers/`, `删除服务器 ${id}？这将移除 servers/ 下的目录。`), {
+	        title: t.tr("Delete Server", "删除服务器"),
+	        confirmLabel: t.tr("Delete", "删除"),
 	        danger: true,
 	      });
 	      if (!ok) return;
 
 	      try {
 	        await callOkCommand("frp_stop", { instance_id: id }, 30_000);
-	        setFrpOpStatus("FRP stopped");
+	        setFrpOpStatus(t.tr("FRP stopped", "FRP 已停止"));
       } catch {
         // ignore
       }
@@ -3590,7 +3633,7 @@ export default function HomePage() {
 
       const out = await callOkCommand("fs_trash", { path: id }, 60_000);
       const trashPath = String(out?.trash_path || "").trim();
-      setServerOpStatus(trashPath ? `Moved to trash: ${trashPath}` : `Moved to trash`);
+      setServerOpStatus(trashPath ? t.tr(`Moved to trash: ${trashPath}`, `已移入回收站：${trashPath}`) : t.tr("Moved to trash", "已移入回收站"));
       setInstanceId("");
       if (fsPath === id || fsPath.startsWith(`${id}/`)) {
         setFsPath("");
@@ -3616,7 +3659,7 @@ export default function HomePage() {
     try {
       const inst = String(instanceOverride ?? instanceId).trim();
       if (!inst) {
-        setServerOpStatus("instance_id 不能为空");
+        setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
         return;
       }
       await applyServerPort(inst, gamePort);
@@ -3624,12 +3667,12 @@ export default function HomePage() {
       const java = String(javaPath || "").trim();
       await writeInstanceConfig(inst, { jar_path: jar, ...(java ? { java_path: java } : {}), game_port: gamePort });
       await callOkCommand("mc_restart", { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms, xmx }, 10 * 60_000);
-      setServerOpStatus("MC restarted");
+      setServerOpStatus(t.tr("MC restarted", "MC 已重启"));
 
       if (enableFrp) {
         const profile = profiles.find((p) => p.id === frpProfileId) || null;
         if (!profile) {
-          setFrpOpStatus("FRP enabled but no profile selected");
+          setFrpOpStatus(t.tr("FRP enabled but no profile selected", "已开启 FRP，但未选择服务器"));
           return;
         }
         let token = "";
@@ -3651,7 +3694,7 @@ export default function HomePage() {
           },
           30_000
         );
-        setFrpOpStatus("FRP started");
+        setFrpOpStatus(t.tr("FRP started", "FRP 已启动"));
       }
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
@@ -3663,46 +3706,49 @@ export default function HomePage() {
   async function renameInstance() {
     if (gameActionBusy) return;
     if (!selectedDaemon?.connected) {
-      setServerOpStatus("daemon offline");
+      setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
       return;
     }
     const from = instanceId.trim();
     if (!from) {
-      setServerOpStatus("instance_id 不能为空");
+      setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
 
     const next = await promptDialog({
-      title: "Rename Instance",
-      message: `Rename ${from} → ?\n\nThis will move its folder under servers/ and may require restarting.`,
+      title: t.tr("Rename Instance", "重命名实例"),
+      message: t.tr(
+        `Rename ${from} → ?\n\nThis will move its folder under servers/ and may require restarting.`,
+        `重命名 ${from} → ?\n\n这会移动 servers/ 下的目录，可能需要重启。`
+      ),
       defaultValue: from,
       placeholder: "new-instance-id",
-      okLabel: "Continue",
-      cancelLabel: "Cancel",
+      okLabel: t.tr("Continue", "继续"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (next == null) return;
     const to = String(next || "").trim();
-    const err = validateInstanceIDUI(to);
+    const err = validateInstanceIDUI(to, t.tr);
     if (err) {
       setServerOpStatus(err);
       return;
     }
     if (to === from) {
-      setServerOpStatus("No changes");
+      setServerOpStatus(t.tr("No changes", "没有变化"));
       setTimeout(() => setServerOpStatus(""), 700);
       return;
     }
 
-    const ok = await confirmDialog(`Rename instance ${from} → ${to}?`, {
-      title: "Rename Instance",
-      confirmLabel: "Rename",
-      cancelLabel: "Cancel",
+    const ok = await confirmDialog(t.tr(`Rename instance ${from} → ${to}?`, `确认重命名实例 ${from} → ${to}？`), {
+      title: t.tr("Rename Instance", "重命名实例"),
+      confirmLabel: t.tr("Rename", "重命名"),
+      cancelLabel: t.tr("Cancel", "取消"),
       danger: true,
     });
     if (!ok) return;
 
     setGameActionBusy(true);
-    setServerOpStatus(`Renaming ${from} -> ${to} ...`);
+    setServerOpStatus(t.tr(`Renaming ${from} -> ${to} ...`, `重命名中 ${from} -> ${to} ...`));
     try {
       try {
         await callOkCommand("frp_stop", { instance_id: from }, 30_000);
@@ -3731,7 +3777,7 @@ export default function HomePage() {
 
       await refreshServerDirs();
       setInstanceId(to);
-      setServerOpStatus("Renamed");
+      setServerOpStatus(t.tr("Renamed", "已重命名"));
       setTimeout(() => setServerOpStatus(""), 900);
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
@@ -3743,49 +3789,52 @@ export default function HomePage() {
   async function cloneInstance() {
     if (gameActionBusy) return;
     if (!selectedDaemon?.connected) {
-      setServerOpStatus("daemon offline");
+      setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
       return;
     }
     const from = instanceId.trim();
     if (!from) {
-      setServerOpStatus("instance_id 不能为空");
+      setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
 
     const next = await promptDialog({
-      title: "Clone Instance",
-      message: `Clone ${from} → ?\n\nThis will create a backup then restore it into a new instance folder.`,
+      title: t.tr("Clone Instance", "克隆实例"),
+      message: t.tr(
+        `Clone ${from} → ?\n\nThis will create a backup then restore it into a new instance folder.`,
+        `克隆 ${from} → ?\n\n这会先创建备份，然后恢复到新的实例目录。`
+      ),
       placeholder: "new-instance-id",
-      okLabel: "Continue",
-      cancelLabel: "Cancel",
+      okLabel: t.tr("Continue", "继续"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (next == null) return;
     const to = String(next || "").trim();
-    const err = validateInstanceIDUI(to);
+    const err = validateInstanceIDUI(to, t.tr);
     if (err) {
       setServerOpStatus(err);
       return;
     }
     if (to === from) {
-      setServerOpStatus("Clone target must be different");
+      setServerOpStatus(t.tr("Clone target must be different", "克隆目标必须不同"));
       return;
     }
 
-    const ok = await confirmDialog(`Clone instance ${from} → ${to}?`, {
-      title: "Clone Instance",
-      confirmLabel: "Clone",
-      cancelLabel: "Cancel",
+    const ok = await confirmDialog(t.tr(`Clone instance ${from} → ${to}?`, `确认克隆实例 ${from} → ${to}？`), {
+      title: t.tr("Clone Instance", "克隆实例"),
+      confirmLabel: t.tr("Clone", "克隆"),
+      cancelLabel: t.tr("Cancel", "取消"),
       danger: true,
     });
     if (!ok) return;
 
     setGameActionBusy(true);
-    setServerOpStatus("Cloning...");
+    setServerOpStatus(t.tr("Cloning...", "克隆中..."));
     try {
       const backupName = `${from}-clone-${Date.now()}.zip`;
       const backup = await callOkCommand("mc_backup", { instance_id: from, stop: true, backup_name: backupName }, 10 * 60_000);
       const zip = String(backup?.path || "").trim();
-      if (!zip) throw new Error("backup path missing");
+      if (!zip) throw new Error(t.tr("backup path missing", "备份路径缺失"));
       await callOkCommand("mc_restore", { instance_id: to, zip_path: zip }, 10 * 60_000);
       await refreshServerDirs();
       setInstanceId(to);
@@ -3801,18 +3850,18 @@ export default function HomePage() {
   async function computeInstanceUsage(instanceOverride?: string) {
     if (instanceUsageBusy) return;
     if (!selectedDaemon?.connected) {
-      setInstanceUsageStatus("daemon offline");
+      setInstanceUsageStatus(t.tr("daemon offline", "daemon 离线"));
       return;
     }
     const inst = String(instanceOverride ?? instanceId).trim();
     if (!inst) {
-      setInstanceUsageStatus("instance_id 不能为空");
+      setInstanceUsageStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
 
     setInstanceUsageBusy(true);
     setInstanceUsageBytes(null);
-    setInstanceUsageStatus("Scanning...");
+    setInstanceUsageStatus(t.tr("Scanning...", "扫描中..."));
     try {
       const maxEntries = 25_000;
       let total = 0;
@@ -3824,7 +3873,7 @@ export default function HomePage() {
         const out = await callOkCommand("fs_list", { path: dir }, 30_000);
         for (const e of out.entries || []) {
           scanned++;
-          if (scanned > maxEntries) throw new Error(`too many entries (> ${maxEntries}), abort`);
+          if (scanned > maxEntries) throw new Error(t.tr(`too many entries (> ${maxEntries}), abort`, `文件项过多（> ${maxEntries}），已中止`));
           const name = String(e?.name || "").trim();
           if (!name || name === "." || name === "..") continue;
           if (e?.isDir) stack.push(joinRelPath(dir, name));
@@ -3847,13 +3896,13 @@ export default function HomePage() {
     setGameActionBusy(true);
     setServerOpStatus("");
     try {
-      if (!selectedDaemon?.connected) throw new Error("daemon offline");
+      if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
       const inst = String(instanceOverride ?? instanceId).trim();
-      if (!inst) throw new Error("instance_id 不能为空");
-      setServerOpStatus("Creating backup...");
+      if (!inst) throw new Error(t.tr("instance_id is required", "instance_id 不能为空"));
+      setServerOpStatus(t.tr("Creating backup...", "创建备份中..."));
       const out = await callOkCommand("mc_backup", { instance_id: inst, stop: true }, 10 * 60_000);
       const path = String(out?.path || "").trim();
-      setServerOpStatus(path ? `Backup created: ${path}` : "Backup created");
+      setServerOpStatus(path ? t.tr(`Backup created: ${path}`, `备份已创建：${path}`) : t.tr("Backup created", "备份已创建"));
       await refreshBackupZips(inst);
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
@@ -3865,31 +3914,36 @@ export default function HomePage() {
   async function exportInstanceZip() {
     if (gameActionBusy) return;
     if (!selectedDaemon?.connected) {
-      setServerOpStatus("daemon offline");
+      setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
       return;
     }
     const inst = instanceId.trim();
     if (!inst) {
-      setServerOpStatus("instance_id 不能为空");
+      setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
 
     setGameActionBusy(true);
-    setServerOpStatus("Exporting zip...");
+    setServerOpStatus(t.tr("Exporting zip...", "导出 zip 中..."));
     let zipPath = "";
     try {
       const out = await callOkCommand("fs_zip", { path: inst }, 10 * 60_000);
       zipPath = String(out?.zip_path || "").trim();
-      if (!zipPath) throw new Error("zip_path missing");
+      if (!zipPath) throw new Error(t.tr("zip_path missing", "zip_path 缺失"));
 
       const st = await callOkCommand("fs_stat", { path: zipPath }, 10_000);
       const size = Math.max(0, Number(st?.size || 0));
       const max = 200 * 1024 * 1024;
       if (size > max) {
-        throw new Error(`Zip too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)}). File: ${zipPath}`);
+        throw new Error(
+          t.tr(
+            `Zip too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)}). File: ${zipPath}`,
+            `Zip 过大，无法在浏览器中下载（${fmtBytes(size)} > ${fmtBytes(max)}）。文件：${zipPath}`
+          )
+        );
       }
 
-      setServerOpStatus(`Downloading ${zipPath} ...`);
+      setServerOpStatus(t.tr(`Downloading ${zipPath} ...`, `下载中 ${zipPath} ...`));
       const payload = await callOkCommand("fs_read", { path: zipPath }, 10 * 60_000);
       const bytes = b64DecodeBytes(String(payload?.b64 || ""));
       const blob = new Blob([bytes], { type: "application/zip" });
@@ -3901,8 +3955,8 @@ export default function HomePage() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      pushToast(`Exported: ${inst}.zip`, "ok");
-      setServerOpStatus("Exported");
+      pushToast(t.tr(`Exported: ${inst}.zip`, `已导出：${inst}.zip`), "ok");
+      setServerOpStatus(t.tr("Exported", "已导出"));
       setTimeout(() => setServerOpStatus(""), 900);
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
@@ -3921,7 +3975,7 @@ export default function HomePage() {
   async function refreshRestoreCandidates(inst: string) {
     const id = String(inst || "").trim();
     if (!id) return;
-    setRestoreStatus("Loading backups...");
+    setRestoreStatus(t.tr("Loading backups...", "加载备份中..."));
     try {
       const base = joinRelPath("_backups", id);
       const out = await callOkCommand("fs_list", { path: base }, 30_000);
@@ -3931,11 +3985,11 @@ export default function HomePage() {
       list.sort((a: string, b: string) => b.localeCompare(a));
       setRestoreCandidates(list);
       setRestoreZipPath(list[0] || "");
-      setRestoreStatus(list.length ? "" : "No backups found");
+      setRestoreStatus(list.length ? "" : t.tr("No backups found", "未找到备份"));
     } catch {
       setRestoreCandidates([]);
       setRestoreZipPath("");
-      setRestoreStatus("No backups found");
+      setRestoreStatus(t.tr("No backups found", "未找到备份"));
     }
   }
 
@@ -3947,12 +4001,12 @@ export default function HomePage() {
 
   async function openRestoreModal() {
     if (!selectedDaemon?.connected) {
-      setServerOpStatus("daemon offline");
+      setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
       return;
     }
     const inst = instanceId.trim();
     if (!inst) {
-      setServerOpStatus("instance_id 不能为空");
+      setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
     setRestoreCandidates([]);
@@ -3967,37 +4021,40 @@ export default function HomePage() {
     const inst = instanceId.trim();
     const zip = String(restoreZipPath || "").trim();
     if (!inst) {
-      setRestoreStatus("instance_id 不能为空");
+      setRestoreStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
     if (!zip) {
-      setRestoreStatus("Select a backup first");
+      setRestoreStatus(t.tr("Select a backup first", "请先选择备份"));
       return;
     }
 
-    const ok = await confirmDialog(`Restore ${inst} from ${zip}?\n\nThis will OVERWRITE servers/${inst}/`, {
-      title: "Restore Backup",
-      confirmLabel: "Continue",
-      cancelLabel: "Cancel",
-      danger: true,
-    });
+    const ok = await confirmDialog(
+      t.tr(`Restore ${inst} from ${zip}?\n\nThis will OVERWRITE servers/${inst}/`, `从 ${zip} 恢复 ${inst}？\n\n这将覆盖 servers/${inst}/`),
+      {
+        title: t.tr("Restore Backup", "恢复备份"),
+        confirmLabel: t.tr("Continue", "继续"),
+        cancelLabel: t.tr("Cancel", "取消"),
+        danger: true,
+      }
+    );
     if (!ok) return;
 
     const typed = await promptDialog({
-      title: "Confirm Restore",
-      message: `Type "${inst}" to confirm restoring from backup.`,
+      title: t.tr("Confirm Restore", "确认恢复"),
+      message: t.tr(`Type "${inst}" to confirm restoring from backup.`, `输入 “${inst}” 以确认从备份恢复。`),
       placeholder: inst,
       defaultValue: "",
-      okLabel: "Restore",
-      cancelLabel: "Cancel",
+      okLabel: t.tr("Restore", "恢复"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (typed !== inst) {
-      setRestoreStatus("Cancelled");
+      setRestoreStatus(t.tr("Cancelled", "已取消"));
       return;
     }
 
     setGameActionBusy(true);
-    setRestoreStatus("Stopping server...");
+    setRestoreStatus(t.tr("Stopping server...", "停止服务器中..."));
     setServerOpStatus("");
     try {
       try {
@@ -4011,10 +4068,10 @@ export default function HomePage() {
         // ignore
       }
 
-      setRestoreStatus("Restoring...");
+      setRestoreStatus(t.tr("Restoring...", "恢复中..."));
       await callOkCommand("mc_restore", { instance_id: inst, zip_path: zip }, 10 * 60_000);
-      setRestoreStatus(`Restored: ${zip}`);
-      setServerOpStatus("Restored");
+      setRestoreStatus(t.tr(`Restored: ${zip}`, `已恢复：${zip}`));
+      setServerOpStatus(t.tr("Restored", "已恢复"));
       setRestoreOpen(false);
     } catch (e: any) {
       setRestoreStatus(String(e?.message || e));
@@ -4026,11 +4083,11 @@ export default function HomePage() {
   async function refreshTrashItems(showAllOverride?: boolean) {
     const showAll = showAllOverride != null ? !!showAllOverride : trashShowAll;
     if (!selectedDaemon?.connected) {
-      setTrashStatus("daemon offline");
+      setTrashStatus(t.tr("daemon offline", "daemon 离线"));
       setTrashItems([]);
       return;
     }
-    setTrashStatus("Loading trash...");
+    setTrashStatus(t.tr("Loading trash...", "加载回收站中..."));
     try {
       const out = await callOkCommand("fs_trash_list", { limit: 200 }, 30_000);
       const items = Array.isArray(out?.items) ? out.items : [];
@@ -4045,7 +4102,7 @@ export default function HomePage() {
         return true;
       });
       setTrashItems(filtered);
-      setTrashStatus(filtered.length ? "" : "Trash empty");
+      setTrashStatus(filtered.length ? "" : t.tr("Trash empty", "回收站为空"));
     } catch (e: any) {
       setTrashItems([]);
       setTrashStatus(String(e?.message || e));
@@ -4067,14 +4124,14 @@ export default function HomePage() {
     const orig = String(info?.original_path || "").trim();
     if (!trashPath || !orig) return;
 
-    const ok = await confirmDialog(`Restore ${orig} from trash?`, {
-      title: "Restore",
-      confirmLabel: "Restore",
-      cancelLabel: "Cancel",
+    const ok = await confirmDialog(t.tr(`Restore ${orig} from trash?`, `从回收站恢复 ${orig}？`), {
+      title: t.tr("Restore", "恢复"),
+      confirmLabel: t.tr("Restore", "恢复"),
+      cancelLabel: t.tr("Cancel", "取消"),
     });
     if (!ok) return;
 
-    setTrashStatus("Restoring...");
+    setTrashStatus(t.tr("Restoring...", "恢复中..."));
     try {
       await callOkCommand("fs_trash_restore", { trash_path: trashPath }, 60_000);
       if (!orig.includes("/")) {
@@ -4084,10 +4141,10 @@ export default function HomePage() {
         await openFileByPath(orig);
         setTab("files");
       }
-      setTrashStatus("Restored");
+      setTrashStatus(t.tr("Restored", "已恢复"));
       setTimeout(() => setTrashStatus(""), 900);
       setTrashOpen(false);
-      pushToast(`Restored: ${orig}`, "ok");
+      pushToast(t.tr(`Restored: ${orig}`, `已恢复：${orig}`), "ok");
     } catch (e: any) {
       setTrashStatus(String(e?.message || e));
     }
@@ -4099,19 +4156,25 @@ export default function HomePage() {
     const orig = String(info?.original_path || "").trim();
     if (!trashPath) return;
 
-    const ok = await confirmDialog(`Delete permanently from trash?\n\n${orig ? `original: ${orig}\n` : ""}trash: ${trashPath}`, {
-      title: "Delete forever",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      danger: true,
-    });
+    const ok = await confirmDialog(
+      t.tr(
+        `Delete permanently from trash?\n\n${orig ? `original: ${orig}\n` : ""}trash: ${trashPath}`,
+        `确认从回收站永久删除？\n\n${orig ? `原始路径：${orig}\n` : ""}回收站：${trashPath}`
+      ),
+      {
+        title: t.tr("Delete forever", "永久删除"),
+        confirmLabel: t.tr("Delete", "删除"),
+        cancelLabel: t.tr("Cancel", "取消"),
+        danger: true,
+      }
+    );
     if (!ok) return;
 
-    setTrashStatus("Deleting...");
+    setTrashStatus(t.tr("Deleting...", "删除中..."));
     try {
       await callOkCommand("fs_trash_delete", { trash_path: trashPath }, 60_000);
       await refreshTrashItems();
-      pushToast("Deleted from trash", "ok");
+      pushToast(t.tr("Deleted from trash", "已从回收站删除"), "ok");
       setTrashStatus("");
     } catch (e: any) {
       setTrashStatus(String(e?.message || e));
@@ -4120,18 +4183,18 @@ export default function HomePage() {
 
   async function openServerPropertiesEditor() {
     if (!selectedDaemon?.connected) {
-      setServerOpStatus("daemon offline");
+      setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
       return;
     }
     const inst = instanceId.trim();
     if (!inst) {
-      setServerOpStatus("instance_id 不能为空");
+      setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
     const path = joinRelPath(inst, "server.properties");
     setServerPropsOpen(true);
     setServerPropsSaving(false);
-    setServerPropsStatus("Loading...");
+    setServerPropsStatus(t.tr("Loading...", "加载中..."));
     try {
       const out = await callOkCommand("fs_read", { path }, 10_000);
       const text = b64DecodeUtf8(String(out?.b64 || ""));
@@ -4150,7 +4213,7 @@ export default function HomePage() {
     if (serverPropsSaving) return;
     const inst = instanceId.trim();
     if (!inst) {
-      setServerPropsStatus("instance_id 不能为空");
+      setServerPropsStatus(t.tr("instance_id is required", "instance_id 不能为空"));
       return;
     }
     const path = joinRelPath(inst, "server.properties");
@@ -4159,7 +4222,7 @@ export default function HomePage() {
     const motd = String(serverPropsMotd || "");
 
     setServerPropsSaving(true);
-    setServerPropsStatus("Saving...");
+    setServerPropsStatus(t.tr("Saving...", "保存中..."));
     try {
       let next = String(serverPropsRaw || "");
       next = upsertProp(next, "motd", motd);
@@ -4168,7 +4231,7 @@ export default function HomePage() {
       next = upsertProp(next, "white-list", serverPropsWhitelist ? "true" : "false");
       await callOkCommand("fs_write", { path, b64: b64EncodeUtf8(next) }, 10_000);
       setServerPropsRaw(next);
-      setServerPropsStatus("Saved");
+      setServerPropsStatus(t.tr("Saved", "已保存"));
       setTimeout(() => setServerPropsStatus(""), 900);
     } catch (e: any) {
       setServerPropsStatus(String(e?.message || e));
@@ -4214,13 +4277,19 @@ export default function HomePage() {
       }
     }
     if (!picked) {
-      pushToast("latest.log not found", "error");
+      pushToast(t.tr("latest.log not found", "未找到 latest.log"), "error");
       return;
     }
 
     const max = 25 * 1024 * 1024;
     if (picked.size > max) {
-      pushToast(`latest.log too large (${fmtBytes(picked.size)} > ${fmtBytes(max)})`, "error");
+      pushToast(
+        t.tr(
+          `latest.log too large (${fmtBytes(picked.size)} > ${fmtBytes(max)})`,
+          `latest.log 过大（${fmtBytes(picked.size)} > ${fmtBytes(max)}）`
+        ),
+        "error"
+      );
       return;
     }
 
@@ -4236,7 +4305,7 @@ export default function HomePage() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      pushToast(`Downloaded: latest.${picked.ext}`, "ok");
+      pushToast(t.tr(`Downloaded: latest.${picked.ext}`, `已下载：latest.${picked.ext}`), "ok");
     } catch (e: any) {
       pushToast(String(e?.message || e), "error");
     }
@@ -4256,13 +4325,13 @@ export default function HomePage() {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       setNewProfileName("");
       setNewProfileAddr("");
       setNewProfilePort(7000);
       setNewProfileToken("");
       await refreshProfiles();
-      setProfilesStatus("Saved");
+      setProfilesStatus(t.tr("Saved", "已保存"));
       setTimeout(() => setProfilesStatus(""), 800);
       setAddFrpOpen(false);
     } catch (e: any) {
@@ -4275,7 +4344,7 @@ export default function HomePage() {
     try {
       const res = await apiFetch(`/api/frp/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "failed");
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       await refreshProfiles();
     } catch (e: any) {
       setProfilesStatus(String(e?.message || e));
@@ -4286,14 +4355,14 @@ export default function HomePage() {
     setError("");
     setCmdResult(null);
     if (!selected) {
-      setError("请选择一个 Daemon");
+      setError(t.tr("Select a daemon first", "请先选择 Daemon"));
       return;
     }
     let argsObj: any = {};
     try {
       argsObj = cmdArgs ? JSON.parse(cmdArgs) : {};
     } catch {
-      setError("args 不是合法 JSON");
+      setError(t.tr("args is not valid JSON", "args 不是合法 JSON"));
       return;
     }
     try {
@@ -4319,38 +4388,68 @@ export default function HomePage() {
     switch (tab) {
       case "nodes":
         return {
-          title: "Nodes",
-          lines: ["Nodes are daemons connected to this panel.", "Create a node (daemon_id + token) and start the daemon with those values.", "Use Node Details for CPU/Mem history and running instances."],
+          title: t.tr("Nodes", "节点"),
+          lines:
+            locale === "zh"
+              ? ["Nodes 是连接到此面板的 daemon。", "创建节点（daemon_id + token），并用这些值启动 daemon。", "在「节点详情」查看 CPU/内存历史与运行中的实例。"]
+              : [
+                  "Nodes are daemons connected to this panel.",
+                  "Create a node (daemon_id + token) and start the daemon with those values.",
+                  "Use Node Details for CPU/Mem history and running instances.",
+                ],
         };
       case "games":
         return {
-          title: "Games",
-          lines: ["Instances live under servers/<instance_id>.", "Settings are saved to servers/<instance_id>/.elegantmc.json.", "Use Install for Vanilla/Paper/Modpacks; check Install logs when troubleshooting."],
+          title: t.tr("Games", "游戏"),
+          lines:
+            locale === "zh"
+              ? [
+                  "实例位于 servers/<instance_id>。",
+                  "设置保存到 servers/<instance_id>/.elegantmc.json。",
+                  "用「安装」安装原版/Paper/整合包；排障时查看「安装日志」。",
+                ]
+              : [
+                  "Instances live under servers/<instance_id>.",
+                  "Settings are saved to servers/<instance_id>/.elegantmc.json.",
+                  "Use Install for Vanilla/Paper/Modpacks; check Install logs when troubleshooting.",
+                ],
         };
       case "frp":
         return {
           title: "FRP",
-          lines: ["Save FRP server profiles here (addr/port/token).", "Enable FRP in Game Settings to expose a public Socket address."],
+          lines:
+            locale === "zh"
+              ? ["在这里保存 FRP 服务器配置（地址/端口/token）。", "在游戏设置中启用 FRP，以暴露公网 Socket 地址。"]
+              : ["Save FRP server profiles here (addr/port/token).", "Enable FRP in Game Settings to expose a public Socket address."],
         };
       case "files":
         return {
-          title: "Files",
-          lines: ["File access is sandboxed to servers/.", "Use Trash to restore accidental deletes; backups live under servers/_backups/."],
+          title: t.tr("Files", "文件"),
+          lines:
+            locale === "zh"
+              ? ["文件访问被限制在 servers/ 目录下。", "误删可用回收站恢复；备份位于 servers/_backups/。"]
+              : ["File access is sandboxed to servers/.", "Use Trash to restore accidental deletes; backups live under servers/_backups/."],
         };
       case "panel":
         return {
-          title: "Panel",
-          lines: ["Global defaults + CurseForge API key live here.", "Scheduler edits daemon schedule.json (restart/backup tasks)."],
+          title: t.tr("Panel", "面板"),
+          lines:
+            locale === "zh"
+              ? ["全局默认值与 CurseForge API Key 在此配置。", "计划任务会编辑 daemon 的 schedule.json（重启/备份任务）。"]
+              : ["Global defaults + CurseForge API key live here.", "Scheduler edits daemon schedule.json (restart/backup tasks)."],
         };
       case "advanced":
         return {
-          title: "Advanced",
-          lines: ["Runs raw daemon commands (dangerous).", "Keep allowlists tight; prefer normal UI flows when possible."],
+          title: t.tr("Advanced", "高级"),
+          lines:
+            locale === "zh"
+              ? ["执行原始 daemon 命令（有风险）。", "尽量收紧 allowlist；优先使用常规 UI 流程。"]
+              : ["Runs raw daemon commands (dangerous).", "Keep allowlists tight; prefer normal UI flows when possible."],
         };
       default:
-        return { title: "Help", lines: [] as string[] };
+        return { title: t.tr("Help", "帮助"), lines: [] as string[] };
     }
-  }, [tab]);
+  }, [tab, locale, t]);
 
   const cmdPaletteCommands = useMemo(() => {
     type CmdItem = { id: string; title: string; hint?: string; disabled?: boolean; run: () => void | Promise<void> };
@@ -4364,13 +4463,13 @@ export default function HomePage() {
     };
 
     out.push(
-      { id: "tab:nodes", title: "Go: Nodes", run: () => goTab("nodes") },
-      { id: "tab:games", title: "Go: Games", run: () => goTab("games") },
-      { id: "tab:frp", title: "Go: FRP", run: () => goTab("frp") },
-      { id: "tab:files", title: "Go: Files", run: () => goTab("files") },
-      { id: "tab:panel", title: "Go: Panel", run: () => goTab("panel") }
+      { id: "tab:nodes", title: t.tr("Go: Nodes", "前往：节点"), run: () => goTab("nodes") },
+      { id: "tab:games", title: t.tr("Go: Games", "前往：游戏"), run: () => goTab("games") },
+      { id: "tab:frp", title: t.tr("Go: FRP", "前往：FRP"), run: () => goTab("frp") },
+      { id: "tab:files", title: t.tr("Go: Files", "前往：文件"), run: () => goTab("files") },
+      { id: "tab:panel", title: t.tr("Go: Panel", "前往：面板"), run: () => goTab("panel") }
     );
-    if (enableAdvanced) out.push({ id: "tab:advanced", title: "Go: Advanced", run: () => goTab("advanced") });
+    if (enableAdvanced) out.push({ id: "tab:advanced", title: t.tr("Go: Advanced", "前往：高级"), run: () => goTab("advanced") });
 
     const inst = instanceId.trim();
     const daemonOk = !!selectedDaemon?.connected;
@@ -4379,11 +4478,11 @@ export default function HomePage() {
 
     if (inst) {
       out.push(
-        { id: "game:install", title: "Game: Install…", disabled: !daemonOk, run: () => (openInstallModal(), close()) },
-        { id: "game:settings", title: "Game: Settings…", disabled: !canGame, run: () => (openSettingsModal(), close()) },
+        { id: "game:install", title: t.tr("Game: Install…", "游戏：安装…"), disabled: !daemonOk, run: () => (openInstallModal(), close()) },
+        { id: "game:settings", title: t.tr("Game: Settings…", "游戏：设置…"), disabled: !canGame, run: () => (openSettingsModal(), close()) },
         {
           id: "game:files",
-          title: "Game: Open instance files",
+          title: t.tr("Game: Open instance files", "游戏：打开实例文件"),
           disabled: !daemonOk,
           run: () => {
             setFsPath(inst);
@@ -4393,7 +4492,7 @@ export default function HomePage() {
         },
         {
           id: "game:backups",
-          title: "Game: Open backups folder",
+          title: t.tr("Game: Open backups folder", "游戏：打开备份目录"),
           disabled: !daemonOk,
           run: () => {
             setFsPath(`_backups/${inst}`);
@@ -4403,7 +4502,7 @@ export default function HomePage() {
         },
         {
           id: "game:startStop",
-          title: running ? "Game: Stop" : "Game: Start",
+          title: running ? t.tr("Game: Stop", "游戏：停止") : t.tr("Game: Start", "游戏：启动"),
           disabled: !canGame,
           run: async () => {
             close();
@@ -4413,7 +4512,7 @@ export default function HomePage() {
         },
         {
           id: "game:restart",
-          title: "Game: Restart",
+          title: t.tr("Game: Restart", "游戏：重启"),
           disabled: !canGame,
           run: async () => {
             close();
@@ -4422,7 +4521,7 @@ export default function HomePage() {
         },
         {
           id: "game:backup",
-          title: "Game: Backup",
+          title: t.tr("Game: Backup", "游戏：备份"),
           disabled: !canGame,
           run: async () => {
             close();
@@ -4431,7 +4530,7 @@ export default function HomePage() {
         },
         {
           id: "game:restore",
-          title: "Game: Restore…",
+          title: t.tr("Game: Restore…", "游戏：恢复…"),
           disabled: !canGame,
           run: async () => {
             close();
@@ -4448,6 +4547,7 @@ export default function HomePage() {
     instanceId,
     instanceStatus?.running,
     selectedDaemon?.connected,
+    t,
     openInstallModal,
     openSettingsModal,
     openRestoreModal,
@@ -4619,10 +4719,19 @@ export default function HomePage() {
           <div className="modal" style={{ width: "min(560px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <div>
-                <div style={{ fontWeight: 800 }}>Admin Login</div>
+                <div style={{ fontWeight: 800 }}>{t.tr("Admin Login", "管理员登录")}</div>
                 <div className="hint">
-                  Set <code>ELEGANTMC_PANEL_ADMIN_PASSWORD</code> via environment variables (docker compose: inline env or <code>environment:</code>
-                  in compose). If you did not set it, check Panel logs for the generated password (<code>docker compose logs panel</code>).
+                  {locale === "zh" ? (
+                    <>
+                      通过环境变量设置 <code>ELEGANTMC_PANEL_ADMIN_PASSWORD</code>（docker compose：可用 inline env 或 compose 里的{" "}
+                      <code>environment:</code>）。如果你没有设置，请查看 Panel 日志获取自动生成的密码（<code>docker compose logs panel</code>）。
+                    </>
+                  ) : (
+                    <>
+                      Set <code>ELEGANTMC_PANEL_ADMIN_PASSWORD</code> via environment variables (docker compose: inline env or <code>environment:</code>{" "}
+                      in compose). If you did not set it, check Panel logs for the generated password (<code>docker compose logs panel</code>).
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -4636,7 +4745,7 @@ export default function HomePage() {
               style={{ alignItems: "end" }}
             >
               <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label>Password</label>
+                <label>{t.tr("Password", "密码")}</label>
                 <input
                   type="password"
                   value={loginPassword}
@@ -4644,12 +4753,16 @@ export default function HomePage() {
                   placeholder="••••••••"
                   autoFocus
                 />
-                {loginStatus ? <div className="hint">{loginStatus}</div> : authed === null ? <div className="hint">Checking session...</div> : null}
+                {loginStatus ? (
+                  <div className="hint">{loginStatus}</div>
+                ) : authed === null ? (
+                  <div className="hint">{t.tr("Checking session...", "检查会话中...")}</div>
+                ) : null}
               </div>
 
               <div className="btnGroup" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
                 <button className="primary" type="submit" disabled={!loginPassword.trim()}>
-                  Login
+                  {t.tr("Login", "登录")}
                 </button>
               </div>
             </form>
@@ -4668,7 +4781,7 @@ export default function HomePage() {
 	                </div>
 	              </div>
 	              <button type="button" onClick={() => closeConfirm(false)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
 	            <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
@@ -4696,7 +4809,7 @@ export default function HomePage() {
 	                ) : null}
 	              </div>
 	              <button type="button" onClick={() => closePrompt(null)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
 	            <form
@@ -4706,7 +4819,7 @@ export default function HomePage() {
 	              }}
 	            >
 	              <div className="field" style={{ marginTop: 8 }}>
-	                <label>Value</label>
+	                <label>{t.tr("Value", "值")}</label>
 	                <input value={promptValue} onChange={(e) => setPromptValue(e.target.value)} placeholder={promptPlaceholder} autoFocus />
 	              </div>
 	              <div className="btnGroup" style={{ justifyContent: "flex-end", marginTop: 10 }}>
@@ -4727,11 +4840,11 @@ export default function HomePage() {
 	          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
 	            <div className="modalHeader">
 	              <div>
-	                <div style={{ fontWeight: 800 }}>Copy</div>
-	                <div className="hint">Clipboard API 不可用，请手动复制下面内容。</div>
+	                <div style={{ fontWeight: 800 }}>{t.tr("Copy", "复制")}</div>
+	                <div className="hint">{t.tr("Clipboard API is unavailable. Copy the content below manually.", "Clipboard API 不可用，请手动复制下面内容。")}</div>
 	              </div>
 	              <button type="button" onClick={() => setCopyOpen(false)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
 	            <textarea
@@ -4748,14 +4861,14 @@ export default function HomePage() {
 	                onClick={async () => {
 	                  try {
 	                    await navigator.clipboard.writeText(copyValue);
-	                    setServerOpStatus("Copied");
+	                    setServerOpStatus(t.tr("Copied", "已复制"));
 	                    setCopyOpen(false);
 	                  } catch {
 	                    // ignore
 	                  }
 	                }}
 	              >
-	                Try Copy
+	                {t.tr("Try Copy", "尝试复制")}
 	              </button>
 	            </div>
 	          </div>
@@ -4767,13 +4880,13 @@ export default function HomePage() {
 	          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
 	            <div className="modalHeader">
 	              <div>
-	                <div style={{ fontWeight: 800 }}>Command Palette</div>
+	                <div style={{ fontWeight: 800 }}>{t.tr("Command Palette", "命令面板")}</div>
 	                <div className="hint">
-	                  <code>Ctrl+K</code> (or <code>⌘K</code>) · <code>/</code> focuses search
+	                  <code>Ctrl+K</code> {t.tr("(or", "（或")} <code>⌘K</code>) · <code>/</code> {t.tr("opens search", "打开搜索")}
 	                </div>
 	              </div>
 	              <button type="button" onClick={() => setCmdPaletteOpen(false)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
 
@@ -4784,7 +4897,7 @@ export default function HomePage() {
 	                setCmdPaletteQuery(e.target.value);
 	                setCmdPaletteIdx(0);
 	              }}
-	              placeholder="Type a command…"
+	              placeholder={t.tr("Type a command…", "输入命令…")}
 	              autoFocus
 	              onKeyDown={(e) => {
 	                if (e.key === "ArrowDown") {
@@ -4827,7 +4940,7 @@ export default function HomePage() {
 	                  </button>
 	                ))
 	              ) : (
-	                <div className="hint">No matching commands</div>
+	                <div className="hint">{t.tr("No matching commands", "没有匹配的命令")}</div>
 	              )}
 	            </div>
 	          </div>
@@ -4839,21 +4952,23 @@ export default function HomePage() {
 	          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
 	            <div className="modalHeader">
 	              <div>
-	                <div style={{ fontWeight: 800 }}>Keyboard Shortcuts</div>
+	                <div style={{ fontWeight: 800 }}>{t.tr("Keyboard Shortcuts", "键盘快捷键")}</div>
 	                <div className="hint">
-	                  Press <code>?</code> to toggle this dialog
+	                  {t.tr("Press ", "按下 ")}
+	                  <code>?</code>
+	                  {t.tr(" to toggle this dialog", " 可开关此对话框")}
 	                </div>
 	              </div>
 	              <button type="button" onClick={() => setShortcutsOpen(false)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
 
 	            <table>
 	              <thead>
 	                <tr>
-	                  <th style={{ width: 170 }}>Keys</th>
-	                  <th>Action</th>
+	                  <th style={{ width: 170 }}>{t.tr("Keys", "按键")}</th>
+	                  <th>{t.tr("Action", "操作")}</th>
 	                </tr>
 	              </thead>
 	              <tbody>
@@ -4861,31 +4976,31 @@ export default function HomePage() {
 	                  <td>
 	                    <code>Ctrl+K</code> / <code>⌘K</code>
 	                  </td>
-	                  <td>Toggle Command Palette</td>
+	                  <td>{t.tr("Toggle Command Palette", "打开/关闭命令面板")}</td>
 	                </tr>
 	                <tr>
 	                  <td>
 	                    <code>/</code>
 	                  </td>
-	                  <td>Open Command Palette</td>
+	                  <td>{t.tr("Open Command Palette", "打开命令面板")}</td>
 	                </tr>
 	                <tr>
 	                  <td>
 	                    <code>Esc</code>
 	                  </td>
-	                  <td>Close dialogs / sidebar</td>
+	                  <td>{t.tr("Close dialogs / sidebar", "关闭对话框 / 侧边栏")}</td>
 	                </tr>
 	                <tr>
 	                  <td>
 	                    <code>Enter</code>
 	                  </td>
-	                  <td>Confirm dialog (when focused outside inputs)</td>
+	                  <td>{t.tr("Confirm dialog (when focused outside inputs)", "确认对话框（焦点不在输入框时）")}</td>
 	                </tr>
 	                <tr>
 	                  <td>
 	                    <code>↑</code> / <code>↓</code>
 	                  </td>
-	                  <td>Navigate menus (Select / Command Palette)</td>
+	                  <td>{t.tr("Navigate menus (Select / Command Palette)", "菜单导航（下拉框 / 命令面板）")}</td>
 	                </tr>
 	              </tbody>
 	            </table>
@@ -4898,14 +5013,14 @@ export default function HomePage() {
 	          <div className="modal" style={{ width: "min(820px, 100%)" }} onClick={(e) => e.stopPropagation()}>
 	            <div className="modalHeader">
 	              <div>
-	                <div style={{ fontWeight: 800 }}>What's new</div>
-	                {changelogStatus ? <div className="hint">{changelogStatus}</div> : <div className="hint">Latest changes</div>}
+	                <div style={{ fontWeight: 800 }}>{t.tr("What's new", "更新日志")}</div>
+	                {changelogStatus ? <div className="hint">{changelogStatus}</div> : <div className="hint">{t.tr("Latest changes", "最新变更")}</div>}
 	              </div>
 	              <button type="button" onClick={() => setChangelogOpen(false)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
-	            {changelogText ? <pre>{changelogText}</pre> : <div className="hint">{changelogStatus || "No changelog loaded."}</div>}
+	            {changelogText ? <pre>{changelogText}</pre> : <div className="hint">{changelogStatus || t.tr("No changelog loaded.", "未加载到更新日志。")}</div>}
 	          </div>
 	        </div>
 	      ) : null}
@@ -4915,19 +5030,19 @@ export default function HomePage() {
 	          <div className="modal" style={{ width: "min(980px, 100%)" }} onClick={(e) => e.stopPropagation()}>
 	            <div className="modalHeader">
 	              <div>
-	                <div style={{ fontWeight: 800 }}>Help</div>
+	                <div style={{ fontWeight: 800 }}>{t.tr("Help", "帮助")}</div>
 	                <div className="hint">
-	                  context: <code>{helpForTab.title}</code>
+	                  {t.tr("context", "上下文")}: <code>{helpForTab.title}</code>
 	                </div>
 	              </div>
 	              <button type="button" onClick={() => setHelpOpen(false)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
 
 	            <div className="grid2" style={{ alignItems: "start" }}>
 	              <div style={{ minWidth: 0 }}>
-	                <h3>This page</h3>
+	                <h3>{t.tr("This page", "当前页面")}</h3>
 	                {helpForTab.lines.length ? (
 	                  <div className="hint">
 	                    {helpForTab.lines.map((l, idx) => (
@@ -4935,16 +5050,16 @@ export default function HomePage() {
 	                    ))}
 	                  </div>
 	                ) : (
-	                  <div className="hint">No help for this page yet.</div>
+	                  <div className="hint">{t.tr("No help for this page yet.", "此页面暂无帮助信息。")}</div>
 	                )}
 
-	                <h3 style={{ marginTop: 12 }}>Docs</h3>
+	                <h3 style={{ marginTop: 12 }}>{t.tr("Docs", "文档")}</h3>
 	                <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
 	                  <button type="button" className={helpDoc === "readme" ? "primary" : ""} onClick={() => loadHelpDoc("readme")}>
 	                    README
 	                  </button>
 	                  <button type="button" className={helpDoc === "security" ? "primary" : ""} onClick={() => loadHelpDoc("security")}>
-	                    Security
+	                    {t.tr("Security", "安全")}
 	                  </button>
 	                  <button
 	                    type="button"
@@ -4954,15 +5069,19 @@ export default function HomePage() {
 	                    Panel
 	                  </button>
 	                  <button type="button" className={helpDoc === "changelog" ? "primary" : ""} onClick={() => loadHelpDoc("changelog")}>
-	                    Changelog
+	                    {t.tr("Changelog", "更新日志")}
 	                  </button>
 	                </div>
 	              </div>
 
 	              <div style={{ minWidth: 0 }}>
-	                <h3>{helpDocTitle || "Doc"}</h3>
+	                <h3>{helpDocTitle || t.tr("Doc", "文档")}</h3>
 	                {helpDocStatus ? <div className="hint">{helpDocStatus}</div> : null}
-	                {helpDocText ? <pre style={{ maxHeight: 520, overflow: "auto" }}>{helpDocText}</pre> : <div className="hint">Select a doc to view.</div>}
+	                {helpDocText ? (
+	                  <pre style={{ maxHeight: 520, overflow: "auto" }}>{helpDocText}</pre>
+	                ) : (
+	                  <div className="hint">{t.tr("Select a doc to view.", "请选择要查看的文档。")}</div>
+	                )}
 	              </div>
 	            </div>
 	          </div>
@@ -4976,7 +5095,7 @@ export default function HomePage() {
 	              key={t.id}
 	              type="button"
 	              className={`toast ${t.kind} ${t.detail ? "clickable" : ""}`}
-	              title={t.detail ? "Click to copy details" : undefined}
+	              title={t.detail ? t.tr("Click to copy details", "点击复制详情") : undefined}
 	              onClick={() => (t.detail ? openCopyModal(t.detail) : null)}
 	            >
 	              {t.message}
@@ -5010,10 +5129,10 @@ export default function HomePage() {
               className={`navItem ${tab === t.id ? "active" : ""}`}
               onClick={async () => {
                 if (tab === "files" && t.id !== "files" && fsDirty) {
-                  const ok = await confirmDialog(`Discard unsaved changes in ${fsSelectedFile}?`, {
-                    title: "Unsaved Changes",
-                    confirmLabel: "Discard",
-                    cancelLabel: "Cancel",
+                  const ok = await confirmDialog(t.tr(`Discard unsaved changes in ${fsSelectedFile}?`, `放弃 ${fsSelectedFile} 的未保存更改？`), {
+                    title: t.tr("Unsaved Changes", "未保存更改"),
+                    confirmLabel: t.tr("Discard", "放弃"),
+                    cancelLabel: t.tr("Cancel", "取消"),
                     danger: true,
                   });
                   if (!ok) return;
@@ -5023,7 +5142,7 @@ export default function HomePage() {
               }}
             >
               <span>{t.label}</span>
-              {t.id === "games" && instanceStatus?.running ? <span className="badge ok">running</span> : null}
+              {t.id === "games" && instanceStatus?.running ? <span className="badge ok">{t.tr("running", "运行中")}</span> : null}
               {t.id === "nodes" && nodes.length ? <span className="badge">{nodes.length}</span> : null}
             </button>
           ))}
@@ -5031,26 +5150,26 @@ export default function HomePage() {
 
 	        <div className="sidebarFooter">
 	          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap" }}>
-	            <span className="muted">Preferences</span>
+	            <span className="muted">{t.tr("Preferences", "偏好")}</span>
 	            <div className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
 	              <button type="button" className="linkBtn" onClick={() => setShortcutsOpen(true)}>
-	                Shortcuts
+	                {t.tr("Shortcuts", "快捷键")}
 	              </button>
 	              <button type="button" className="linkBtn" onClick={openChangelogModal}>
-	                What's new
+	                {t.tr("What's new", "更新日志")}
 	              </button>
 	              <button type="button" className="linkBtn" onClick={openHelpModal}>
-	                Help
+	                {t.tr("Help", "帮助")}
 	              </button>
 	              <button type="button" className="linkBtn" onClick={() => setSidebarFooterCollapsed((v) => !v)}>
-	                {sidebarFooterCollapsed ? "Show" : "Hide"}
+	                {sidebarFooterCollapsed ? t.tr("Show", "展开") : t.tr("Hide", "折叠")}
 	              </button>
 	            </div>
 	          </div>
 	          {!sidebarFooterCollapsed ? (
 	            <>
 	              <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
-	                <span className="muted">Language</span>
+	                <span className="muted">{t.tr("Language", "语言")}</span>
 	                <div style={{ width: 170 }}>
 	                  <Select
 	                    value={locale}
@@ -5063,16 +5182,16 @@ export default function HomePage() {
 	                </div>
 	              </div>
 	              <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
-	                <span className="muted">Theme</span>
+	                <span className="muted">{t.tr("Theme", "主题")}</span>
 	                <div style={{ width: 170 }}>
 	                  <Select
 	                    value={themeMode}
 	                    onChange={(v) => setThemeMode(v as ThemeMode)}
 	                    options={[
-	                      { value: "auto", label: "Auto (System)" },
-	                      { value: "light", label: "Light" },
-	                      { value: "dark", label: "Dark" },
-	                      { value: "contrast", label: "High Contrast" },
+	                      { value: "auto", label: t.tr("Auto (System)", "自动（系统）") },
+	                      { value: "light", label: t.tr("Light", "浅色") },
+	                      { value: "dark", label: t.tr("Dark", "深色") },
+	                      { value: "contrast", label: t.tr("High Contrast", "高对比度") },
 	                    ]}
 	                  />
 	                </div>
@@ -5080,10 +5199,10 @@ export default function HomePage() {
 	            </>
 	          ) : null}
 	          <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
-	            <span className={`badge ${authed === true ? "ok" : ""}`}>{authed === true ? "admin" : "locked"}</span>
+	            <span className={`badge ${authed === true ? "ok" : ""}`}>{authed === true ? t.tr("admin", "管理员") : t.tr("locked", "未登录")}</span>
 	            {authed === true ? (
 	              <button type="button" onClick={logout}>
-	                Logout
+	                {t.tr("Logout", "退出")}
 	              </button>
 	            ) : null}
 	          </div>
@@ -5096,8 +5215,8 @@ export default function HomePage() {
             <button
               type="button"
               className="iconBtn iconOnly sidebarToggle"
-              title="Menu"
-              aria-label="Menu"
+              title={t.tr("Menu", "菜单")}
+              aria-label={t.tr("Menu", "菜单")}
               onClick={() => setSidebarOpen((v) => !v)}
             >
               <Icon name="menu" />
@@ -5105,15 +5224,15 @@ export default function HomePage() {
             <div className="topbarTitle">
               <div className="pageTitle">{activeTab.label}</div>
               <div className="pageSubtitle">
-                daemon: <code>{selectedDaemon?.id || "-"}</code> ·{" "}
-                {selectedDaemon?.connected ? <span>online</span> : <span>offline</span>} · last:{" "}
+                {t.tr("daemon", "daemon")}: <code>{selectedDaemon?.id || "-"}</code> ·{" "}
+                {selectedDaemon?.connected ? <span>{t.tr("online", "在线")}</span> : <span>{t.tr("offline", "离线")}</span>} · {t.tr("last", "最近")}:{" "}
                 {fmtUnix(selectedDaemon?.lastSeenUnix)}
               </div>
             </div>
           </div>
 
 	          <div className="field" style={{ minWidth: 240 }}>
-	            <label>Daemon</label>
+	            <label>{t.tr("Daemon", "节点")}</label>
 	            <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
 	              <div style={{ flex: 1 }}>
 	                <Select
@@ -5122,29 +5241,30 @@ export default function HomePage() {
 	                  disabled={authed !== true}
 	                  options={daemons.map((d) => ({
 	                    value: d.id,
-	                    label: `${d.id} ${d.connected ? "(online)" : "(offline)"}`,
+	                    label: `${d.id} ${d.connected ? t.tr("(online)", "（在线）") : t.tr("(offline)", "（离线）")}`,
 	                  }))}
 	                />
 	              </div>
 	              <span
 	                className={`statusDot ${selectedDaemon?.connected ? "ok" : ""}`}
-	                title={selectedDaemon?.connected ? "online" : "offline"}
+	                title={selectedDaemon?.connected ? t.tr("online", "在线") : t.tr("offline", "离线")}
 	              />
-                {globalBusy ? <span className="busySpinner" title="Working…" aria-hidden="true" /> : null}
+                {globalBusy ? <span className="busySpinner" title={t.tr("Working…", "处理中…")} aria-hidden="true" /> : null}
 	            </div>
 	          </div>
 	        </div>
 
         {authed === true && selectedDaemon && !selectedDaemon.connected ? (
           <div className="offlineBanner">
-            <b>Daemon offline.</b> last seen: <code>{fmtUnix(selectedDaemon.lastSeenUnix)}</code>. Actions are disabled until it reconnects.
+            <b>{t.tr("Daemon offline.", "Daemon 离线。")}</b> {t.tr("last seen", "最后在线")}:
+            <code> {fmtUnix(selectedDaemon.lastSeenUnix)}</code>. {t.tr("Actions are disabled until it reconnects.", "在重新连接前，操作已禁用。")}
           </div>
         ) : null}
 
         <div className="content">
           {error ? (
             <div className="card danger">
-              <b>错误：</b> {error}
+              <b>{t.tr("Error:", "错误：")}</b> {error}
             </div>
           ) : null}
 
@@ -5153,19 +5273,20 @@ export default function HomePage() {
               <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modalHeader">
 	                  <div>
-	                    <div style={{ fontWeight: 700 }}>Install</div>
+	                    <div style={{ fontWeight: 700 }}>{t.tr("Install", "安装")}</div>
 	                    <div className="hint">
-	                      node: <code>{selectedDaemon?.id || "-"}</code> · instance: <code>{installForm.instanceId.trim() || "-"}</code>
+	                      {t.tr("node", "节点")}: <code>{selectedDaemon?.id || "-"}</code> · {t.tr("instance", "实例")}:
+	                      <code> {installForm.instanceId.trim() || "-"}</code>
 	                    </div>
 	                  </div>
 	                  <button type="button" onClick={() => setInstallOpen(false)} disabled={installRunning}>
-	                    Close
+	                    {t.tr("Close", "关闭")}
 	                  </button>
 	                </div>
 
                 <div className="row" style={{ marginTop: 6 }}>
-                  <span className={`badge ${installStep === 1 ? "ok" : ""}`}>1 Basic</span>
-                  <span className={`badge ${installStep === 2 ? "ok" : ""}`}>2 Runtime</span>
+                  <span className={`badge ${installStep === 1 ? "ok" : ""}`}>1 {t.tr("Basic", "基础")}</span>
+                  <span className={`badge ${installStep === 2 ? "ok" : ""}`}>2 {t.tr("Runtime", "运行时")}</span>
                   <span className={`badge ${installStep === 3 ? "ok" : ""}`}>3 FRP</span>
                 </div>
 
@@ -5173,7 +5294,7 @@ export default function HomePage() {
                   {installStep === 1 ? (
                     <>
 	                  <div className="field">
-	                    <label>Instance ID</label>
+	                    <label>{t.tr("Instance ID", "实例 ID")}</label>
 	                    <input
 	                      value={installForm.instanceId}
 	                      onChange={(e) => setInstallForm((f) => ({ ...f, instanceId: e.target.value }))}
@@ -5184,11 +5305,13 @@ export default function HomePage() {
 	                        {installValidation.instErr}
 	                      </div>
 	                    ) : (
-	                      <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
+	                      <div className="hint">
+	                        {t.tr("Suggestion: A-Z a-z 0-9 . _ - (max 64)", "建议：A-Z a-z 0-9 . _ -（最长 64）")}
+	                      </div>
 	                    )}
 	                  </div>
 			                  <div className="field">
-			                    <label>Type</label>
+			                    <label>{t.tr("Type", "类型")}</label>
 			                    <Select
 			                      value={installForm.kind}
 			                      onChange={(raw) => {
@@ -5210,12 +5333,12 @@ export default function HomePage() {
 			                        setMarketSelectedVersionId("");
 			                      }}
 			                      options={[
-			                        { value: "vanilla", label: "Vanilla" },
-			                        { value: "paper", label: "Paper" },
-			                        { value: "modrinth", label: "Modrinth (Search)" },
-			                        { value: "curseforge", label: "CurseForge (Search)", disabled: !curseforgeEnabled },
-			                        { value: "zip", label: "Server Pack ZIP (Upload)" },
-			                        { value: "zip_url", label: "Server Pack ZIP/MRPACK (URL)" },
+			                        { value: "vanilla", label: t.tr("Vanilla", "原版") },
+			                        { value: "paper", label: t.tr("Paper", "Paper") },
+			                        { value: "modrinth", label: t.tr("Modrinth (Search)", "Modrinth（搜索）") },
+			                        { value: "curseforge", label: t.tr("CurseForge (Search)", "CurseForge（搜索）"), disabled: !curseforgeEnabled },
+			                        { value: "zip", label: t.tr("Server Pack ZIP (Upload)", "服务器包 ZIP（上传）") },
+			                        { value: "zip_url", label: t.tr("Server Pack ZIP/MRPACK (URL)", "服务器包 ZIP/MRPACK（URL）") },
 			                      ]}
 			                    />
 			                    {installValidation.kindErr ? (
@@ -5224,14 +5347,24 @@ export default function HomePage() {
 			                      </div>
 			                    ) : (
 			                      <div className="hint">
-			                        Vanilla/Paper：自动下载服务端；Modrinth：支持 Fabric/Quilt mrpack；CurseForge：需要 API Key；ZIP：用于服务器包（Forge/NeoForge 建议用 server pack zip）
+			                        {locale === "zh" ? (
+			                          <>
+			                            Vanilla/Paper：自动下载服务端；Modrinth：支持 Fabric/Quilt mrpack；CurseForge：需要 API Key；ZIP：用于服务器包（Forge/NeoForge
+			                            建议用 server pack zip）
+			                          </>
+			                        ) : (
+			                          <>
+			                            Vanilla/Paper: download the server automatically. Modrinth: supports Fabric/Quilt mrpack. CurseForge: requires an API key. ZIP:
+			                            for server packs (Forge/NeoForge: use the server pack zip).
+			                          </>
+			                        )}
 			                      </div>
 			                    )}
 			                  </div>
 
 			                  {installForm.kind === "zip" ? (
 			                    <div className="field" style={{ gridColumn: "1 / -1" }}>
-			                      <label>Modpack ZIP / MRPACK</label>
+			                      <label>{t.tr("Modpack ZIP / MRPACK", "整合包 ZIP / MRPACK")}</label>
 		                      <input
 		                        key={installZipInputKey}
 		                        type="file"
@@ -5244,13 +5377,23 @@ export default function HomePage() {
 		                        </div>
 		                      ) : (
 		                        <div className="hint">
-		                          支持 <code>.zip</code> / <code>.mrpack</code>：上传到 <code>servers/&lt;instance&gt;/</code> 并自动安装/解压（mrpack 目前只支持 Fabric）
+		                          {locale === "zh" ? (
+		                            <>
+		                              支持 <code>.zip</code> / <code>.mrpack</code>：上传到 <code>servers/&lt;instance&gt;/</code> 并自动安装/解压（mrpack 目前只支持
+		                              Fabric）
+		                            </>
+		                          ) : (
+		                            <>
+		                              Supports <code>.zip</code> / <code>.mrpack</code>: upload to <code>servers/&lt;instance&gt;/</code> and install/extract automatically
+		                              (mrpack currently supports Fabric only).
+		                            </>
+		                          )}
 		                        </div>
 		                      )}
 		                    </div>
 			                  ) : installForm.kind === "zip_url" ? (
 			                    <div className="field" style={{ gridColumn: "1 / -1" }}>
-			                      <label>Modpack URL</label>
+			                      <label>{t.tr("Modpack URL", "整合包 URL")}</label>
 			                      <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
 			                        <input
 			                          value={installForm.remoteUrl}
@@ -5267,19 +5410,32 @@ export default function HomePage() {
 			                            className="iconBtn"
 			                            onClick={resolveCurseForgeUrl}
 			                            disabled={installRunning || cfResolveBusy}
-			                            title="Resolve CurseForge file page URL to a direct download URL"
+			                            title={t.tr(
+			                              "Resolve a CurseForge file page URL to a direct download URL",
+			                              "将 CurseForge 文件页面 URL 解析为直链下载 URL"
+			                            )}
 			                          >
 			                            <Icon name="download" />
-			                            Resolve
+			                            {t.tr("Resolve", "解析")}
 			                          </button>
 			                        ) : null}
 			                      </div>
 			                      <div className="hint">
-			                        直接粘贴下载链接（支持 <code>.zip</code> / <code>.mrpack</code>）。如果你只有 CurseForge 文件页面链接（<code>/files/&lt;id&gt;</code>），点 Resolve 自动转换为直链。
+			                        {locale === "zh" ? (
+			                          <>
+			                            直接粘贴下载链接（支持 <code>.zip</code> / <code>.mrpack</code>）。如果你只有 CurseForge 文件页面链接（<code>/files/&lt;id&gt;</code>），点 Resolve
+			                            自动转换为直链。
+			                          </>
+			                        ) : (
+			                          <>
+			                            Paste a direct download URL (supports <code>.zip</code> / <code>.mrpack</code>). If you only have a CurseForge file page URL (
+			                            <code>/files/&lt;id&gt;</code>), click Resolve to convert it into a direct download URL.
+			                          </>
+			                        )}
 			                      </div>
 			                      {cfResolveStatus ? <div className="hint">{cfResolveStatus}</div> : null}
 			                      <div className="field" style={{ marginTop: 10 }}>
-			                        <label>Filename (optional)</label>
+			                        <label>{t.tr("Filename (optional)", "文件名（可选）")}</label>
 			                        <input
 			                          value={installForm.remoteFileName}
 			                          onChange={(e) => setInstallForm((f) => ({ ...f, remoteFileName: e.target.value }))}
@@ -5289,12 +5445,16 @@ export default function HomePage() {
 			                    </div>
 			                  ) : installForm.kind === "modrinth" || installForm.kind === "curseforge" ? (
 			                    <div className="field" style={{ gridColumn: "1 / -1" }}>
-			                      <label>{installForm.kind === "modrinth" ? "Modrinth Modpacks" : "CurseForge Modpacks"}</label>
+			                      <label>
+			                        {installForm.kind === "modrinth"
+			                          ? t.tr("Modrinth Modpacks", "Modrinth 整合包")
+			                          : t.tr("CurseForge Modpacks", "CurseForge 整合包")}
+			                      </label>
 			                      <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
 			                        <input
 			                          value={marketQuery}
 			                          onChange={(e) => setMarketQuery(e.target.value)}
-			                          placeholder="Search modpacks…"
+			                          placeholder={t.tr("Search modpacks…", "搜索整合包…")}
 			                          style={{ flex: 1, minWidth: 220 }}
 			                        />
 			                        <button
@@ -5304,7 +5464,7 @@ export default function HomePage() {
 			                          disabled={!marketQuery.trim() || installRunning || (installForm.kind === "curseforge" && !curseforgeEnabled)}
 			                        >
 			                          <Icon name="search" />
-			                          Search
+			                          {t.tr("Search", "搜索")}
 			                        </button>
 			                        <button
 			                          type="button"
@@ -5319,23 +5479,40 @@ export default function HomePage() {
 			                          }}
 			                          disabled={installRunning}
 			                        >
-			                          Clear
+			                          {t.tr("Clear", "清除")}
 			                        </button>
 			                      </div>
 			                      {marketStatus ? (
 			                        <div className="hint">{marketStatus}</div>
 			                      ) : installForm.kind === "curseforge" && !curseforgeEnabled ? (
 			                        <div className="hint">
-			                          CurseForge 搜索需要 API Key（去{" "}
-			                          <button className="linkBtn" onClick={() => setTab("panel")}>
-			                            Panel
-			                          </button>{" "}
-			                          配置）。或者改用 <b>Modpack ZIP (URL)</b> 粘贴下载链接。
+			                          {locale === "zh" ? (
+			                            <>
+			                              CurseForge 搜索需要 API Key（去{" "}
+			                              <button className="linkBtn" onClick={() => setTab("panel")}>
+			                                Panel
+			                              </button>{" "}
+			                              配置）。或者改用 <b>Modpack ZIP (URL)</b> 粘贴下载链接。
+			                            </>
+			                          ) : (
+			                            <>
+			                              CurseForge search requires an API key (configure it in{" "}
+			                              <button className="linkBtn" onClick={() => setTab("panel")}>
+			                                Panel
+			                              </button>
+			                              ). Or use <b>Modpack ZIP (URL)</b> and paste a direct download URL.
+			                            </>
+			                          )}
 			                        </div>
 			                      ) : installForm.kind === "curseforge" ? (
-			                        <div className="hint">CurseForge 已启用（API Key 已配置）。</div>
+			                        <div className="hint">{t.tr("CurseForge is enabled (API key configured).", "CurseForge 已启用（API Key 已配置）。")}</div>
 			                      ) : (
-			                        <div className="hint">提示：Modrinth mrpack 目前只支持 Fabric（会自动安装服务端 + 下载 mods）。</div>
+			                        <div className="hint">
+			                          {t.tr(
+			                            "Tip: Modrinth mrpack currently supports Fabric only (it will install the server + download mods automatically).",
+			                            "提示：Modrinth mrpack 目前只支持 Fabric（会自动安装服务端 + 下载 mods）。"
+			                          )}
+			                        </div>
 			                      )}
 
 			                      {marketResults.length ? (
@@ -5358,7 +5535,11 @@ export default function HomePage() {
 			                                <span className="badge">{p.provider || installForm.kind}</span>
 			                              </div>
 			                              <div className="row" style={{ gap: 8 }}>
-			                                <span className="badge">{typeof p.downloads === "number" ? `${p.downloads} downloads` : "downloads -"}</span>
+			                                <span className="badge">
+			                                  {typeof p.downloads === "number"
+			                                    ? `${p.downloads} ${t.tr("downloads", "下载")}`
+			                                    : `${t.tr("downloads", "下载")} -`}
+			                                </span>
 			                                {Array.isArray(p.game_versions) && p.game_versions.length ? (
 			                                  <span className="badge">{p.game_versions.slice(0, 2).join(", ")}</span>
 			                                ) : null}
@@ -5375,13 +5556,13 @@ export default function HomePage() {
 			                              <div style={{ fontWeight: 760 }}>{marketSelected.title || marketSelected.name || marketSelected.id}</div>
 			                              <div className="hint">{marketSelected.description || ""}</div>
 			                            </div>
-			                            <span className="badge ok">selected</span>
+			                            <span className="badge ok">{t.tr("selected", "已选择")}</span>
 			                          </div>
 
 			                          {installForm.kind === "modrinth" ? (
 			                            <>
 			                              <div className="field" style={{ marginTop: 10 }}>
-			                                <label>Version</label>
+			                                <label>{t.tr("Version", "版本")}</label>
 			                                <Select
 			                                  value={marketSelectedVersionId}
 			                                  onChange={(v) => pickModrinthVersion(v)}
@@ -5391,13 +5572,18 @@ export default function HomePage() {
 			                                    label: String(v.version_number || v.name || v.id),
 			                                  }))}
 			                                />
-			                                <div className="hint">选择后会自动选取该版本的 primary file（若无则取第一个文件）</div>
+			                                <div className="hint">
+			                                  {t.tr(
+			                                    "Picking a version selects its primary file (or the first file if none).",
+			                                    "选择后会自动选取该版本的 primary file（若无则取第一个文件）"
+			                                  )}
+			                                </div>
 			                              </div>
 			                            </>
 			                          ) : (
 			                            <>
 			                              <div className="field" style={{ marginTop: 10 }}>
-			                                <label>File</label>
+			                                <label>{t.tr("File", "文件")}</label>
 			                                <Select
 			                                  value={marketSelectedVersionId}
 			                                  onChange={(v) => pickCurseForgeFile(v)}
@@ -5407,7 +5593,12 @@ export default function HomePage() {
 			                                    label: String(f.display_name || f.file_name || f.id),
 			                                  }))}
 			                                />
-			                                <div className="hint">选择后会解析/获取 download url 并用于安装</div>
+			                                <div className="hint">
+			                                  {t.tr(
+			                                    "After selecting, we will resolve/fetch the download URL and use it for install.",
+			                                    "选择后会解析/获取 download url 并用于安装"
+			                                  )}
+			                                </div>
 			                              </div>
 			                            </>
 			                          )}
@@ -5415,12 +5606,18 @@ export default function HomePage() {
 			                          {installForm.kind === "modrinth" && marketSelectedVersion ? (
 			                            <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
 			                              {Array.isArray((marketSelectedVersion as any).game_versions) && (marketSelectedVersion as any).game_versions.length ? (
-			                                <span className="badge">mc: {(marketSelectedVersion as any).game_versions[0]}</span>
+			                                <span className="badge">
+			                                  {t.tr("mc", "mc")}: {(marketSelectedVersion as any).game_versions[0]}
+			                                </span>
 			                              ) : null}
 			                              {Array.isArray((marketSelectedVersion as any).loaders) && (marketSelectedVersion as any).loaders.length ? (
-			                                <span className="badge">loader: {(marketSelectedVersion as any).loaders.join(", ")}</span>
+			                                <span className="badge">
+			                                  {t.tr("loader", "加载器")}: {(marketSelectedVersion as any).loaders.join(", ")}
+			                                </span>
 			                              ) : null}
-			                              <span className="badge">files: {Array.isArray((marketSelectedVersion as any).files) ? (marketSelectedVersion as any).files.length : 0}</span>
+			                              <span className="badge">
+			                                {t.tr("files", "文件")}: {Array.isArray((marketSelectedVersion as any).files) ? (marketSelectedVersion as any).files.length : 0}
+			                              </span>
 			                            </div>
 			                          ) : null}
 
@@ -5430,7 +5627,7 @@ export default function HomePage() {
 			                            </div>
 			                          ) : installForm.remoteUrl ? (
 			                            <div className="hint" style={{ marginTop: 8 }}>
-			                              file: <code>{installForm.remoteFileName || "-"}</code>
+			                              {t.tr("file", "文件")}: <code>{installForm.remoteFileName || "-"}</code>
 			                            </div>
 			                          ) : null}
 			                        </div>
@@ -5439,7 +5636,7 @@ export default function HomePage() {
 			                  ) : (
 			                    <>
 			                      <div className="field" style={{ gridColumn: installForm.kind === "paper" ? undefined : "1 / -1" }}>
-			                        <label>Version</label>
+			                        <label>{t.tr("Version", "版本")}</label>
 		                        <input
 		                          value={installForm.version}
 		                          onChange={(e) => setInstallForm((f) => ({ ...f, version: e.target.value }))}
@@ -5453,41 +5650,47 @@ export default function HomePage() {
 		                            </option>
 		                          ))}
 		                        </datalist>
-		                        {versionsStatus ? <div className="hint">版本列表：{versionsStatus}</div> : <div className="hint">可直接手输任意版本号</div>}
+		                        {versionsStatus ? (
+		                          <div className="hint">
+		                            {t.tr("Version list", "版本列表")}：{versionsStatus}
+		                          </div>
+		                        ) : (
+		                          <div className="hint">{t.tr("You can type any version string.", "可直接手输任意版本号")}</div>
+		                        )}
 		                      </div>
 		                      {installForm.kind === "paper" ? (
 		                        <div className="field">
-		                          <label>Paper Build (optional)</label>
+		                          <label>{t.tr("Paper Build (optional)", "Paper Build（可选）")}</label>
 		                          <input
 		                            type="number"
 		                            value={Number.isFinite(installForm.paperBuild) ? installForm.paperBuild : 0}
 		                            onChange={(e) => setInstallForm((f) => ({ ...f, paperBuild: Number(e.target.value) }))}
-		                            placeholder="0 (latest)"
+		                            placeholder={t.tr("0 (latest)", "0（最新）")}
 		                            min={0}
 		                          />
-		                          <div className="hint">填 0 表示下载最新 build</div>
+		                          <div className="hint">{t.tr("Use 0 to download the latest build.", "填 0 表示下载最新 build")}</div>
 		                        </div>
 		                      ) : null}
 		                    </>
 		                  )}
 
 	                  <div className="field">
-	                    <label>Memory</label>
+	                    <label>{t.tr("Memory", "内存")}</label>
 	                    <div className="row">
 	                      <input
 	                        value={installForm.xms}
 	                        onChange={(e) => setInstallForm((f) => ({ ...f, xms: e.target.value }))}
-	                        placeholder="Xms (e.g. 1G)"
+	                        placeholder={t.tr("Xms (e.g. 1G)", "Xms（例如 1G）")}
 	                      />
 	                      <input
 	                        value={installForm.xmx}
 	                        onChange={(e) => setInstallForm((f) => ({ ...f, xmx: e.target.value }))}
-	                        placeholder="Xmx (e.g. 2G)"
+	                        placeholder={t.tr("Xmx (e.g. 2G)", "Xmx（例如 2G）")}
 	                      />
 	                    </div>
 	                  </div>
 	                  <div className="field">
-	                    <label>Game Port</label>
+	                    <label>{t.tr("Game Port", "游戏端口")}</label>
 	                    <input
 	                      type="number"
 	                      value={Number.isFinite(installForm.gamePort) ? installForm.gamePort : 25565}
@@ -5501,7 +5704,12 @@ export default function HomePage() {
 	                        {installValidation.portErr}
 	                      </div>
 	                    ) : (
-	                      <div className="hint">写入 server.properties 的 server-port（Docker 默认映射 25565-25600）</div>
+	                      <div className="hint">
+	                        {t.tr(
+	                          "Written into server.properties as server-port (Docker default mapping: 25565-25600).",
+	                          "写入 server.properties 的 server-port（Docker 默认映射 25565-25600）"
+	                        )}
+	                      </div>
 	                    )}
 	                  </div>
 
@@ -5513,8 +5721,8 @@ export default function HomePage() {
 		                  <div className="field">
 		                    <label>
 		                      {installForm.kind === "zip" || installForm.kind === "zip_url" || installForm.kind === "modrinth" || installForm.kind === "curseforge"
-		                        ? "Jar path (after extract)"
-		                        : "Jar name"}
+		                        ? t.tr("Jar path (after extract)", "Jar 路径（解压后）")
+		                        : t.tr("Jar name", "Jar 文件名")}
 		                    </label>
 		                    <input
 		                      value={installForm.jarName}
@@ -5528,29 +5736,32 @@ export default function HomePage() {
 		                    ) : (
 		                      <div className="hint">
 		                        {installForm.kind === "zip" || installForm.kind === "zip_url" || installForm.kind === "modrinth" || installForm.kind === "curseforge"
-		                          ? "相对 instance 目录的 jar 路径（可带子目录），用于一键 Start"
-		                          : "只填文件名（不含路径），例如 server.jar"}
+		                          ? t.tr(
+		                            "Jar path relative to the instance directory (can include subfolders), used for one-click Start.",
+		                            "相对 instance 目录的 jar 路径（可带子目录），用于一键 Start"
+		                          )
+		                          : t.tr("Filename only (no path), e.g. server.jar", "只填文件名（不含路径），例如 server.jar")}
 		                      </div>
 		                    )}
 		                  </div>
 	                  <div className="field">
-	                    <label>Java (optional)</label>
+	                    <label>{t.tr("Java (optional)", "Java（可选）")}</label>
 	                    <input
 	                      value={installForm.javaPath}
 	                      onChange={(e) => setInstallForm((f) => ({ ...f, javaPath: e.target.value }))}
 	                      placeholder="java / /opt/jdk21/bin/java"
 	                    />
-	                    <div className="hint">留空则由 Daemon 自动选择（推荐）</div>
+	                    <div className="hint">{t.tr("Leave blank to let the daemon pick automatically (recommended).", "留空则由 Daemon 自动选择（推荐）")}</div>
 	                  </div>
 		                  <div className="field">
-		                    <label>EULA</label>
+		                    <label>{t.tr("EULA", "EULA")}</label>
 		                    <label className="checkRow">
 		                      <input
 		                        type="checkbox"
 		                        checked={!!installForm.acceptEula}
 		                        onChange={(e) => setInstallForm((f) => ({ ...f, acceptEula: e.target.checked }))}
 		                      />
-		                      自动写入 eula.txt（推荐）
+		                      {t.tr("Write eula.txt automatically (recommended).", "自动写入 eula.txt（推荐）")}
 		                    </label>
 		                  </div>
 
@@ -5560,18 +5771,18 @@ export default function HomePage() {
                   {installStep === 3 ? (
                     <>
 	                  <div className="field">
-	                    <label>FRP (optional)</label>
+	                    <label>{t.tr("FRP (optional)", "FRP（可选）")}</label>
 	                    <label className="checkRow">
 	                      <input
 	                        type="checkbox"
 	                        checked={!!installForm.enableFrp}
 	                        onChange={(e) => setInstallForm((f) => ({ ...f, enableFrp: e.target.checked }))}
 	                      />
-	                      安装完成后启动时自动开启 FRP
+	                      {t.tr("Enable FRP automatically when starting after install.", "安装完成后启动时自动开启 FRP")}
 	                    </label>
 	                  </div>
 	                  <div className="field">
-	                    <label>FRP Remote Port</label>
+	                    <label>{t.tr("FRP Remote Port", "FRP 远端端口")}</label>
 	                    <input
 	                      type="number"
 	                      value={Number.isFinite(installForm.frpRemotePort) ? installForm.frpRemotePort : 0}
@@ -5586,16 +5797,16 @@ export default function HomePage() {
 	                        {installValidation.frpRemoteErr}
 	                      </div>
 	                    ) : (
-	                      <div className="hint">填 0 表示不指定（由 FRP 服务端策略分配）</div>
+	                      <div className="hint">{t.tr("Use 0 for auto (assigned by FRP server policy).", "填 0 表示不指定（由 FRP 服务端策略分配）")}</div>
 	                    )}
 	                  </div>
 	                  <div className="field" style={{ gridColumn: "1 / -1" }}>
-	                    <label>FRP Server</label>
+	                    <label>{t.tr("FRP Server", "FRP 服务器")}</label>
 	                    <Select
 	                      value={installForm.frpProfileId}
 	                      onChange={(v) => setInstallForm((f) => ({ ...f, frpProfileId: v }))}
 	                      disabled={!installForm.enableFrp || !profiles.length}
-	                      placeholder={profiles.length ? "Select FRP server…" : "No servers"}
+	                      placeholder={profiles.length ? t.tr("Select FRP server…", "选择 FRP 服务器…") : t.tr("No servers", "暂无服务器")}
 	                      options={profiles.map((p) => ({
 	                        value: p.id,
 	                        label: `${p.name} (${p.server_addr}:${p.server_port})`,
@@ -5603,19 +5814,44 @@ export default function HomePage() {
 	                    />
                     {installForm.enableFrp && installValidation.frpProfileErr ? (
                       <div className="hint" style={{ color: "var(--danger)" }}>
-                        {installValidation.frpProfileErr}（去{" "}
-                        <button className="linkBtn" onClick={() => setTab("frp")}>
-                          FRP
-                        </button>{" "}
-                        添加，不会关闭此窗口）
+                        {installValidation.frpProfileErr}{" "}
+                        {locale === "zh" ? (
+                          <>
+                            （去{" "}
+                            <button className="linkBtn" onClick={() => setTab("frp")}>
+                              FRP
+                            </button>{" "}
+                            添加，不会关闭此窗口）
+                          </>
+                        ) : (
+                          <>
+                            (add one in{" "}
+                            <button className="linkBtn" onClick={() => setTab("frp")}>
+                              FRP
+                            </button>
+                            , this modal will stay open)
+                          </>
+                        )}
                       </div>
                     ) : (
                       <div className="hint">
-                        没有可用服务器？去{" "}
-                        <button className="linkBtn" onClick={() => setTab("frp")}>
-                          FRP
-                        </button>{" "}
-                        添加（不会关闭此窗口）
+                        {locale === "zh" ? (
+                          <>
+                            没有可用服务器？去{" "}
+                            <button className="linkBtn" onClick={() => setTab("frp")}>
+                              FRP
+                            </button>{" "}
+                            添加（不会关闭此窗口）
+                          </>
+                        ) : (
+                          <>
+                            No servers yet? Add one in{" "}
+                            <button className="linkBtn" onClick={() => setTab("frp")}>
+                              FRP
+                            </button>{" "}
+                            (this modal will stay open).
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -5626,10 +5862,12 @@ export default function HomePage() {
 
                 <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center" }}>
                   <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
-                    <span className="badge">step {installStep}/3</span>
+                    <span className="badge">
+                      {t.tr("step", "步骤")} {installStep}/3
+                    </span>
                     {installStep > 1 ? (
                       <button type="button" onClick={() => setInstallStep((s) => (Math.max(1, s - 1) as 1 | 2 | 3))} disabled={installRunning}>
-                        Back
+                        {t.tr("Back", "上一步")}
                       </button>
                     ) : null}
                     {installStep < 3 ? (
@@ -5639,7 +5877,7 @@ export default function HomePage() {
                         onClick={() => setInstallStep((s) => (Math.min(3, s + 1) as 1 | 2 | 3))}
                         disabled={installRunning || (installStep === 1 ? !installWizardStep1Ok : !installWizardStep2Ok)}
                       >
-                        Next
+                        {t.tr("Next", "下一步")}
                       </button>
                     ) : (
                       <>
@@ -5648,14 +5886,14 @@ export default function HomePage() {
                           onClick={() => runInstall(false)}
                           disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstall}
                         >
-                          Install
+                          {t.tr("Install", "安装")}
                         </button>
                         <button
                           className="primary"
                           onClick={() => runInstall(true)}
                           disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstallAndStart}
                         >
-                          Install & Start
+                          {t.tr("Install & Start", "安装并启动")}
                         </button>
                       </>
                     )}
@@ -5670,14 +5908,14 @@ export default function HomePage() {
                       }}
                       disabled={installRunning}
                     >
-                      Reset Logs
+                      {t.tr("Reset Logs", "重置日志")}
                     </button>
-                    {installRunning ? <span className="badge">installing…</span> : null}
+                    {installRunning ? <span className="badge">{t.tr("installing…", "安装中…")}</span> : null}
                     {serverOpStatus ? <span className="muted">{serverOpStatus}</span> : null}
                   </div>
                 </div>
 
-                <h3 style={{ marginTop: 12 }}>Install Logs</h3>
+                <h3 style={{ marginTop: 12 }}>{t.tr("Install Logs", "安装日志")}</h3>
                 <pre style={{ maxHeight: 360, overflow: "auto" }}>
                   {logs
                     .filter((l) => {
@@ -5691,7 +5929,7 @@ export default function HomePage() {
                       const ts = fmtTime(Number(l.ts_unix || 0));
                       return `[${ts}] ${l.line || ""}`;
                     })
-                    .join("\n") || "<no install logs>"}
+                    .join("\n") || t.tr("<no install logs>", "<无安装日志>")}
                 </pre>
               </div>
             </div>
@@ -5702,24 +5940,29 @@ export default function HomePage() {
               <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modalHeader">
                   <div>
-                    <div style={{ fontWeight: 700 }}>Settings</div>
+                    <div style={{ fontWeight: 700 }}>{t.tr("Settings", "设置")}</div>
                     <div className="hint">
-                      game: <code>{instanceId.trim() || "-"}</code>
+                      {t.tr("game", "游戏")}: <code>{instanceId.trim() || "-"}</code>
                     </div>
                     <div className="hint">
-                      saved: <code>{joinRelPath(instanceId.trim() || ".", INSTANCE_CONFIG_NAME)}</code>
+                      {t.tr("saved", "保存到")}: <code>{joinRelPath(instanceId.trim() || ".", INSTANCE_CONFIG_NAME)}</code>
                     </div>
                   </div>
                   <button type="button" onClick={cancelEditSettings}>
-                    Close
+                    {t.tr("Close", "关闭")}
                   </button>
                 </div>
 
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <input value={settingsSearch} onChange={(e) => setSettingsSearch(e.target.value)} placeholder="Search settings…" style={{ width: 260 }} />
+                  <input
+                    value={settingsSearch}
+                    onChange={(e) => setSettingsSearch(e.target.value)}
+                    placeholder={t.tr("Search settings…", "搜索设置…")}
+                    style={{ width: 260 }}
+                  />
                   {settingsSearch ? (
                     <button type="button" className="iconBtn" onClick={() => setSettingsSearch("")}>
-                      Clear
+                      {t.tr("Clear", "清除")}
                     </button>
                   ) : null}
                 </div>
@@ -5727,63 +5970,73 @@ export default function HomePage() {
                 <div className="grid2" style={{ alignItems: "start" }}>
                   {showSettingsField("jar path", "jar", "path", "server.jar") ? (
                     <div className="field">
-                      <label>Jar path (relative)</label>
+                      <label>{t.tr("Jar path (relative)", "Jar 路径（相对）")}</label>
                       <input value={jarPath} onChange={(e) => setJarPath(e.target.value)} placeholder="server.jar" />
                       {settingsValidation.jarErr ? (
                         <div className="hint" style={{ color: "var(--danger)" }}>
                           {settingsValidation.jarErr}
                         </div>
                       ) : (
-                        <div className="hint">相对路径（在 servers/&lt;instance&gt;/ 下），例如 server.jar</div>
+                        <div className="hint">
+                          {t.tr(
+                            "Relative path under servers/<instance>/, e.g. server.jar",
+                            "相对路径（在 servers/<instance>/ 下），例如 server.jar"
+                          )}
+                        </div>
                       )}
                     </div>
                   ) : null}
                   {showSettingsField("pick a jar", "jar list", "scan", "refresh") ? (
                     <div className="field">
-                      <label>Pick a jar</label>
+                      <label>{t.tr("Pick a jar", "选择 Jar")}</label>
                       <div className="row" style={{ gap: 8, alignItems: "center" }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Select
                             value=""
                             onChange={(v) => setJarPath(v)}
                             disabled={!jarCandidates.length}
-                            placeholder={jarCandidates.length ? "Select jar…" : jarCandidatesStatus || "No jars"}
+                            placeholder={jarCandidates.length ? t.tr("Select jar…", "选择 Jar…") : jarCandidatesStatus || t.tr("No jars", "暂无 Jar")}
                             options={jarCandidates.map((j) => ({ value: j, label: j }))}
                           />
                         </div>
                         <button
                           type="button"
                           className="iconBtn iconOnly"
-                          title="Refresh jar list"
-                          aria-label="Refresh jar list"
+                          title={t.tr("Refresh jar list", "刷新 Jar 列表")}
+                          aria-label={t.tr("Refresh jar list", "刷新 Jar 列表")}
                           onClick={() => refreshJarCandidates()}
                           disabled={!selectedDaemon?.connected || !instanceId.trim()}
                         >
                           <Icon name="refresh" />
                         </button>
                       </div>
-                      <div className="hint">递归扫描 servers/&lt;instance&gt;/ 下的 .jar（跳过 mods/libraries/world 等目录）</div>
+                      <div className="hint">
+                        {t.tr(
+                          "Recursively scans for .jar under servers/<instance>/ (skips mods/libraries/world, etc).",
+                          "递归扫描 servers/<instance>/ 下的 .jar（跳过 mods/libraries/world 等目录）"
+                        )}
+                      </div>
                     </div>
                   ) : null}
                   {showSettingsField("java", "jre", "temurin") ? (
                     <div className="field">
-                      <label>Java (optional)</label>
+                      <label>{t.tr("Java (optional)", "Java（可选）")}</label>
                       <input value={javaPath} onChange={(e) => setJavaPath(e.target.value)} placeholder="java / /opt/jdk21/bin/java" />
-                      <div className="hint">留空则由 Daemon 自动选择（推荐）</div>
+                      <div className="hint">{t.tr("Leave blank to let the daemon pick automatically (recommended).", "留空则由 Daemon 自动选择（推荐）")}</div>
                     </div>
                   ) : null}
                   {showSettingsField("memory", "xms", "xmx") ? (
                     <div className="field">
-                      <label>Memory</label>
+                      <label>{t.tr("Memory", "内存")}</label>
                       <div className="row">
-                        <input value={xms} onChange={(e) => setXms(e.target.value)} placeholder="Xms (e.g. 1G)" />
-                        <input value={xmx} onChange={(e) => setXmx(e.target.value)} placeholder="Xmx (e.g. 2G)" />
+                        <input value={xms} onChange={(e) => setXms(e.target.value)} placeholder={t.tr("Xms (e.g. 1G)", "Xms（例如 1G）")} />
+                        <input value={xmx} onChange={(e) => setXmx(e.target.value)} placeholder={t.tr("Xmx (e.g. 2G)", "Xmx（例如 2G）")} />
                       </div>
                     </div>
                   ) : null}
                   {showSettingsField("port", "game port", "25565") ? (
                     <div className="field">
-                      <label>Port</label>
+                      <label>{t.tr("Port", "端口")}</label>
                       <input
                         type="number"
                         value={Number.isFinite(gamePort) ? gamePort : 25565}
@@ -5796,7 +6049,7 @@ export default function HomePage() {
                           {settingsValidation.portErr}
                         </div>
                       ) : (
-                        <div className="hint">保存后会写入 server.properties（运行中需要重启生效）</div>
+                        <div className="hint">{t.tr("Written into server.properties after saving (restart required if running).", "保存后会写入 server.properties（运行中需要重启生效）")}</div>
                       )}
                     </div>
                   ) : null}
@@ -5806,13 +6059,13 @@ export default function HomePage() {
                       <label>FRP</label>
                       <label className="checkRow">
                         <input type="checkbox" checked={enableFrp} onChange={(e) => setEnableFrp(e.target.checked)} />
-                        启动时自动开启
+                        {t.tr("Enable automatically on start.", "启动时自动开启")}
                       </label>
                     </div>
                   ) : null}
                   {showSettingsField("frp remote port", "remote port", "25566") ? (
                     <div className="field">
-                      <label>FRP Remote Port</label>
+                      <label>{t.tr("FRP Remote Port", "FRP 远端端口")}</label>
                       <input
                         type="number"
                         value={Number.isFinite(frpRemotePort) ? frpRemotePort : 0}
@@ -5827,18 +6080,18 @@ export default function HomePage() {
                           {settingsValidation.frpRemoteErr}
                         </div>
                       ) : (
-                        <div className="hint">填 0 表示不指定（由 FRP 服务端策略分配）</div>
+                        <div className="hint">{t.tr("Use 0 for auto (assigned by FRP server policy).", "填 0 表示不指定（由 FRP 服务端策略分配）")}</div>
                       )}
                     </div>
                   ) : null}
                   {showSettingsField("frp server", "server addr", "server port") ? (
                     <div className="field" style={{ gridColumn: "1 / -1" }}>
-                      <label>FRP Server</label>
+                      <label>{t.tr("FRP Server", "FRP 服务器")}</label>
                       <Select
                         value={frpProfileId}
                         onChange={(v) => setFrpProfileId(v)}
                         disabled={!enableFrp || !profiles.length}
-                        placeholder={profiles.length ? "Select FRP server…" : "No servers"}
+                        placeholder={profiles.length ? t.tr("Select FRP server…", "选择 FRP 服务器…") : t.tr("No servers", "暂无服务器")}
                         options={profiles.map((p) => ({
                           value: p.id,
                           label: `${p.name} (${p.server_addr}:${p.server_port})`,
@@ -5855,10 +6108,10 @@ export default function HomePage() {
                     onClick={saveEditSettings}
                     disabled={!selectedDaemon?.connected || !instanceId.trim() || !settingsValidation.ok}
                   >
-                    Save
+                    {t.tr("Save", "保存")}
                   </button>
                   <button type="button" onClick={cancelEditSettings}>
-                    Cancel
+                    {t.tr("Cancel", "取消")}
                   </button>
                   {serverOpStatus ? <span className="muted">{serverOpStatus}</span> : null}
                 </div>
@@ -5871,27 +6124,27 @@ export default function HomePage() {
               <div className="modal" style={{ width: "min(680px, 100%)" }} onClick={(e) => e.stopPropagation()}>
                 <div className="modalHeader">
                   <div>
-                    <div style={{ fontWeight: 800 }}>Restore Backup</div>
+                    <div style={{ fontWeight: 800 }}>{t.tr("Restore Backup", "恢复备份")}</div>
                     <div className="hint">
-                      game: <code>{instanceId.trim() || "-"}</code> · from: <code>{restoreZipPath || "-"}</code>
+                      {t.tr("game", "游戏")}: <code>{instanceId.trim() || "-"}</code> · {t.tr("from", "来源")}: <code>{restoreZipPath || "-"}</code>
                     </div>
                   </div>
                   <button type="button" onClick={() => setRestoreOpen(false)} disabled={gameActionBusy}>
-                    Close
+                    {t.tr("Close", "关闭")}
                   </button>
                 </div>
 
                 <div className="field">
-                  <label>Backup zip</label>
+                  <label>{t.tr("Backup zip", "备份 zip")}</label>
                   <Select
                     value={restoreZipPath}
                     onChange={(v) => setRestoreZipPath(v)}
                     disabled={!restoreCandidates.length || gameActionBusy}
-                    placeholder={restoreCandidates.length ? "Select backup…" : "No backups found"}
+                    placeholder={restoreCandidates.length ? t.tr("Select backup…", "选择备份…") : t.tr("No backups found", "未找到备份")}
                     options={restoreCandidates.map((p) => ({ value: p, label: p }))}
                   />
                   <div className="hint">
-                    backups: <code>servers/_backups/{instanceId.trim() || "instance"}/</code>
+                    {t.tr("backups", "备份目录")}: <code>servers/_backups/{instanceId.trim() || "instance"}/</code>
                   </div>
                   {restoreStatus ? <div className="hint">{restoreStatus}</div> : null}
                 </div>
@@ -5899,12 +6152,12 @@ export default function HomePage() {
                 <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center" }}>
                   <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
                     <button type="button" onClick={() => refreshBackupZips(instanceId.trim())} disabled={gameActionBusy}>
-                      Refresh
+                      {t.tr("Refresh", "刷新")}
                     </button>
-                    {gameActionBusy ? <span className="badge">working…</span> : null}
+                    {gameActionBusy ? <span className="badge">{t.tr("working…", "处理中…")}</span> : null}
                   </div>
                   <button type="button" className="dangerBtn" onClick={restoreFromBackup} disabled={!restoreZipPath || gameActionBusy}>
-                    Restore
+                    {t.tr("Restore", "恢复")}
                   </button>
                 </div>
               </div>
@@ -5916,9 +6169,10 @@ export default function HomePage() {
               <div className="modal" style={{ width: "min(860px, 100%)" }} onClick={(e) => e.stopPropagation()}>
                 <div className="modalHeader">
                   <div>
-                    <div style={{ fontWeight: 800 }}>Trash</div>
+                    <div style={{ fontWeight: 800 }}>{t.tr("Trash", "回收站")}</div>
                     <div className="hint">
-                      location: <code>servers/_trash/</code> · {trashShowAll ? "showing all trashed items" : "showing games only"}
+                      {t.tr("location", "位置")}: <code>servers/_trash/</code> ·{" "}
+                      {trashShowAll ? t.tr("showing all trashed items", "显示全部回收站内容") : t.tr("showing games only", "仅显示游戏实例")}
                     </div>
                     {trashStatus ? <div className="hint">{trashStatus}</div> : null}
                   </div>
@@ -5933,13 +6187,13 @@ export default function HomePage() {
                           refreshTrashItems(v);
                         }}
                       />{" "}
-                      Show all
+                      {t.tr("Show all", "显示全部")}
                     </label>
                     <button type="button" onClick={() => refreshTrashItems()} disabled={!selectedDaemon?.connected}>
-                      Refresh
+                      {t.tr("Refresh", "刷新")}
                     </button>
                     <button type="button" onClick={() => setTrashOpen(false)}>
-                      Close
+                      {t.tr("Close", "关闭")}
                     </button>
                   </div>
                 </div>
@@ -5948,9 +6202,9 @@ export default function HomePage() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Original</th>
-                        <th>Deleted</th>
-                        <th>Trash path</th>
+                        <th>{t.tr("Original", "原始路径")}</th>
+                        <th>{t.tr("Deleted", "删除时间")}</th>
+                        <th>{t.tr("Trash path", "回收站路径")}</th>
                         <th />
                       </tr>
                     </thead>
@@ -5974,10 +6228,10 @@ export default function HomePage() {
                             <td style={{ textAlign: "right" }}>
                               <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
                                 <button type="button" onClick={() => restoreTrashItem(it)}>
-                                  Restore
+                                  {t.tr("Restore", "恢复")}
                                 </button>
                                 <button type="button" className="dangerBtn" onClick={() => deleteTrashItemForever(it)}>
-                                  Delete forever
+                                  {t.tr("Delete forever", "永久删除")}
                                 </button>
                               </div>
                             </td>
@@ -5987,7 +6241,7 @@ export default function HomePage() {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="hint">Trash is empty.</div>
+                  <div className="hint">{t.tr("Trash is empty.", "回收站为空。")}</div>
                 )}
               </div>
             </div>
@@ -6000,22 +6254,28 @@ export default function HomePage() {
                   <div>
                     <div style={{ fontWeight: 800 }}>server.properties</div>
                     <div className="hint">
-                      game: <code>{instanceId.trim() || "-"}</code> · path: <code>{joinRelPath(instanceId.trim() || ".", "server.properties")}</code>
+                      {t.tr("game", "游戏")}: <code>{instanceId.trim() || "-"}</code> · {t.tr("path", "路径")}:
+                      <code> {joinRelPath(instanceId.trim() || ".", "server.properties")}</code>
                     </div>
-                    <div className="hint">只提供安全/常用字段编辑（其余内容保持原样）。</div>
+                    <div className="hint">
+                      {t.tr(
+                        "Edits common/safe fields only (other lines are preserved as-is).",
+                        "只提供安全/常用字段编辑（其余内容保持原样）。"
+                      )}
+                    </div>
                   </div>
                   <button type="button" onClick={() => setServerPropsOpen(false)} disabled={serverPropsSaving}>
-                    Close
+                    {t.tr("Close", "关闭")}
                   </button>
                 </div>
 
                 <div className="grid2" style={{ alignItems: "start" }}>
                   <div className="field" style={{ gridColumn: "1 / -1" }}>
-                    <label>MOTD</label>
+                    <label>{t.tr("MOTD", "MOTD")}</label>
                     <input value={serverPropsMotd} onChange={(e) => setServerPropsMotd(e.target.value)} placeholder="A Minecraft Server" />
                   </div>
                   <div className="field">
-                    <label>Max players</label>
+                    <label>{t.tr("Max players", "最大玩家数")}</label>
                     <input
                       type="number"
                       value={Number.isFinite(serverPropsMaxPlayers) ? serverPropsMaxPlayers : 20}
@@ -6025,7 +6285,7 @@ export default function HomePage() {
                     />
                   </div>
                   <div className="field">
-                    <label>Online mode</label>
+                    <label>{t.tr("Online mode", "在线模式")}</label>
                     <label className="checkRow">
                       <input
                         type="checkbox"
@@ -6034,10 +6294,15 @@ export default function HomePage() {
                       />
                       online-mode
                     </label>
-                    <div className="hint">关闭后为离线模式（不安全，不建议公网使用）。</div>
+                    <div className="hint">
+                      {t.tr(
+                        "Turning this off enables offline-mode (unsafe; not recommended for public servers).",
+                        "关闭后为离线模式（不安全，不建议公网使用）。"
+                      )}
+                    </div>
                   </div>
                   <div className="field">
-                    <label>Whitelist</label>
+                    <label>{t.tr("Whitelist", "白名单")}</label>
                     <label className="checkRow">
                       <input
                         type="checkbox"
@@ -6046,7 +6311,7 @@ export default function HomePage() {
                       />
                       white-list
                     </label>
-                    <div className="hint">开启后需要在服务器内添加白名单玩家。</div>
+                    <div className="hint">{t.tr("When enabled, you must add players to the whitelist in-game.", "开启后需要在服务器内添加白名单玩家。")}</div>
                   </div>
                 </div>
 
@@ -6065,7 +6330,7 @@ export default function HomePage() {
                       disabled={!selectedDaemon?.connected || !instanceId.trim() || serverPropsSaving}
                     >
                       <Icon name="search" />
-                      Open in Files
+                      {t.tr("Open in Files", "在文件中打开")}
                     </button>
                     {serverPropsStatus ? <span className="muted">{serverPropsStatus}</span> : null}
                   </div>
@@ -6076,9 +6341,9 @@ export default function HomePage() {
                       onClick={saveServerPropertiesEditor}
                       disabled={!selectedDaemon?.connected || !instanceId.trim() || serverPropsSaving}
                     >
-                      Save
+                      {t.tr("Save", "保存")}
                     </button>
-                    {serverPropsSaving ? <span className="badge">saving…</span> : null}
+                    {serverPropsSaving ? <span className="badge">{t.tr("saving…", "保存中…")}</span> : null}
                   </div>
                 </div>
               </div>
@@ -6090,13 +6355,13 @@ export default function HomePage() {
 	          <div className="modal" onClick={(e) => e.stopPropagation()}>
 	            <div className="modalHeader">
 	              <div>
-	                <div style={{ fontWeight: 700 }}>Node Details</div>
+	                <div style={{ fontWeight: 700 }}>{t.tr("Node Details", "节点详情")}</div>
 	                <div className="hint">
-	                  node: <code>{nodeDetailsId || "-"}</code>
+	                  {t.tr("node", "节点")}: <code>{nodeDetailsId || "-"}</code>
 	                </div>
 	              </div>
 	              <button type="button" onClick={() => setNodeDetailsOpen(false)}>
-	                Close
+	                {t.tr("Close", "关闭")}
 	              </button>
 	            </div>
 
@@ -6104,27 +6369,33 @@ export default function HomePage() {
 	              <>
 	                <div className="grid2" style={{ marginBottom: 12 }}>
 	                  <div className="card">
-                    <h3>Overview</h3>
+                    <h3>{t.tr("Overview", "概览")}</h3>
                     <div className="row">
-                      {nodeDetailsNode.connected ? <span className="badge ok">online</span> : <span className="badge">offline</span>}
-                      <span className="badge">last: {fmtUnix(nodeDetailsNode.lastSeenUnix)}</span>
+                      {nodeDetailsNode.connected ? (
+                        <span className="badge ok">{t.tr("online", "在线")}</span>
+                      ) : (
+                        <span className="badge">{t.tr("offline", "离线")}</span>
+                      )}
+                      <span className="badge">
+                        {t.tr("last", "最近")}: {fmtUnix(nodeDetailsNode.lastSeenUnix)}
+                      </span>
                     </div>
                     <div className="hint" style={{ marginTop: 8 }}>
-                      {nodeDetailsNode.hello?.os ? `os: ${nodeDetailsNode.hello.os}` : ""}
-                      {nodeDetailsNode.hello?.arch ? ` · arch: ${nodeDetailsNode.hello.arch}` : ""}
+                      {nodeDetailsNode.hello?.os ? `${t.tr("os", "系统")}: ${nodeDetailsNode.hello.os}` : ""}
+                      {nodeDetailsNode.hello?.arch ? ` · ${t.tr("arch", "架构")}: ${nodeDetailsNode.hello.arch}` : ""}
                     </div>
 	                    <div className="hint" style={{ marginTop: 8 }}>
-	                      CPU:{" "}
+	                      {t.tr("CPU", "CPU")}:{" "}
 	                      {typeof nodeDetailsNode.heartbeat?.cpu?.usage_percent === "number"
 	                        ? `${nodeDetailsNode.heartbeat.cpu.usage_percent.toFixed(1)}%`
 	                        : "-"}
 	                      {" · "}
-	                      MEM:{" "}
+	                      {t.tr("MEM", "内存")}:{" "}
 	                      {nodeDetailsNode.heartbeat?.mem?.total_bytes
 	                        ? `${pct(nodeDetailsNode.heartbeat.mem.used_bytes, nodeDetailsNode.heartbeat.mem.total_bytes).toFixed(0)}%`
 	                        : "-"}
 	                      {" · "}
-	                      DISK:{" "}
+	                      {t.tr("DISK", "磁盘")}:{" "}
 	                      {nodeDetailsNode.heartbeat?.disk?.total_bytes
 	                        ? `${pct(nodeDetailsNode.heartbeat.disk.used_bytes, nodeDetailsNode.heartbeat.disk.total_bytes).toFixed(0)}%`
 	                        : "-"}
@@ -6137,36 +6408,41 @@ export default function HomePage() {
 	                    {Array.isArray(nodeDetailsNode.heartbeat?.net?.preferred_connect_addrs) &&
 	                    nodeDetailsNode.heartbeat.net.preferred_connect_addrs.length ? (
 	                      <div className="hint" style={{ marginTop: 8 }}>
-	                        Connect: {nodeDetailsNode.heartbeat.net.preferred_connect_addrs.slice(0, 6).join(", ")}
+	                        {t.tr("Connect", "连接地址")}: {nodeDetailsNode.heartbeat.net.preferred_connect_addrs.slice(0, 6).join(", ")}
 	                      </div>
 	                    ) : null}
 	                  </div>
 
 	                  <div className="card">
-	                    <h3>Charts</h3>
+	                    <h3>{t.tr("Charts", "图表")}</h3>
 	                    <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10, marginBottom: 8 }}>
 	                      <div className="field" style={{ minWidth: 180 }}>
-	                        <label>Range</label>
+	                        <label>{t.tr("Range", "范围")}</label>
 	                        <Select
 	                          value={String(nodeDetailsRangeSec)}
 	                          onChange={(v) => setNodeDetailsRangeSec(Number(v) || 0)}
 	                          options={[
-	                            { value: String(60), label: "Last 1m" },
-	                            { value: String(5 * 60), label: "Last 5m" },
-	                            { value: String(15 * 60), label: "Last 15m" },
-	                            { value: String(60 * 60), label: "Last 1h" },
-	                            { value: String(0), label: "All" },
+	                            { value: String(60), label: t.tr("Last 1m", "最近 1 分钟") },
+	                            { value: String(5 * 60), label: t.tr("Last 5m", "最近 5 分钟") },
+	                            { value: String(15 * 60), label: t.tr("Last 15m", "最近 15 分钟") },
+	                            { value: String(60 * 60), label: t.tr("Last 1h", "最近 1 小时") },
+	                            { value: String(0), label: t.tr("All", "全部") },
 	                          ]}
 	                        />
 	                      </div>
 	                      <div className="hint" style={{ marginBottom: 4 }}>
 	                        {nodeDetailsHistoryMeta.points
-	                          ? `points: ${nodeDetailsHistoryMeta.points} · ${fmtUnix(nodeDetailsHistoryMeta.fromUnix)} - ${fmtUnix(nodeDetailsHistoryMeta.toUnix)}`
-	                          : "No history yet"}
+	                          ? locale === "zh"
+	                            ? `点数: ${nodeDetailsHistoryMeta.points} · ${fmtUnix(nodeDetailsHistoryMeta.fromUnix)} - ${fmtUnix(nodeDetailsHistoryMeta.toUnix)}`
+	                            : `points: ${nodeDetailsHistoryMeta.points} · ${fmtUnix(nodeDetailsHistoryMeta.fromUnix)} - ${fmtUnix(nodeDetailsHistoryMeta.toUnix)}`
+	                          : t.tr("No history yet", "暂无历史")}
 	                      </div>
 	                    </div>
 
-	                    <div className="hint">CPU% · latest: {nodeDetailsHistoryMeta.cpuLatest == null ? "-" : `${nodeDetailsHistoryMeta.cpuLatest.toFixed(1)}%`}</div>
+	                    <div className="hint">
+	                      CPU% · {t.tr("latest", "最新")}:{" "}
+	                      {nodeDetailsHistoryMeta.cpuLatest == null ? "-" : `${nodeDetailsHistoryMeta.cpuLatest.toFixed(1)}%`}
+	                    </div>
 	                    <Sparkline
 	                      values={nodeDetailsHistory.map((p: any) => p?.cpu_percent)}
 	                      width={520}
@@ -6174,7 +6450,7 @@ export default function HomePage() {
 	                      stroke="rgba(147, 197, 253, 0.95)"
 	                    />
 	                    <div className="hint" style={{ marginTop: 10 }}>
-	                      MEM% · latest: {nodeDetailsHistoryMeta.memLatest == null ? "-" : `${nodeDetailsHistoryMeta.memLatest.toFixed(0)}%`}
+	                      MEM% · {t.tr("latest", "最新")}: {nodeDetailsHistoryMeta.memLatest == null ? "-" : `${nodeDetailsHistoryMeta.memLatest.toFixed(0)}%`}
 	                    </div>
 	                    <Sparkline
 	                      values={nodeDetailsHistory.map((p: any) => p?.mem_percent)}
@@ -6183,7 +6459,7 @@ export default function HomePage() {
 	                      stroke="rgba(34, 197, 94, 0.9)"
 	                    />
 	                    <div className="hint" style={{ marginTop: 10 }}>
-	                      DISK% · latest: {nodeDetailsHistoryMeta.diskLatest == null ? "-" : `${nodeDetailsHistoryMeta.diskLatest.toFixed(0)}%`}
+	                      DISK% · {t.tr("latest", "最新")}: {nodeDetailsHistoryMeta.diskLatest == null ? "-" : `${nodeDetailsHistoryMeta.diskLatest.toFixed(0)}%`}
 	                    </div>
 	                    <Sparkline
 	                      values={nodeDetailsHistory.map((p: any) => p?.disk_percent)}
@@ -6195,12 +6471,12 @@ export default function HomePage() {
 	                </div>
 
 	                <div className="card">
-	                  <h3>Instances</h3>
+	                  <h3>{t.tr("Instances", "实例")}</h3>
 	                  <table>
 	                    <thead>
 	                      <tr>
 	                        <th>ID</th>
-	                        <th>Status</th>
+	                        <th>{t.tr("Status", "状态")}</th>
 	                      </tr>
 	                    </thead>
 	                    <tbody>
@@ -6209,9 +6485,11 @@ export default function HomePage() {
 	                          <td style={{ fontWeight: 650 }}>{i.id}</td>
 	                          <td>
 	                            {i.running ? (
-	                              <span className="badge ok">running (pid {i.pid || "-"})</span>
+	                              <span className="badge ok">
+	                                {t.tr(`running (pid ${i.pid || "-"})`, `运行中（pid ${i.pid || "-"}）`)}
+	                              </span>
 	                            ) : (
-	                              <span className="badge">stopped</span>
+	                              <span className="badge">{t.tr("stopped", "已停止")}</span>
 	                            )}
 	                          </td>
 	                        </tr>
@@ -6219,7 +6497,7 @@ export default function HomePage() {
 	                      {!(nodeDetailsNode.heartbeat?.instances || []).length ? (
 	                        <tr>
 	                          <td colSpan={2} className="muted">
-	                            No instances reported yet
+	                            {t.tr("No instances reported yet", "暂无实例上报")}
 	                          </td>
 	                        </tr>
 	                      ) : null}
@@ -6228,7 +6506,7 @@ export default function HomePage() {
 	                </div>
 	              </>
 	            ) : (
-	              <div className="hint">No data</div>
+	              <div className="hint">{t.tr("No data", "暂无数据")}</div>
 	            )}
 	          </div>
         </div>
@@ -6239,37 +6517,46 @@ export default function HomePage() {
           <div className="modal" style={{ width: "min(860px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <div>
-                <div style={{ fontWeight: 800 }}>Deploy Daemon (docker compose)</div>
+                <div style={{ fontWeight: 800 }}>{t.tr("Deploy Daemon (docker compose)", "部署 Daemon（docker compose）")}</div>
                 <div className="hint">
-                  node: <code>{deployNodeId || "-"}</code> · 复制/下载后在节点机器上运行 <code>docker compose up -d</code>
+                  {t.tr("node", "节点")}: <code>{deployNodeId || "-"}</code> ·{" "}
+                  {locale === "zh" ? (
+                    <>
+                      复制/下载后在节点机器上运行 <code>docker compose up -d</code>
+                    </>
+                  ) : (
+                    <>
+                      after copying/downloading, run <code>docker compose up -d</code> on the node machine
+                    </>
+                  )}
                 </div>
               </div>
               <button type="button" onClick={() => setDeployOpen(false)}>
-                Close
+                {t.tr("Close", "关闭")}
               </button>
             </div>
 
             <div className="grid2" style={{ alignItems: "start" }}>
               <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label>Panel WS URL</label>
+                <label>{t.tr("Panel WS URL", "Panel WS 地址")}</label>
                 <input value={deployPanelWsUrl} onChange={(e) => setDeployPanelWsUrl(e.target.value)} placeholder="wss://panel.example.com/ws/daemon" />
-                <div className="hint">如果面板是 HTTPS，请用 wss://；HTTP 则用 ws://</div>
+                <div className="hint">{t.tr("Use wss:// for HTTPS panels; use ws:// for HTTP panels.", "如果面板是 HTTPS，请用 wss://；HTTP 则用 ws://")}</div>
               </div>
               <div className="field">
-                <label>daemon_id</label>
+                <label>{t.tr("daemon_id", "daemon_id")}</label>
                 <input value={deployNodeId} readOnly />
               </div>
               <div className="field">
-                <label>token</label>
+                <label>{t.tr("token", "token")}</label>
                 <input value={deployToken} readOnly />
               </div>
               <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label>docker-compose.yml</label>
+                <label>{t.tr("docker-compose.yml", "docker-compose.yml")}</label>
                 <textarea readOnly rows={12} value={deployComposeYml} style={{ width: "100%" }} onFocus={(e) => e.currentTarget.select()} />
                 <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
                   <button type="button" className="iconBtn" onClick={() => copyText(deployComposeYml)}>
                     <Icon name="copy" />
-                    Copy
+                    {t.tr("Copy", "复制")}
                   </button>
                   <button
                     type="button"
@@ -6287,7 +6574,7 @@ export default function HomePage() {
                     }}
                   >
                     <Icon name="download" />
-                    Download
+                    {t.tr("Download", "下载")}
                   </button>
                 </div>
               </div>
@@ -6301,24 +6588,29 @@ export default function HomePage() {
           <div className="modal" style={{ width: "min(640px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <div>
-                <div style={{ fontWeight: 800 }}>Add Node</div>
-                <div className="hint">创建后会生成/保存 token；如需换 token，请先删除再创建。</div>
+                <div style={{ fontWeight: 800 }}>{t.tr("Add Node", "添加节点")}</div>
+                <div className="hint">
+                  {t.tr(
+                    "A token will be generated/saved after creation. To rotate a token, delete and recreate the node.",
+                    "创建后会生成/保存 token；如需换 token，请先删除再创建。"
+                  )}
+                </div>
                 {nodesStatus ? <div className="hint">{nodesStatus}</div> : null}
               </div>
               <button type="button" onClick={() => setAddNodeOpen(false)}>
-                Close
+                {t.tr("Close", "关闭")}
               </button>
             </div>
 
             <div className="grid2" style={{ alignItems: "start" }}>
               <div className="field">
-                <label>daemon_id</label>
+                <label>{t.tr("daemon_id", "daemon_id")}</label>
                 <input value={newNodeId} onChange={(e) => setNewNodeId(e.target.value)} placeholder="my-node" />
-                <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
+                <div className="hint">{t.tr("Suggestion: A-Z a-z 0-9 . _ - (max 64)", "建议：A-Z a-z 0-9 . _ -（最长 64）")}</div>
               </div>
               <div className="field">
-                <label>token (optional)</label>
-                <input value={newNodeToken} onChange={(e) => setNewNodeToken(e.target.value)} placeholder="留空则自动生成" />
+                <label>{t.tr("token (optional)", "token（可选）")}</label>
+                <input value={newNodeToken} onChange={(e) => setNewNodeToken(e.target.value)} placeholder={t.tr("leave blank to auto-generate", "留空则自动生成")} />
               </div>
             </div>
 
@@ -6337,12 +6629,12 @@ export default function HomePage() {
                       body: JSON.stringify({ id: newNodeId, token: newNodeToken }),
                     });
                     const json = await res.json();
-                    if (!res.ok) throw new Error(json?.error || "failed");
+                    if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
                     const node = json.node;
                     setCreatedNode({ id: node.id, token: node.token });
                     setNewNodeId("");
                     setNewNodeToken("");
-                    setNodesStatus(`Created: ${node.id}`);
+                    setNodesStatus(t.tr(`Created: ${node.id}`, `已创建：${node.id}`));
                     const res2 = await apiFetch("/api/nodes", { cache: "no-store" });
                     const json2 = await res2.json();
                     if (res2.ok) setNodes(json2.nodes || []);
@@ -6356,24 +6648,24 @@ export default function HomePage() {
                   }
                 }}
               >
-                Create
+                {t.tr("Create", "创建")}
               </button>
             </div>
 
 	            {createdNode ? (
 	              <div className="card" style={{ marginTop: 12 }}>
-	                <h3>Token</h3>
+	                <h3>{t.tr("Token", "Token")}</h3>
 	                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
 	                  <code>{createdNode.token}</code>
 	                  <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
 	                    <button
 	                      type="button"
 	                      className="iconBtn iconOnly"
-	                      title="Copy token"
-	                      aria-label="Copy token"
+	                      title={t.tr("Copy token", "复制 token")}
+	                      aria-label={t.tr("Copy token", "复制 token")}
 	                      onClick={async () => {
 	                        await copyText(createdNode.token);
-	                        setNodesStatus("Copied");
+	                        setNodesStatus(t.tr("Copied", "已复制"));
 	                        setTimeout(() => setNodesStatus(""), 800);
 	                      }}
 	                    >
@@ -6381,7 +6673,7 @@ export default function HomePage() {
 	                    </button>
 	                    <button type="button" className="iconBtn" onClick={() => openDeployDaemonModal(createdNode.id, createdNode.token)}>
 	                      <Icon name="download" />
-	                      Compose
+	                      {t.tr("Compose", "Compose")}
 	                    </button>
 	                  </div>
 	                </div>
@@ -6396,26 +6688,26 @@ export default function HomePage() {
           <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <div>
-                <div style={{ fontWeight: 800 }}>Add FRP Server</div>
-                <div className="hint">保存后可在 Games 一键复用。</div>
+                <div style={{ fontWeight: 800 }}>{t.tr("Add FRP Server", "添加 FRP 服务器")}</div>
+                <div className="hint">{t.tr("After saving, you can reuse it in Games with one click.", "保存后可在 Games 一键复用。")}</div>
                 {profilesStatus ? <div className="hint">{profilesStatus}</div> : null}
               </div>
               <button type="button" onClick={() => setAddFrpOpen(false)}>
-                Close
+                {t.tr("Close", "关闭")}
               </button>
             </div>
 
             <div className="grid2" style={{ alignItems: "start" }}>
               <div className="field">
-                <label>Name</label>
+                <label>{t.tr("Name", "名称")}</label>
                 <input value={newProfileName} onChange={(e) => setNewProfileName(e.target.value)} placeholder="My FRP" />
               </div>
               <div className="field">
-                <label>Server Addr</label>
+                <label>{t.tr("Server Addr", "服务器地址")}</label>
                 <input value={newProfileAddr} onChange={(e) => setNewProfileAddr(e.target.value)} placeholder="frp.example.com" />
               </div>
               <div className="field">
-                <label>Server Port</label>
+                <label>{t.tr("Server Port", "服务器端口")}</label>
                 <input
                   type="number"
                   value={Number.isFinite(newProfilePort) ? newProfilePort : 7000}
@@ -6426,14 +6718,14 @@ export default function HomePage() {
                 />
               </div>
               <div className="field">
-                <label>Token (optional)</label>
+                <label>{t.tr("Token (optional)", "Token（可选）")}</label>
                 <input value={newProfileToken} onChange={(e) => setNewProfileToken(e.target.value)} placeholder="******" />
               </div>
             </div>
 
             <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
               <button className="primary" type="button" disabled={!newProfileName.trim() || !newProfileAddr.trim()} onClick={addFrpProfile}>
-                Save
+                {t.tr("Save", "保存")}
               </button>
             </div>
           </div>

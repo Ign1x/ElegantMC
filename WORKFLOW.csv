@@ -91,7 +91,7 @@ WF-20260118-89,P3,panel-ui,done,System theme option,"Users want the UI to follow
 WF-20260118-90,P3,panel-ui,done,High-contrast theme,"Dark mode still has low contrast in some areas","Add a high-contrast theme palette and ensure readable defaults",feat(panel): high contrast theme
 WF-20260118-91,P3,panel-ui,done,Sync theme across devices,"Theme preference is local-only and resets on new device/browser","Persist theme preference in server-side session and restore on login",feat(panel): sync theme
 WF-20260118-92,P2,i18n,done,Language selector,"Users cannot switch UI language explicitly","Add language dropdown (Chinese/English) with persistence",feat(i18n): language switch
-WF-20260118-93,P2,i18n,todo,Translate remaining UI strings,"UI still mixes English/Chinese across many screens","All user-facing strings are moved into i18n and have zh/en translations",ux(i18n): complete strings
+WF-20260118-93,P2,i18n,done,Translate remaining UI strings,"UI still mixes English/Chinese across many screens","All user-facing strings are moved into i18n and have zh/en translations",ux(i18n): complete strings
 WF-20260118-94,P3,i18n,done,Number/date formatting,"Dates/sizes are formatted inconsistently across locales","Use locale-aware formatting for dates, times, and file sizes",ux(i18n): locale formatting
 WF-20260118-95,P3,panel-ui,done,In-app changelog,"Users cannot easily see what changed between versions","Add a 'What's new' dialog that reads CHANGELOG.md and shows latest entries",feat(panel): changelog dialog
 WF-20260118-96,P3,docs,done,In-app help links,"Troubleshooting knowledge is only in README","Add contextual help links/tooltips to relevant docs sections",docs(panel): in-app help

@@ -65,6 +65,7 @@ export default function GamesView() {
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [highlightLogs, setHighlightLogs] = useState<boolean>(true);
   const [logPaused, setLogPaused] = useState<boolean>(false);
+  const [logClearAtUnix, setLogClearAtUnix] = useState<number>(0);
   const [pausedLogs, setPausedLogs] = useState<any[] | null>(null);
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [logScrollTop, setLogScrollTop] = useState<number>(0);
@@ -112,6 +113,10 @@ export default function GamesView() {
     return () => window.clearTimeout(t);
   }, [logQueryRaw]);
 
+  useEffect(() => {
+    setLogClearAtUnix(0);
+  }, [instanceId, logView]);
+
   const filteredLogs = useMemo(() => {
     const inst = instanceId.trim();
     const q = logQuery.trim().toLowerCase();
@@ -123,9 +128,11 @@ export default function GamesView() {
       // all
       return (l.instance && l.instance === inst) || (l.source === "frp" && !l.instance);
     });
-    if (!q) return list;
-    return list.filter((l: any) => String(l?.line || "").toLowerCase().includes(q));
-  }, [logs, logView, instanceId, logQuery, logPaused, pausedLogs]);
+    const since = Math.max(0, Math.floor(Number(logClearAtUnix || 0)));
+    const next = since ? list.filter((l: any) => Math.floor(Number(l?.ts_unix || 0)) >= since) : list;
+    if (!q) return next;
+    return next.filter((l: any) => String(l?.line || "").toLowerCase().includes(q));
+  }, [logs, logView, instanceId, logQuery, logPaused, pausedLogs, logClearAtUnix]);
 
   const logLines = useMemo<RenderLogLine[]>(() => {
     const list = filteredLogs.length ? filteredLogs.slice(-2000) : [];
@@ -552,6 +559,15 @@ export default function GamesView() {
               {logPaused ? "Resume" : "Pause"}
             </button>
             {logPaused ? <span className="badge">paused</span> : null}
+            <button
+              type="button"
+              className="iconBtn"
+              onClick={() => {
+                setLogClearAtUnix(Math.floor(Date.now() / 1000));
+              }}
+            >
+              Clear view
+            </button>
             <button
               type="button"
               className="iconBtn"

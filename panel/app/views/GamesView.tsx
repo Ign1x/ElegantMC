@@ -23,6 +23,7 @@ export default function GamesView() {
     deleteServer,
     backupServer,
     openRestoreModal,
+    openTrashModal,
     openServerPropertiesEditor,
     renameInstance,
     cloneInstance,
@@ -244,6 +245,7 @@ export default function GamesView() {
                   if (v === "restart") restartServer();
                   else if (v === "backup") backupServer();
                   else if (v === "restore") openRestoreModal();
+                  else if (v === "trash") openTrashModal();
                   else if (v === "properties") openServerPropertiesEditor();
                   else if (v === "rename") renameInstance();
                   else if (v === "clone") cloneInstance();
@@ -258,6 +260,7 @@ export default function GamesView() {
                   { value: "restart", label: "Restart", disabled: !canControl },
                   { value: "backup", label: "Backup", disabled: !canControl },
                   { value: "restore", label: "Restore…", disabled: !canControl },
+                  { value: "trash", label: "Trash…", disabled: !selectedDaemon?.connected },
                   { value: "properties", label: "server.properties…", disabled: !canControl },
                   { value: "rename", label: "Rename…", disabled: !canControl },
                   { value: "clone", label: "Clone…", disabled: !canControl },

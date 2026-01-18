@@ -575,6 +575,9 @@ export default function HomePage() {
   const [restoreStatus, setRestoreStatus] = useState<string>("");
   const [restoreCandidates, setRestoreCandidates] = useState<string[]>([]);
   const [restoreZipPath, setRestoreZipPath] = useState<string>("");
+  const [trashOpen, setTrashOpen] = useState<boolean>(false);
+  const [trashStatus, setTrashStatus] = useState<string>("");
+  const [trashItems, setTrashItems] = useState<any[]>([]);
   const [serverPropsOpen, setServerPropsOpen] = useState<boolean>(false);
   const [serverPropsStatus, setServerPropsStatus] = useState<string>("");
   const [serverPropsRaw, setServerPropsRaw] = useState<string>("");
@@ -1281,7 +1284,7 @@ export default function HomePage() {
     try {
       const out = await callOkCommand("fs_list", { path: "" }, 30_000);
       const dirs = (out.entries || [])
-        .filter((e: any) => e?.isDir && e?.name && !String(e.name).startsWith("."))
+        .filter((e: any) => e?.isDir && e?.name && !String(e.name).startsWith(".") && !String(e.name).startsWith("_"))
         .map((e: any) => String(e.name));
       dirs.sort((a: string, b: string) => a.localeCompare(b));
       setServerDirs(dirs);
@@ -2954,14 +2957,21 @@ export default function HomePage() {
       } catch {
         // ignore
       }
-      try {
-        await callOkCommand("mc_stop", { instance_id: id }, 30_000);
-      } catch {
-        // ignore
-      }
-      await callOkCommand("mc_delete", { instance_id: id }, 60_000);
-      setServerOpStatus(`Deleted: ${id}`);
+	      try {
+	        await callOkCommand("mc_stop", { instance_id: id }, 30_000);
+	      } catch {
+	        // ignore
+	      }
+
+      const out = await callOkCommand("fs_trash", { path: id }, 60_000);
+      const trashPath = String(out?.trash_path || "").trim();
+      setServerOpStatus(trashPath ? `Moved to trash: ${trashPath}` : `Moved to trash`);
       setInstanceId("");
+      if (fsPath === id || fsPath.startsWith(`${id}/`)) {
+        setFsPath("");
+        setFsSelectedFile("");
+        setFsFileText("");
+      }
       try {
         await refreshServerDirs();
       } catch {
@@ -3332,6 +3342,95 @@ export default function HomePage() {
     }
   }
 
+  async function refreshTrashItems() {
+    if (!selectedDaemon?.connected) {
+      setTrashStatus("daemon offline");
+      setTrashItems([]);
+      return;
+    }
+    setTrashStatus("Loading trash...");
+    try {
+      const out = await callOkCommand("fs_trash_list", { limit: 200 }, 30_000);
+      const items = Array.isArray(out?.items) ? out.items : [];
+      const filtered = items.filter((it: any) => {
+        const info = it?.info || {};
+        const orig = String(info?.original_path || "").trim();
+        if (!orig) return false;
+        if (orig.includes("/")) return false;
+        if (orig.startsWith("_") || orig.startsWith(".")) return false;
+        return true;
+      });
+      setTrashItems(filtered);
+      setTrashStatus(filtered.length ? "" : "Trash empty");
+    } catch (e: any) {
+      setTrashItems([]);
+      setTrashStatus(String(e?.message || e));
+    }
+  }
+
+  async function openTrashModal() {
+    if (!selectedDaemon?.connected) {
+      setServerOpStatus("daemon offline");
+      return;
+    }
+    setTrashItems([]);
+    setTrashStatus("");
+    setTrashOpen(true);
+    await refreshTrashItems();
+  }
+
+  async function restoreTrashItem(it: any) {
+    const trashPath = String(it?.trash_path || "").trim();
+    const info = it?.info || {};
+    const orig = String(info?.original_path || "").trim();
+    if (!trashPath || !orig) return;
+
+    const ok = await confirmDialog(`Restore ${orig} from trash?`, {
+      title: "Restore",
+      confirmLabel: "Restore",
+      cancelLabel: "Cancel",
+    });
+    if (!ok) return;
+
+    setTrashStatus("Restoring...");
+    try {
+      await callOkCommand("fs_trash_restore", { trash_path: trashPath }, 60_000);
+      await refreshServerDirs();
+      setInstanceId(orig);
+      setTrashStatus("Restored");
+      setTimeout(() => setTrashStatus(""), 900);
+      setTrashOpen(false);
+      pushToast(`Restored: ${orig}`, "ok");
+    } catch (e: any) {
+      setTrashStatus(String(e?.message || e));
+    }
+  }
+
+  async function deleteTrashItemForever(it: any) {
+    const trashPath = String(it?.trash_path || "").trim();
+    const info = it?.info || {};
+    const orig = String(info?.original_path || "").trim();
+    if (!trashPath) return;
+
+    const ok = await confirmDialog(`Delete permanently from trash?\n\n${orig ? `original: ${orig}\n` : ""}trash: ${trashPath}`, {
+      title: "Delete forever",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setTrashStatus("Deleting...");
+    try {
+      await callOkCommand("fs_trash_delete", { trash_path: trashPath }, 60_000);
+      await refreshTrashItems();
+      pushToast("Deleted from trash", "ok");
+      setTrashStatus("");
+    } catch (e: any) {
+      setTrashStatus(String(e?.message || e));
+    }
+  }
+
   async function openServerPropertiesEditor() {
     if (!selectedDaemon?.connected) {
       setServerOpStatus("daemon offline");
@@ -3688,6 +3787,7 @@ export default function HomePage() {
     deleteServer,
     backupServer,
     openRestoreModal,
+    openTrashModal,
     openServerPropertiesEditor,
     renameInstance,
     cloneInstance,
@@ -4855,6 +4955,76 @@ export default function HomePage() {
                     Restore
                   </button>
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {trashOpen ? (
+            <div className="modalOverlay" onClick={() => setTrashOpen(false)}>
+              <div className="modal" style={{ width: "min(860px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+                <div className="modalHeader">
+                  <div>
+                    <div style={{ fontWeight: 800 }}>Trash</div>
+                    <div className="hint">
+                      location: <code>servers/_trash/</code> · only shows deleted games (top-level folders)
+                    </div>
+                    {trashStatus ? <div className="hint">{trashStatus}</div> : null}
+                  </div>
+                  <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                    <button type="button" onClick={refreshTrashItems} disabled={!selectedDaemon?.connected}>
+                      Refresh
+                    </button>
+                    <button type="button" onClick={() => setTrashOpen(false)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                {trashItems.length ? (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Original</th>
+                        <th>Deleted</th>
+                        <th>Trash path</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trashItems.map((it: any) => {
+                        const info = it?.info || {};
+                        const orig = String(info?.original_path || "-");
+                        const deleted = fmtUnix(Number(info?.deleted_at_unix || 0));
+                        const trashPath = String(it?.trash_path || "-");
+                        return (
+                          <tr key={trashPath}>
+                            <td>
+                              <code>{orig}</code>
+                            </td>
+                            <td>{deleted}</td>
+                            <td style={{ maxWidth: 360 }}>
+                              <code style={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {trashPath}
+                              </code>
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                                <button type="button" onClick={() => restoreTrashItem(it)}>
+                                  Restore
+                                </button>
+                                <button type="button" className="dangerBtn" onClick={() => deleteTrashItemForever(it)}>
+                                  Delete forever
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="hint">Trash is empty.</div>
+                )}
               </div>
             </div>
           ) : null}

@@ -68,6 +68,7 @@ export default function GamesView() {
   const [logQueryRaw, setLogQueryRaw] = useState<string>("");
   const [logQuery, setLogQuery] = useState<string>("");
   const [logRegex, setLogRegex] = useState<boolean>(false);
+  const [logLevelFilter, setLogLevelFilter] = useState<"all" | "warn" | "error">("all");
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [wrapLogs, setWrapLogs] = useState<boolean>(true);
   const [highlightLogs, setHighlightLogs] = useState<boolean>(true);
@@ -251,7 +252,7 @@ export default function GamesView() {
   const logLines = useMemo<RenderLogLine[]>(() => {
     const list = filteredLogs.length ? filteredLogs.slice(-2000) : [];
     if (!list.length) return [{ text: "<no logs>", level: "" }];
-    return list.map((l: any) => {
+    const mapped = list.map((l: any) => {
       const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
       const src = l.source || "daemon";
       const stream = l.stream || "";
@@ -262,7 +263,16 @@ export default function GamesView() {
       const isWarn = /\bWARN(ING)?\b/.test(upper);
       return { text, level: isErr ? "error" : isWarn ? "warn" : "" };
     });
-  }, [filteredLogs]);
+    if (logLevelFilter === "warn") {
+      const out = mapped.filter((l) => l.level === "warn");
+      return out.length ? out : [{ text: "<no logs>", level: "" }];
+    }
+    if (logLevelFilter === "error") {
+      const out = mapped.filter((l) => l.level === "error");
+      return out.length ? out : [{ text: "<no logs>", level: "" }];
+    }
+    return mapped;
+  }, [filteredLogs, logLevelFilter]);
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -811,6 +821,18 @@ export default function GamesView() {
                   { value: "mc", label: "MC" },
                   { value: "install", label: "Install" },
                   { value: "frp", label: "FRP" },
+                ]}
+              />
+            </div>
+            <div className="field" style={{ minWidth: 160 }}>
+              <label>Level</label>
+              <Select
+                value={logLevelFilter}
+                onChange={(v) => setLogLevelFilter(v as any)}
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "warn", label: "Warn" },
+                  { value: "error", label: "Error" },
                 ]}
               />
             </div>

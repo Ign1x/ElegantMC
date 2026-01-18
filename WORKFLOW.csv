@@ -157,7 +157,7 @@ WF-20260118-155,P2,perf,done,WebSocket reconnect backoff,"Temporary network issu
 WF-20260118-156,P3,reliability,todo,Offline-friendly caching,"Panel becomes blank during brief disconnections","Cache last known state and show stale indicators during offline mode",feat(panel): offline cache
 WF-20260118-157,P3,docs,todo,Contributor guide,"New contributors lack guidance for dev setup and conventions","Add CONTRIBUTING.md with local dev, test, and release notes",docs: contributing
 WF-20260118-158,P3,logs,done,Wrap logs toggle,Long log lines cause horizontal scrolling and reduce readability,Logs view has a wrap toggle; wrapped lines are readable without breaking copy/download,ux(logs): wrap toggle
-WF-20260118-159,P3,logs,todo,Log level filters,Users want to quickly focus on errors/warnings in noisy logs,Logs view can filter to All/Warn/Error and shows active filter,ux(logs): level filters
+WF-20260118-159,P3,logs,done,Log level filters,Users want to quickly focus on errors/warnings in noisy logs,Logs view can filter to All/Warn/Error and shows active filter,ux(logs): level filters
 WF-20260118-160,P3,logs,todo,Timestamp format toggle,Timestamps are hard to correlate across sources and timezones,Logs view can switch between local time and relative (e.g. +12s) timestamps,ux(logs): time format toggle
 WF-20260118-161,P3,logs,todo,Search highlight,Searching logs finds matches but does not visually highlight them,Log search highlights matched substrings with a subtle mark style,ux(logs): search highlight
 WF-20260118-162,P3,panel-ui,todo,Games empty state CTA,"When no instances exist, the page feels blank and users don't know what to do",Games page shows an empty-state card with an Install call-to-action,ux(games): empty state

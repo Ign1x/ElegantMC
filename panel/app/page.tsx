@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppCtxProvider } from "./appCtx";
+import { createT, normalizeLocale, type Locale } from "./i18n";
 import Icon from "./ui/Icon";
 import Select from "./ui/Select";
 import AdvancedView from "./views/AdvancedView";
@@ -507,6 +508,8 @@ export default function HomePage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [loginPassword, setLoginPassword] = useState<string>("");
   const [loginStatus, setLoginStatus] = useState<string>("");
+  const [locale, setLocale] = useState<Locale>("en");
+  const t = useMemo(() => createT(locale), [locale]);
 
   // UI dialogs (avoid browser confirm/prompt)
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
@@ -807,6 +810,34 @@ export default function HomePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Locale (en/zh)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("elegantmc_locale") || "";
+      if (saved) {
+        setLocale(normalizeLocale(saved));
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      const lang = String(navigator.language || "");
+      setLocale(lang.toLowerCase().startsWith("zh") ? "zh" : "en");
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("elegantmc_locale", locale);
+    } catch {
+      // ignore
+    }
+  }, [locale]);
 
   useEffect(() => {
     const mode: ThemeMode = themeMode === "dark" || themeMode === "light" ? themeMode : "auto";
@@ -3403,12 +3434,12 @@ export default function HomePage() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "nodes", label: "Nodes" },
-    { id: "games", label: "Games" },
-    { id: "frp", label: "FRP" },
-    { id: "files", label: "Files" },
-    { id: "panel", label: "Panel" },
-    ...(enableAdvanced ? [{ id: "advanced" as Tab, label: "Advanced" }] : []),
+    { id: "nodes", label: t("tab.nodes") },
+    { id: "games", label: t("tab.games") },
+    { id: "frp", label: t("tab.frp") },
+    { id: "files", label: t("tab.files") },
+    { id: "panel", label: t("tab.panel") },
+    ...(enableAdvanced ? [{ id: "advanced" as Tab, label: t("tab.advanced") }] : []),
   ];
 
   const activeTab = useMemo(() => tabs.find((t) => t.id === tab) || tabs[0], [tab]);

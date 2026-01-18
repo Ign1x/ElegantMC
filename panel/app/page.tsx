@@ -3418,6 +3418,62 @@ export default function HomePage() {
     }
   }
 
+  async function exportInstanceZip() {
+    if (gameActionBusy) return;
+    if (!selectedDaemon?.connected) {
+      setServerOpStatus("daemon offline");
+      return;
+    }
+    const inst = instanceId.trim();
+    if (!inst) {
+      setServerOpStatus("instance_id 不能为空");
+      return;
+    }
+
+    setGameActionBusy(true);
+    setServerOpStatus("Exporting zip...");
+    let zipPath = "";
+    try {
+      const out = await callOkCommand("fs_zip", { path: inst }, 10 * 60_000);
+      zipPath = String(out?.zip_path || "").trim();
+      if (!zipPath) throw new Error("zip_path missing");
+
+      const st = await callOkCommand("fs_stat", { path: zipPath }, 10_000);
+      const size = Math.max(0, Number(st?.size || 0));
+      const max = 200 * 1024 * 1024;
+      if (size > max) {
+        throw new Error(`Zip too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)}). File: ${zipPath}`);
+      }
+
+      setServerOpStatus(`Downloading ${zipPath} ...`);
+      const payload = await callOkCommand("fs_read", { path: zipPath }, 10 * 60_000);
+      const bytes = b64DecodeBytes(String(payload?.b64 || ""));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${inst}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      pushToast(`Exported: ${inst}.zip`, "ok");
+      setServerOpStatus("Exported");
+      setTimeout(() => setServerOpStatus(""), 900);
+    } catch (e: any) {
+      setServerOpStatus(String(e?.message || e));
+    } finally {
+      if (zipPath) {
+        try {
+          await callOkCommand("fs_delete", { path: zipPath }, 60_000);
+        } catch {
+          // ignore
+        }
+      }
+      setGameActionBusy(false);
+    }
+  }
+
   async function refreshRestoreCandidates(inst: string) {
     const id = String(inst || "").trim();
     if (!id) return;
@@ -3977,6 +4033,7 @@ export default function HomePage() {
     backupServer,
     openRestoreModal,
     openTrashModal,
+    exportInstanceZip,
     openServerPropertiesEditor,
     renameInstance,
     cloneInstance,

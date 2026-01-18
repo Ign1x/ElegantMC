@@ -5,6 +5,8 @@ import { useAppCtx } from "../appCtx";
 import Icon from "../ui/Icon";
 import Select from "../ui/Select";
 
+type RenderLogLine = { text: string; level: "" | "warn" | "error" };
+
 export default function GamesView() {
   const {
     serverDirs,
@@ -62,7 +64,8 @@ export default function GamesView() {
   const [highlightLogs, setHighlightLogs] = useState<boolean>(true);
   const [logPaused, setLogPaused] = useState<boolean>(false);
   const [pausedLogs, setPausedLogs] = useState<any[] | null>(null);
-  const preRef = useRef<HTMLPreElement | null>(null);
+  const logScrollRef = useRef<HTMLDivElement | null>(null);
+  const [logScrollTop, setLogScrollTop] = useState<number>(0);
 
   const socketText = useMemo(() => {
     if (frpStatus?.running && frpStatus.remote_port) {
@@ -117,37 +120,51 @@ export default function GamesView() {
     return list.filter((l: any) => String(l?.line || "").toLowerCase().includes(q));
   }, [logs, logView, instanceId, logQuery, logPaused, pausedLogs]);
 
-  const logText = useMemo(() => {
-    return filteredLogs.length
-      ? filteredLogs
-          .slice(-400)
-          .map((l: any) => {
-            const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
-            const src = l.source || "daemon";
-            const stream = l.stream || "";
-            const inst = l.instance ? `(${l.instance})` : "";
-            return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
-          })
-          .join("\n")
-      : "<no logs>";
-  }, [filteredLogs]);
-
-  const logLines = useMemo(() => {
-    const lines = String(logText || "").split("\n");
-    return lines.map((text) => {
+  const logLines = useMemo<RenderLogLine[]>(() => {
+    const list = filteredLogs.length ? filteredLogs.slice(-2000) : [];
+    if (!list.length) return [{ text: "<no logs>", level: "" }];
+    return list.map((l: any) => {
+      const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
+      const src = l.source || "daemon";
+      const stream = l.stream || "";
+      const inst = l.instance ? `(${l.instance})` : "";
+      const text = `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
       const upper = String(text || "").toUpperCase();
       const isErr = /\b(ERROR|FATAL)\b/.test(upper) || upper.includes("EXCEPTION") || upper.includes("STACKTRACE");
       const isWarn = /\bWARN(ING)?\b/.test(upper);
       return { text, level: isErr ? "error" : isWarn ? "warn" : "" };
     });
-  }, [logText]);
+  }, [filteredLogs]);
 
   useEffect(() => {
     if (!autoScroll) return;
-    const el = preRef.current;
+    const el = logScrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [logText, autoScroll]);
+  }, [logLines.length, autoScroll]);
+
+  const logVirtual = useMemo<{
+    start: number;
+    end: number;
+    topPad: number;
+    bottomPad: number;
+    visible: RenderLogLine[];
+  }>(() => {
+    const total = logLines.length;
+    const lineHeight = 18;
+    const viewHeight = 640;
+    const overscan = 12;
+    const start = Math.max(0, Math.floor(logScrollTop / lineHeight) - overscan);
+    const visibleCount = Math.ceil(viewHeight / lineHeight) + overscan * 2;
+    const end = Math.min(total, start + visibleCount);
+    return {
+      start,
+      end,
+      topPad: start * lineHeight,
+      bottomPad: (total - end) * lineHeight,
+      visible: logLines.slice(start, end),
+    };
+  }, [logLines, logScrollTop]);
 
   useEffect(() => {
     if (!selectedDaemon?.connected) return;
@@ -533,15 +550,9 @@ export default function GamesView() {
               className="iconBtn"
               onClick={() => {
                 const text =
-                  filteredLogs
+                  logLines
                     .slice(-300)
-                    .map((l: any) => {
-                      const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
-                      const src = l.source || "daemon";
-                      const stream = l.stream || "";
-                      const inst = l.instance ? `(${l.instance})` : "";
-                      return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
-                    })
+                    .map((l: any) => l.text)
                     .join("\n") || "";
                 copyText(text || "<empty>");
               }}
@@ -554,15 +565,9 @@ export default function GamesView() {
               className="iconBtn"
               onClick={() => {
                 const text =
-                  filteredLogs
+                  logLines
                     .slice(-2000)
-                    .map((l: any) => {
-                      const ts = l.ts_unix ? new Date(l.ts_unix * 1000).toLocaleTimeString() : "--:--:--";
-                      const src = l.source || "daemon";
-                      const stream = l.stream || "";
-                      const inst = l.instance ? `(${l.instance})` : "";
-                      return `[${ts}] ${src}${inst} ${stream}: ${l.line || ""}`;
-                    })
+                    .map((l: any) => l.text)
                     .join("\n") || "";
                 const blob = new Blob([text || "<empty>"], { type: "text/plain;charset=utf-8" });
                 const url = URL.createObjectURL(blob);
@@ -581,16 +586,24 @@ export default function GamesView() {
             </button>
           </div>
         </div>
-        <pre ref={preRef} style={{ maxHeight: 640, overflow: "auto" }}>
-          {highlightLogs
-            ? logLines.map((l, idx) => (
-                <span key={idx} className={`logLine ${l.level}`}>
-                  {l.text}
-                  {"\n"}
-                </span>
-              ))
-            : logText}
-        </pre>
+        <div
+          ref={logScrollRef}
+          style={{ maxHeight: 640, overflow: "auto" }}
+          onScroll={(e) => setLogScrollTop(e.currentTarget.scrollTop)}
+        >
+          <div style={{ height: logVirtual.topPad }} />
+          <pre style={{ margin: 0 }}>
+            {highlightLogs
+              ? logVirtual.visible.map((l, idx) => (
+                  <span key={`${logVirtual.start + idx}`} className={`logLine ${l.level}`}>
+                    {l.text}
+                    {"\n"}
+                  </span>
+                ))
+              : logVirtual.visible.map((l) => l.text).join("\n")}
+          </pre>
+          <div style={{ height: logVirtual.bottomPad }} />
+        </div>
         <div className="hint">提示：All 会显示当前游戏 + FRP 的日志。</div>
 
         <div className="row" style={{ marginTop: 12 }}>

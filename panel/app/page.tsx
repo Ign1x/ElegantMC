@@ -778,6 +778,40 @@ export default function HomePage() {
     }
   }, [themeMode]);
 
+  // Persist selected tab/daemon/game across refresh.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("elegantmc_ui_state_v1");
+      if (!raw) return;
+      const st = JSON.parse(raw);
+
+      const savedTab = String(st?.tab || "");
+      if (savedTab === "nodes" || savedTab === "games" || savedTab === "frp" || savedTab === "files" || savedTab === "panel") {
+        setTab(savedTab as any);
+      }
+
+      const savedDaemon = String(st?.daemon || "").trim();
+      if (savedDaemon) setSelected(savedDaemon);
+
+      const savedInst = String(st?.instance || "").trim();
+      if (savedInst) setInstanceId(savedInst);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "elegantmc_ui_state_v1",
+        JSON.stringify({ tab, daemon: String(selected || ""), instance: String(instanceId || "").trim() })
+      );
+    } catch {
+      // ignore
+    }
+  }, [tab, selected, instanceId]);
+
   useEffect(() => {
     const name = String(panelSettings?.brand_name || "").trim();
     if (!name) return;

@@ -565,6 +565,9 @@ export default function HomePage() {
   const [consoleLine, setConsoleLine] = useState<string>("");
   const [serverOpStatus, setServerOpStatus] = useState<string>("");
   const [gameActionBusy, setGameActionBusy] = useState<boolean>(false);
+  const [instanceUsageBytes, setInstanceUsageBytes] = useState<number | null>(null);
+  const [instanceUsageStatus, setInstanceUsageStatus] = useState<string>("");
+  const [instanceUsageBusy, setInstanceUsageBusy] = useState<boolean>(false);
   const [restoreOpen, setRestoreOpen] = useState<boolean>(false);
   const [restoreStatus, setRestoreStatus] = useState<string>("");
   const [restoreCandidates, setRestoreCandidates] = useState<string[]>([]);
@@ -1515,6 +1518,9 @@ export default function HomePage() {
     setGamePort(25565);
     setXms("1G");
     setXmx("2G");
+    setInstanceUsageBytes(null);
+    setInstanceUsageStatus("");
+    setInstanceUsageBusy(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId]);
 
@@ -2966,6 +2972,50 @@ export default function HomePage() {
     }
   }
 
+  async function computeInstanceUsage(instanceOverride?: string) {
+    if (instanceUsageBusy) return;
+    if (!selectedDaemon?.connected) {
+      setInstanceUsageStatus("daemon offline");
+      return;
+    }
+    const inst = String(instanceOverride ?? instanceId).trim();
+    if (!inst) {
+      setInstanceUsageStatus("instance_id 不能为空");
+      return;
+    }
+
+    setInstanceUsageBusy(true);
+    setInstanceUsageBytes(null);
+    setInstanceUsageStatus("Scanning...");
+    try {
+      const maxEntries = 25_000;
+      let total = 0;
+      let scanned = 0;
+      const stack: string[] = [inst];
+
+      while (stack.length) {
+        const dir = stack.pop()!;
+        const out = await callOkCommand("fs_list", { path: dir }, 30_000);
+        for (const e of out.entries || []) {
+          scanned++;
+          if (scanned > maxEntries) throw new Error(`too many entries (> ${maxEntries}), abort`);
+          const name = String(e?.name || "").trim();
+          if (!name || name === "." || name === "..") continue;
+          if (e?.isDir) stack.push(joinRelPath(dir, name));
+          else total += Math.max(0, Number(e?.size || 0));
+        }
+      }
+
+      setInstanceUsageBytes(total);
+      setInstanceUsageStatus("");
+    } catch (e: any) {
+      setInstanceUsageBytes(null);
+      setInstanceUsageStatus(String(e?.message || e));
+    } finally {
+      setInstanceUsageBusy(false);
+    }
+  }
+
   async function backupServer(instanceOverride?: string) {
     if (gameActionBusy) return;
     setGameActionBusy(true);
@@ -3392,6 +3442,10 @@ export default function HomePage() {
     openServerPropertiesEditor,
     renameInstance,
     cloneInstance,
+    instanceUsageBytes,
+    instanceUsageStatus,
+    instanceUsageBusy,
+    computeInstanceUsage,
     backupZips: restoreCandidates,
     backupZipsStatus: restoreStatus,
     refreshBackupZips,

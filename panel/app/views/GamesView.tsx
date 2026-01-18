@@ -40,6 +40,7 @@ export default function GamesView() {
     frpRemotePort,
     setTab,
     fmtUnix,
+    fmtBytes,
     logView,
     setLogView,
     logs,
@@ -47,6 +48,10 @@ export default function GamesView() {
     setConsoleLine,
     sendConsoleLine,
     setFsPath,
+    instanceUsageBytes,
+    instanceUsageStatus,
+    instanceUsageBusy,
+    computeInstanceUsage,
   } = useAppCtx();
 
   const running = !!instanceStatus?.running;
@@ -66,6 +71,16 @@ export default function GamesView() {
     const ip = localHost || "127.0.0.1";
     return `${ip}:${Math.round(Number(gamePort || 25565))}`;
   }, [frpStatus, localHost, gamePort]);
+
+  const lastBackup = useMemo(() => {
+    const list = Array.isArray(backupZips) ? backupZips : [];
+    if (!list.length) return { unix: null as number | null, file: "" };
+    const p = String(list[0] || "");
+    const file = p.split("/").pop() || p;
+    const m = file.match(/-(\d{9,12})\.zip$/);
+    const unix = m ? Number(m[1]) : null;
+    return { unix: Number.isFinite(Number(unix)) ? Number(unix) : null, file };
+  }, [backupZips]);
 
   useEffect(() => {
     if (!logPaused) {
@@ -316,6 +331,14 @@ export default function GamesView() {
                   "Select a game to view backups"
                 )}
               </div>
+              {instanceId.trim() ? (
+                <div className="hint" style={{ marginTop: 6 }}>
+                  size: <code>{instanceUsageBytes == null ? "-" : fmtBytes(instanceUsageBytes)}</code>
+                  {instanceUsageStatus ? ` · ${instanceUsageStatus}` : ""}
+                  {" · "}
+                  last backup: {lastBackup.unix ? fmtUnix(lastBackup.unix) : Array.isArray(backupZips) && backupZips.length ? lastBackup.file : "-"}
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="toolbarRight">
@@ -327,6 +350,15 @@ export default function GamesView() {
             >
               <Icon name="refresh" />
               Refresh
+            </button>
+            <button
+              type="button"
+              className="iconBtn"
+              onClick={() => computeInstanceUsage()}
+              disabled={!selectedDaemon?.connected || !instanceId.trim() || instanceUsageBusy}
+              title="Compute instance folder size (may take a while)"
+            >
+              {instanceUsageBusy ? "Scanning…" : "Compute size"}
             </button>
             <button
               type="button"

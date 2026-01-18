@@ -26,7 +26,7 @@ WF-20260118-24,P2,games,done,Jar picker,"Jar path is manual and error-prone","Se
 WF-20260118-25,P2,games,done,Server.properties editor,"Port and other settings require manual file editing","Add basic server.properties editor with safe keys",feat(games): properties editor
 WF-20260118-26,P2,games,done,Instance rename,"Renaming instance id is not supported","Add rename workflow (move folder + update configs + FRP proxy name)",feat(games): rename instance
 WF-20260118-27,P2,games,done,Instance clone,"Copying servers requires manual filesystem work","Add clone workflow using backup/restore or fs_copy",feat(games): clone instance
-WF-20260118-28,P2,games,todo,Instance disk usage,"No per-instance size info","Show instance folder size and last backup time",ux(games): usage info
+WF-20260118-28,P2,games,done,Instance disk usage,"No per-instance size info","Show instance folder size and last backup time",ux(games): usage info
 WF-20260118-29,P1,modpacks,todo,Upload mrpack,"Upload flow only accepts .zip and is confusing for .mrpack files","Allow uploading .mrpack and treat it like Modrinth mrpack install",feat(modpacks): upload mrpack
 WF-20260118-30,P1,modpacks,todo,Better zip jar detection,"Zip installs often fail because jar_path is wrong after extraction","After unzip, auto-detect server jar (including subdirs) or prompt selection",fix(modpacks): detect jar
 WF-20260118-31,P2,modpacks,todo,Parallel mrpack downloads,"Mrpack files download sequentially and can be slow","Download mrpack files with limited concurrency and progress",perf(modpacks): parallel downloads

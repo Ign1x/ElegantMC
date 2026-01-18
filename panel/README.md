@@ -42,3 +42,19 @@ Docker 运行时默认挂载到 volume：见根目录 `docker-compose.yml`。
 - `GET/POST/DELETE /api/nodes`：管理 `daemon_id → token`
 - `GET/POST/DELETE /api/frp/profiles`：管理 FRP profiles（GET 会附带 status）
 - `GET /api/mc/versions`：Vanilla 版本列表（Panel 侧拉取并缓存）
+
+## Modpacks（可选）
+
+环境变量：
+
+- `ELEGANTMC_MODRINTH_BASE_URL`（默认 `https://api.modrinth.com`）
+- `ELEGANTMC_CURSEFORGE_BASE_URL`（默认 `https://api.curseforge.com`）
+- `ELEGANTMC_CURSEFORGE_API_KEY`（CurseForge 必填）
+
+主要接口：
+
+- `GET /api/modpacks/providers`
+- `GET /api/modpacks/search?provider=modrinth|curseforge&query=...`
+- `GET /api/modpacks/modrinth/:projectId/versions`
+- `GET /api/modpacks/curseforge/:modId/files`
+- `GET /api/modpacks/curseforge/files/:fileId/download-url`

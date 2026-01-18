@@ -1,6 +1,6 @@
 "use client";
 
-export type IconName = "plus" | "refresh" | "copy" | "download" | "trash" | "settings";
+export type IconName = "plus" | "refresh" | "copy" | "download" | "trash" | "settings" | "search";
 
 export default function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
   const common = {
@@ -132,8 +132,26 @@ export default function Icon({ name, size = 14 }: { name: IconName; size?: numbe
           />
         </svg>
       );
+    case "search":
+      return (
+        <svg {...common}>
+          <path
+            d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M21 21l-4.35-4.35"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
     default:
       return null;
   }
 }
-

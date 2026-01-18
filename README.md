@@ -14,7 +14,7 @@ ElegantMC 是一个「公网 Web Panel + 本地 Daemon」的 Minecraft 开服与
   - Node Details：性能曲线（CPU/MEM）+ instances 列表
 - **Games**
   - 选择已安装的游戏实例（`servers/<instance_id>` 目录）
-  - 一键安装 Vanilla / Paper（弹窗配置：版本/内存/端口/Java/FRP 等，带安装日志）
+  - 一键安装 Vanilla / Paper / Modpack（ZIP 上传、Modrinth/CurseForge 搜索拉取；CurseForge 需 API Key；带安装日志）
   - Start/Stop/Restart/Console/Delete
   - Socket 显示与复制：FRP 显示公网连接地址；不使用 FRP 显示本机/LAN IP:Port
   - 实例配置持久化：`servers/<instance_id>/.elegantmc.json`（jar/java/内存/端口/FRP）
@@ -31,7 +31,7 @@ ElegantMC 是一个「公网 Web Panel + 本地 Daemon」的 Minecraft 开服与
 
 - `daemon/`：Go Daemon（本地节点）
 - `panel/`：Next.js Web Panel（自建 Node server）
-- `docker-compose.yml`：本机一键体验（Panel + Daemon 同机）
+- `docker-compose.yml`：本机一键体验（Panel + Daemon 同机，本地 build）
 
 ## Docker 一键启动（推荐）
 
@@ -69,6 +69,10 @@ docker compose up -d --build
 - Mojang 镜像（BMCLAPI 等）：
   - `ELEGANTMC_MOJANG_META_BASE_URL`
   - `ELEGANTMC_MOJANG_DATA_BASE_URL`
+- Modpack Providers（可选）：
+  - `ELEGANTMC_MODRINTH_BASE_URL`
+  - `ELEGANTMC_CURSEFORGE_BASE_URL`
+  - `ELEGANTMC_CURSEFORGE_API_KEY`（CurseForge 必填）
 
 如果遇到 BuildKit 拉取失败，可用：
 
@@ -76,28 +80,12 @@ docker compose up -d --build
 DOCKER_BUILDKIT=0 docker compose up -d --build
 ```
 
-## DockerHub 镜像一键启动（无需 build）
+## 仅用一个 compose（本地 build）
 
-适用于你已经把镜像发布到 DockerHub（或其他 registry）的场景。
-
-1) 启动（默认使用 `ign1x/*:latest`）：
+本仓库只保留一个 `docker-compose.yml`（不依赖 `.env`），用于本地编译并运行：
 
 ```bash
-docker compose -f docker-compose.images.yml up -d
-```
-
-2) 覆盖 tag / 管理员密码（示例）：
-
-```bash
-ELEGANTMC_IMAGE_TAG='v1.0.0' \
-ELEGANTMC_PANEL_ADMIN_PASSWORD='change-me' \
-docker compose -f docker-compose.images.yml up -d
-```
-
-如果你更喜欢「单文件 + 不使用 env」，可以直接改 `compose.yml` 里的值并运行：
-
-```bash
-docker compose -f compose.yml up -d
+docker compose up -d --build
 ```
 
 ## Smoke Test（5 分钟自检）
@@ -222,6 +210,11 @@ ELEGANTMC_DAEMON_ID="my-node" \
 ELEGANTMC_BASE_DIR="$PWD/.elegantmc" \
 ../daemon-bin
 ```
+
+## Versioning / Releases
+
+- Git tag 使用 `vX.Y.Z`（SemVer）
+- 变更记录见 `CHANGELOG.md`
 
 ## Troubleshooting
 

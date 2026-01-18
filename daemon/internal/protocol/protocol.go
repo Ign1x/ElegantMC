@@ -32,6 +32,7 @@ type Heartbeat struct {
 	UptimeSec  int64             `json:"uptime_sec"`
 	Tags       map[string]string `json:"tags,omitempty"`
 	FRP        *FRPStatus        `json:"frp,omitempty"`
+	FRPProxies []FRPStatus       `json:"frp_proxies,omitempty"`
 	Instances  []MCInstance      `json:"instances,omitempty"`
 	CPU        *CPUStat          `json:"cpu,omitempty"`
 	Mem        *MemStat          `json:"mem,omitempty"`

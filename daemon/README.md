@@ -28,10 +28,38 @@ Java（自动选择）：
   - Daemon 会从 `server.jar` 推断最低 Java major，然后选择 **最小满足版本** 的 Java 启动
   - 也可在 `mc_start` args 里手动传 `java_path`
 
+Java（自动下载，可选）：
+
+- `ELEGANTMC_JAVA_AUTO_DOWNLOAD`：是否允许自动下载 Temurin JRE（默认 `1`）
+- `ELEGANTMC_JAVA_CACHE_DIR`：下载缓存目录（默认：`base_dir/java`）
+- `ELEGANTMC_JAVA_ADOPTIUM_API_BASE_URL`：Adoptium API（默认 `https://api.adoptium.net`）
+
 FRP：
 
 - `ELEGANTMC_FRPC_PATH`：`frpc` 可执行文件路径（默认：`base_dir/bin/frpc` 或 `frpc.exe`）
 - `ELEGANTMC_FRP_WORK_DIR`：FRP 工作目录（默认：`base_dir/frp`）
+
+Scheduler（重启/备份，可选）：
+
+- `ELEGANTMC_SCHEDULE_ENABLED`：是否启用（默认 `1`）
+- `ELEGANTMC_SCHEDULE_FILE`：任务文件路径（默认：`base_dir/schedule.json`）
+- `ELEGANTMC_SCHEDULE_POLL_SEC`：轮询/执行间隔（默认 `30`）
+
+`schedule.json` 示例：
+
+```json
+{
+  "tasks": [
+    { "id": "restart-server1", "type": "restart", "instance_id": "server1", "every_sec": 86400 },
+    { "id": "backup-server1", "type": "backup", "instance_id": "server1", "every_sec": 86400, "keep_last": 7 }
+  ]
+}
+```
+
+说明：
+
+- `restart` 会读取 `servers/<instance>/.elegantmc.json` 作为启动参数（jar/java/xms/xmx）
+- `backup` 会输出 zip 到 `servers/_backups/<instance>/`
 
 镜像/下载源（可选）：
 

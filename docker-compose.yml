@@ -1,18 +1,37 @@
+# Local build/run (no .env required).
+#
+# Usage:
+#   docker compose up -d --build
+#
+# Override any value via env vars, e.g.
+#   ELEGANTMC_PANEL_ADMIN_PASSWORD='change-me' docker compose up -d --build
 services:
   panel:
     build:
       context: ./panel
       args:
         NPM_REGISTRY: "${NPM_REGISTRY:-}"
+        ELEGANTMC_VERSION: "${ELEGANTMC_VERSION:-dev}"
+        ELEGANTMC_REVISION: "${ELEGANTMC_REVISION:-local}"
+        ELEGANTMC_BUILD_DATE: "${ELEGANTMC_BUILD_DATE:-}"
     environment:
       ELEGANTMC_PANEL_HOST: "0.0.0.0"
       ELEGANTMC_PANEL_PORT: "3000"
-      ELEGANTMC_PANEL_ADMIN_PASSWORD: "${ELEGANTMC_PANEL_ADMIN_PASSWORD:-}"
+      # If empty, Panel generates a random password and prints it in logs.
+      ELEGANTMC_PANEL_ADMIN_PASSWORD: "123"
       ELEGANTMC_PANEL_SECURE_COOKIE: "${ELEGANTMC_PANEL_SECURE_COOKIE:-}"
-      # For local quickstart we provide safe defaults. Override via env vars if needed.
+      ELEGANTMC_PANEL_HSTS: "${ELEGANTMC_PANEL_HSTS:-}"
+      ELEGANTMC_ENABLE_ADVANCED: "${ELEGANTMC_ENABLE_ADVANCED:-}"
+      # Local quickstart node (change in production).
       ELEGANTMC_DAEMON_TOKENS_JSON: "{\"${ELEGANTMC_DAEMON_ID:-local-node}\":\"${ELEGANTMC_TOKEN:-local-dev-token}\"}"
       ELEGANTMC_PANEL_DATA_DIR: "/data"
+      # Optional mirrors (recommended in China)
       ELEGANTMC_MOJANG_META_BASE_URL: "${ELEGANTMC_MOJANG_META_BASE_URL:-}"
+      ELEGANTMC_MOJANG_DATA_BASE_URL: "${ELEGANTMC_MOJANG_DATA_BASE_URL:-}"
+      # Modpack providers (optional)
+      ELEGANTMC_MODRINTH_BASE_URL: "${ELEGANTMC_MODRINTH_BASE_URL:-}"
+      ELEGANTMC_CURSEFORGE_BASE_URL: "${ELEGANTMC_CURSEFORGE_BASE_URL:-}"
+      ELEGANTMC_CURSEFORGE_API_KEY: "${ELEGANTMC_CURSEFORGE_API_KEY:-}"
     ports:
       - "${ELEGANTMC_PANEL_PORT:-3000}:3000"
     volumes:
@@ -25,13 +44,21 @@ services:
       args:
         GOPROXY: "${GOPROXY:-}"
         GOSUMDB: "${GOSUMDB:-}"
+        ELEGANTMC_VERSION: "${ELEGANTMC_VERSION:-dev}"
+        ELEGANTMC_REVISION: "${ELEGANTMC_REVISION:-local}"
+        ELEGANTMC_BUILD_DATE: "${ELEGANTMC_BUILD_DATE:-}"
     environment:
       ELEGANTMC_PANEL_WS_URL: "ws://panel:3000/ws/daemon"
       ELEGANTMC_TOKEN: "${ELEGANTMC_TOKEN:-local-dev-token}"
       ELEGANTMC_DAEMON_ID: "${ELEGANTMC_DAEMON_ID:-local-node}"
       ELEGANTMC_BASE_DIR: "/data"
+      ELEGANTMC_PREFERRED_CONNECT_ADDRS: "${ELEGANTMC_PREFERRED_CONNECT_ADDRS:-}"
+      ELEGANTMC_JAVA_CANDIDATES: "${ELEGANTMC_JAVA_CANDIDATES:-}"
+      ELEGANTMC_BIND_PANEL: "${ELEGANTMC_BIND_PANEL:-1}"
+      # Optional mirrors (recommended in China)
       ELEGANTMC_MOJANG_META_BASE_URL: "${ELEGANTMC_MOJANG_META_BASE_URL:-}"
       ELEGANTMC_MOJANG_DATA_BASE_URL: "${ELEGANTMC_MOJANG_DATA_BASE_URL:-}"
+      ELEGANTMC_PAPER_API_BASE_URL: "${ELEGANTMC_PAPER_API_BASE_URL:-}"
     ports:
       - "25565-25600:25565-25600"
     volumes:

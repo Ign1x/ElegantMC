@@ -55,11 +55,11 @@ export default function GamesView() {
     const inst = instanceId.trim();
     const q = logQuery.trim().toLowerCase();
     const list = (logs || []).filter((l: any) => {
-      if (logView === "frp") return l.source === "frp";
+      if (logView === "frp") return l.source === "frp" && (!l.instance || l.instance === inst);
       if (logView === "mc") return l.source === "mc" && l.instance === inst;
       if (logView === "install") return l.source === "install" && l.instance === inst;
       // all
-      return (l.instance && l.instance === inst) || l.source === "frp";
+      return (l.instance && l.instance === inst) || (l.source === "frp" && !l.instance);
     });
     if (!q) return list;
     return list.filter((l: any) => String(l?.line || "").toLowerCase().includes(q));
@@ -113,33 +113,50 @@ export default function GamesView() {
 
           <div className="toolbarRight">
             <div className="btnGroup">
-              <button type="button" className="iconBtn" onClick={refreshServerDirs} disabled={!selectedDaemon?.connected}>
+              <button
+                type="button"
+                className="iconBtn iconOnly"
+                title="Refresh games list"
+                onClick={refreshServerDirs}
+                disabled={!selectedDaemon?.connected}
+              >
                 <Icon name="refresh" />
-                Refresh
               </button>
               <button type="button" className="iconBtn" onClick={openInstallModal} disabled={!selectedDaemon?.connected}>
                 <Icon name="plus" />
                 Install
               </button>
-              <button type="button" className="iconBtn" onClick={openSettingsModal} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+              <button
+                type="button"
+                className="iconBtn iconOnly"
+                title="Settings"
+                onClick={openSettingsModal}
+                disabled={!selectedDaemon?.connected || !instanceId.trim()}
+              >
                 <Icon name="settings" />
-                Settings
               </button>
-              <button type="button" className="iconBtn" onClick={openModsModal} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+              <button
+                type="button"
+                className="iconBtn iconOnly"
+                title="Mods"
+                onClick={openModsModal}
+                disabled={!selectedDaemon?.connected || !instanceId.trim()}
+              >
                 <Icon name="settings" />
-                Mods
               </button>
             </div>
             <div className="btnGroup">
               <button className="primary" onClick={() => startServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
                 Start
               </button>
-              <button onClick={() => restartServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                Restart
-              </button>
               <button onClick={() => stopServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
                 Stop
               </button>
+              <button onClick={() => restartServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+                Restart
+              </button>
+            </div>
+            <div className="btnGroup">
               <button className="dangerBtn" onClick={() => deleteServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
                 Delete
               </button>
@@ -168,48 +185,6 @@ export default function GamesView() {
           </div>
 
           <div className="kv">
-            <div className="k">Socket</div>
-            <div className="v">
-              <code
-                className="clickCopy"
-                role="button"
-                tabIndex={0}
-                title="Click to copy"
-                onClick={() => copyText(socketText)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    copyText(socketText);
-                  }
-                }}
-              >
-                {socketText}
-              </code>
-            </div>
-            <div className="hint">
-              {frpStatus?.running && frpStatus.remote_port ? (
-                <span>FRP：公网连接地址（可直接复制）</span>
-              ) : enableFrp ? (
-                !selectedProfile ? (
-                  <span>
-                    FRP 已开启但未选择服务器（去{" "}
-                    <button className="linkBtn" onClick={() => setTab("frp")}>
-                      FRP
-                    </button>{" "}
-                    标签保存一个 profile）
-                  </span>
-                ) : frpRemotePort <= 0 ? (
-                  <span>FRP 已开启但 Remote Port=0（由服务端分配端口；建议手动指定一个固定端口）</span>
-                ) : (
-                  <span>FRP：启动后会显示公网地址</span>
-                )
-              ) : (
-                <span>未开启 FRP：显示本机/LAN 连接地址</span>
-              )}
-            </div>
-          </div>
-
-          <div className="kv">
             <div className="k">FRP process</div>
             <div className="v">
               {frpStatus?.running ? <span className="badge ok">running</span> : <span className="badge">stopped</span>}
@@ -220,6 +195,57 @@ export default function GamesView() {
             <div className="k">Last heartbeat</div>
             <div className="v">{fmtUnix(selectedDaemon?.heartbeat?.server_time_unix)}</div>
           </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Connect</h2>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <code
+            className="clickCopy"
+            role="button"
+            tabIndex={0}
+            title="Click to copy"
+            style={{ fontSize: 14, padding: "6px 10px" }}
+            onClick={() => (instanceId.trim() ? copyText(socketText) : null)}
+            onKeyDown={(e) => {
+              if (!instanceId.trim()) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                copyText(socketText);
+              }
+            }}
+          >
+            {instanceId.trim() ? socketText : "-"}
+          </code>
+          <button type="button" className="iconBtn" onClick={() => copyText(socketText)} disabled={!instanceId.trim()}>
+            <Icon name="copy" />
+            Copy
+          </button>
+        </div>
+        <div className="hint" style={{ marginTop: 8 }}>
+          {frpStatus?.running && frpStatus.remote_port ? (
+            <span>FRP：公网连接地址（可直接复制给朋友）。</span>
+          ) : enableFrp ? (
+            !selectedProfile ? (
+              <span>
+                FRP 已开启但未选择服务器（去{" "}
+                <button className="linkBtn" onClick={() => setTab("frp")}>
+                  FRP
+                </button>{" "}
+                保存一个 profile）。
+              </span>
+            ) : frpRemotePort <= 0 ? (
+              <span>FRP 已开启但 Remote Port=0（由服务端分配端口；建议手动指定一个固定端口）。</span>
+            ) : (
+              <span>FRP：启动后会显示公网地址。</span>
+            )
+          ) : (
+            <span>未开启 FRP：显示本机/LAN 连接地址（Docker 默认映射 25565-25600）。</span>
+          )}
+        </div>
+        <div className="hint">
+          Minecraft：多人游戏 → 添加服务器 → 地址填 <code>{instanceId.trim() ? socketText : "IP:Port"}</code>
         </div>
       </div>
 

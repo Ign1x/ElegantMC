@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppCtx } from "../appCtx";
+import Icon from "../ui/Icon";
 
 export default function FilesView() {
   const {
@@ -25,6 +26,9 @@ export default function FilesView() {
     parentRelPath,
     fmtBytes,
     refreshFsNow,
+    mkdirFsHere,
+    renameFsEntry,
+    downloadFsEntry,
     deleteFsEntry,
   } = useAppCtx();
 
@@ -61,6 +65,10 @@ export default function FilesView() {
         <div className="toolbarRight">
           <button type="button" onClick={() => refreshFsNow()} disabled={!selected}>
             Refresh
+          </button>
+          <button type="button" className="iconBtn" onClick={mkdirFsHere} disabled={!selected}>
+            <Icon name="plus" />
+            New folder
           </button>
           <button
             type="button"
@@ -117,6 +125,15 @@ export default function FilesView() {
                   <td>{e.isDir ? "-" : fmtBytes(Number(e.size || 0))}</td>
                   <td style={{ textAlign: "right" }}>
                     <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                      <button type="button" onClick={() => renameFsEntry(e)}>
+                        Rename
+                      </button>
+                      {!e.isDir ? (
+                        <button type="button" className="iconBtn" onClick={() => downloadFsEntry(e)}>
+                          <Icon name="download" />
+                          Download
+                        </button>
+                      ) : null}
                       <button type="button" className="dangerBtn" onClick={() => deleteFsEntry(e)}>
                         Delete
                       </button>
@@ -146,10 +163,9 @@ export default function FilesView() {
             style={{ width: "100%", marginTop: 8 }}
             disabled={!fsSelectedFile}
           />
-          <div className="hint">提示：大文件/二进制文件不会在编辑器打开，请用上传替换。</div>
+          <div className="hint">提示：大文件/二进制文件不会在编辑器打开，可用 Download 下载。</div>
         </div>
       </div>
     </div>
   );
 }
-

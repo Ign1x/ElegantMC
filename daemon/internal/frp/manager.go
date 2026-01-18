@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +26,10 @@ type Manager struct {
 	cfg ManagerConfig
 
 	mu      sync.Mutex
-	running bool
+	proxies map[string]*proxyProc
+}
+
+type proxyProc struct {
 	started time.Time
 	proxy   ProxyConfig
 
@@ -35,7 +39,7 @@ type Manager struct {
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
-	return &Manager{cfg: cfg}
+	return &Manager{cfg: cfg, proxies: make(map[string]*proxyProc)}
 }
 
 type ProxyConfig struct {
@@ -59,19 +63,34 @@ type Status struct {
 }
 
 func (m *Manager) Status() Status {
+	list := m.Statuses()
+	for _, st := range list {
+		if st.Running {
+			return st
+		}
+	}
+	return Status{Running: false}
+}
+
+func (m *Manager) Statuses() []Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	st := Status{
-		Running: m.running,
+	out := make([]Status, 0, len(m.proxies))
+	for name, p := range m.proxies {
+		if p == nil || p.cmd == nil || p.cmd.Process == nil {
+			continue
+		}
+		out = append(out, Status{
+			Running:     true,
+			ProxyName:   name,
+			RemoteAddr:  p.proxy.ServerAddr,
+			RemotePort:  p.proxy.RemotePort,
+			StartedUnix: p.started.Unix(),
+		})
 	}
-	if m.running {
-		st.ProxyName = m.proxy.Name
-		st.RemoteAddr = m.proxy.ServerAddr
-		st.RemotePort = m.proxy.RemotePort
-		st.StartedUnix = m.started.Unix()
-	}
-	return st
+	sort.Slice(out, func(i, j int) bool { return out[i].ProxyName < out[j].ProxyName })
+	return out
 }
 
 func (m *Manager) Start(ctx context.Context, proxy ProxyConfig, logSink func(stream, line string)) error {
@@ -94,12 +113,13 @@ func (m *Manager) Start(ctx context.Context, proxy ProxyConfig, logSink func(str
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// restart if running
-	if m.running {
-		_ = m.stopLocked(context.Background())
+	// restart this proxy if already running
+	if prev := m.proxies[proxy.Name]; prev != nil {
+		_ = m.stopLocked(context.Background(), prev)
 	}
 
-	if err := os.MkdirAll(m.cfg.WorkDir, 0o755); err != nil {
+	proxyWorkDir := filepath.Join(m.cfg.WorkDir, proxy.Name)
+	if err := os.MkdirAll(proxyWorkDir, 0o755); err != nil {
 		return err
 	}
 	ini, err := GenerateINI(proxy)
@@ -107,14 +127,14 @@ func (m *Manager) Start(ctx context.Context, proxy ProxyConfig, logSink func(str
 		return err
 	}
 
-	iniPath := filepath.Join(m.cfg.WorkDir, "frpc.ini")
+	iniPath := filepath.Join(proxyWorkDir, "frpc.ini")
 	if err := os.WriteFile(iniPath, []byte(ini), 0o600); err != nil {
 		return err
 	}
 
 	cmdCtx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(cmdCtx, m.cfg.FRPCPath, "-c", iniPath)
-	cmd.Dir = m.cfg.WorkDir
+	cmd.Dir = proxyWorkDir
 
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -126,12 +146,15 @@ func (m *Manager) Start(ctx context.Context, proxy ProxyConfig, logSink func(str
 
 	done := make(chan error, 1)
 
-	m.cmd = cmd
-	m.cancel = cancel
-	m.done = done
-	m.running = true
-	m.started = time.Now()
-	m.proxy = proxy
+	name := proxy.Name
+	proc := &proxyProc{
+		cmd:     cmd,
+		cancel:  cancel,
+		done:    done,
+		started: time.Now(),
+		proxy:   proxy,
+	}
+	m.proxies[name] = proc
 
 	if stdout != nil {
 		go streamLines(stdout, func(line string) {
@@ -155,15 +178,17 @@ func (m *Manager) Start(ctx context.Context, proxy ProxyConfig, logSink func(str
 
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		m.running = false
-		m.cmd = nil
-		m.done = nil
-		if m.cancel != nil {
-			m.cancel()
-			m.cancel = nil
+
+		// If a new proc has been started for this name, don't clobber it.
+		if cur := m.proxies[name]; cur == proc {
+			delete(m.proxies, name)
+			if cur.cancel != nil {
+				cur.cancel()
+				cur.cancel = nil
+			}
 		}
 		if err != nil && m.cfg.Log != nil {
-			m.cfg.Log.Printf("frpc exited: %v", err)
+			m.cfg.Log.Printf("frpc exited (%s): %v", name, err)
 		}
 	}()
 
@@ -175,28 +200,64 @@ func (m *Manager) Start(ctx context.Context, proxy ProxyConfig, logSink func(str
 }
 
 func (m *Manager) Stop(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.stopLocked(ctx)
+	return m.StopAll(ctx)
 }
 
-func (m *Manager) stopLocked(ctx context.Context) error {
-	if !m.running {
-		return nil
+func (m *Manager) StopAll(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var firstErr error
+	for name, p := range m.proxies {
+		if p == nil {
+			delete(m.proxies, name)
+			continue
+		}
+		if err := m.stopLocked(ctx, p); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		delete(m.proxies, name)
 	}
-	if m.cancel != nil {
-		m.cancel()
+	return firstErr
+}
+
+func (m *Manager) StopProxy(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name is required")
 	}
-	if m.cmd == nil || m.cmd.Process == nil {
-		m.running = false
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p := m.proxies[name]
+	if p == nil {
 		return nil
 	}
 
-	done := m.done
+	if err := m.stopLocked(ctx, p); err != nil {
+		return err
+	}
+	delete(m.proxies, name)
+	return nil
+}
+
+func (m *Manager) stopLocked(ctx context.Context, p *proxyProc) error {
+	if p == nil {
+		return nil
+	}
+	if p.cancel != nil {
+		p.cancel()
+	}
+
+	if p.cmd == nil || p.cmd.Process == nil {
+		return nil
+	}
+
+	done := p.done
 	if done == nil {
 		// Shouldn't happen, but avoid panic.
-		_ = m.cmd.Process.Kill()
-		m.running = false
+		_ = p.cmd.Process.Kill()
 		return nil
 	}
 
@@ -204,12 +265,10 @@ func (m *Manager) stopLocked(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(3 * time.Second):
-		_ = m.cmd.Process.Kill()
+		_ = p.cmd.Process.Kill()
 		<-done
-		m.running = false
 		return nil
 	case <-done:
-		m.running = false
 		return nil
 	}
 }

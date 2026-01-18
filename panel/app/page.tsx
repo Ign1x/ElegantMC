@@ -8,6 +8,7 @@ import FilesView from "./views/FilesView";
 import FrpView from "./views/FrpView";
 import GamesView from "./views/GamesView";
 import NodesView from "./views/NodesView";
+import PanelView from "./views/PanelView";
 
 type Daemon = {
   id: string;
@@ -51,6 +52,26 @@ function validateJarNameUI(name: string) {
   return "";
 }
 
+function validateJarPathUI(jarPath: string) {
+  const raw = String(jarPath || "").trim();
+  if (!raw) return "jar_path is required";
+  if (raw.length > 256) return "jar_path too long";
+  const v = raw
+    .replace(/\\+/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^(\.\/)+/, "");
+  if (!v) return "jar_path is required";
+  if (v.startsWith(".")) return "jar_path should not start with '.'";
+  if (v.endsWith("/")) return "jar_path must be a file path";
+  const parts = v.split("/").filter(Boolean);
+  if (!parts.length) return "jar_path is required";
+  for (const p of parts) {
+    if (p === "." || p === "..") return "jar_path must not contain '.' or '..'";
+  }
+  return "";
+}
+
 type FrpProfile = {
   id: string;
   name: string;
@@ -67,7 +88,7 @@ type FrpProfile = {
   };
 };
 
-type Tab = "nodes" | "games" | "frp" | "files" | "advanced";
+type Tab = "nodes" | "games" | "frp" | "files" | "panel" | "advanced";
 
 type ThemeMode = "auto" | "dark" | "light";
 
@@ -84,7 +105,7 @@ type GameSettingsSnapshot = {
 
 type InstallForm = {
   instanceId: string;
-  kind: "vanilla" | "paper" | "zip";
+  kind: "vanilla" | "paper" | "fabric" | "zip" | "modrinth" | "curseforge";
   version: string;
   paperBuild: number;
   xms: string;
@@ -96,6 +117,8 @@ type InstallForm = {
   enableFrp: boolean;
   frpProfileId: string;
   frpRemotePort: number;
+  remoteUrl: string;
+  remoteFileName: string;
 };
 
 type StartOverride = Partial<{
@@ -165,6 +188,13 @@ function b64EncodeBytes(bytes: Uint8Array) {
   return btoa(parts.join(""));
 }
 
+function b64DecodeBytes(b64: string) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 function fmtUnix(ts?: number | null) {
   if (!ts) return "-";
   return new Date(ts * 1000).toLocaleString();
@@ -218,7 +248,13 @@ function Sparkline({
     .join(" ");
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      style={{ display: "block", width: "100%", height }}
+    >
       <polyline points={pts} fill="none" stroke={stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
@@ -346,6 +382,20 @@ function normalizeJarName(raw: string) {
   return parts.length ? parts[parts.length - 1] : "server.jar";
 }
 
+function normalizeDownloadName(raw: string, fallback: string) {
+  let v = String(raw || "")
+    .trim()
+    .replace(/\\+/g, "/")
+    .replace(/^\/+/, "");
+  const parts = v.split("/").filter(Boolean);
+  v = parts.length ? parts[parts.length - 1] : "";
+  if (!v) v = String(fallback || "download.zip");
+  v = v.replace(/[^\w.\-+() ]+/g, "_");
+  if (!v || v.startsWith(".")) v = String(fallback || "download.zip");
+  if (v.length > 128) v = v.slice(0, 128);
+  return v;
+}
+
 function normalizeJarPath(instanceId: string, jarPath: string) {
   const inst = String(instanceId || "")
     .trim()
@@ -394,6 +444,8 @@ export default function HomePage() {
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
   const [enableAdvanced, setEnableAdvanced] = useState<boolean>(false);
   const [panelInfo, setPanelInfo] = useState<{ id: string; version: string; revision: string; buildDate: string } | null>(null);
+  const [panelSettings, setPanelSettings] = useState<any | null>(null);
+  const [panelSettingsStatus, setPanelSettingsStatus] = useState<string>("");
 
   const [daemons, setDaemons] = useState<Daemon[]>([]);
   const [selected, setSelected] = useState<string>("");
@@ -413,6 +465,15 @@ export default function HomePage() {
   const [confirmConfirmLabel, setConfirmConfirmLabel] = useState<string>("Confirm");
   const [confirmCancelLabel, setConfirmCancelLabel] = useState<string>("Cancel");
   const confirmResolveRef = useRef<((ok: boolean) => void) | null>(null);
+
+  const [promptOpen, setPromptOpen] = useState<boolean>(false);
+  const [promptTitle, setPromptTitle] = useState<string>("Input");
+  const [promptMessage, setPromptMessage] = useState<string>("");
+  const [promptPlaceholder, setPromptPlaceholder] = useState<string>("");
+  const [promptValue, setPromptValue] = useState<string>("");
+  const [promptOkLabel, setPromptOkLabel] = useState<string>("OK");
+  const [promptCancelLabel, setPromptCancelLabel] = useState<string>("Cancel");
+  const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
 
   const [copyOpen, setCopyOpen] = useState<boolean>(false);
   const [copyValue, setCopyValue] = useState<string>("");
@@ -452,6 +513,7 @@ export default function HomePage() {
   const [modsUploadInputKey, setModsUploadInputKey] = useState<number>(0);
   const [installOpen, setInstallOpen] = useState<boolean>(false);
   const [installRunning, setInstallRunning] = useState<boolean>(false);
+  const [installStep, setInstallStep] = useState<1 | 2 | 3>(1);
   const [installStartUnix, setInstallStartUnix] = useState<number>(0);
   const [installInstance, setInstallInstance] = useState<string>("");
   const [installForm, setInstallForm] = useState<InstallForm>(() => ({
@@ -468,9 +530,17 @@ export default function HomePage() {
     enableFrp: true,
     frpProfileId: "",
     frpRemotePort: 25566,
+    remoteUrl: "",
+    remoteFileName: "",
   }));
   const [installZipFile, setInstallZipFile] = useState<File | null>(null);
   const [installZipInputKey, setInstallZipInputKey] = useState<number>(0);
+  const [marketQuery, setMarketQuery] = useState<string>("");
+  const [marketStatus, setMarketStatus] = useState<string>("");
+  const [marketResults, setMarketResults] = useState<any[]>([]);
+  const [marketSelected, setMarketSelected] = useState<any>(null);
+  const [marketVersions, setMarketVersions] = useState<any[]>([]);
+  const [marketSelectedVersionId, setMarketSelectedVersionId] = useState<string>("");
   const [logView, setLogView] = useState<"all" | "mc" | "install" | "frp">("all");
 
   // Server list (directories under servers/)
@@ -501,6 +571,7 @@ export default function HomePage() {
   const [nodesStatus, setNodesStatus] = useState<string>("");
   const [nodeDetailsOpen, setNodeDetailsOpen] = useState<boolean>(false);
   const [nodeDetailsId, setNodeDetailsId] = useState<string>("");
+  const [nodeDetailsRangeSec, setNodeDetailsRangeSec] = useState<number>(15 * 60);
   const [addNodeOpen, setAddNodeOpen] = useState<boolean>(false);
   const [createdNode, setCreatedNode] = useState<{ id: string; token: string } | null>(null);
   const [newNodeId, setNewNodeId] = useState<string>("");
@@ -522,19 +593,42 @@ export default function HomePage() {
 
 	  const installValidation = useMemo(() => {
 	    const instErr = validateInstanceIDUI(installForm.instanceId);
-	    const verErr = installForm.kind === "zip" ? "" : String(installForm.version || "").trim() ? "" : "version is required";
-	    const jarErr = validateJarNameUI(installForm.jarName);
+	    const verErr = installForm.kind === "vanilla" || installForm.kind === "paper" ? (String(installForm.version || "").trim() ? "" : "version is required") : "";
+	    const kindErr = installForm.kind === "fabric" ? "Fabric is a placeholder template (not built-in yet). Use ZIP or upload a server jar." : "";
+	    const jarErr =
+	      installForm.kind === "zip" || installForm.kind === "modrinth" || installForm.kind === "curseforge"
+	        ? validateJarPathUI(installForm.jarName)
+	        : validateJarNameUI(installForm.jarName);
 	    const zipErr = installForm.kind === "zip" && !installZipFile ? "zip file is required" : "";
+	    const remoteErr =
+	      (installForm.kind === "modrinth" || installForm.kind === "curseforge") && !String(installForm.remoteUrl || "").trim()
+	        ? "select a modpack file first"
+	        : "";
 	    const portErr = validatePortUI(installForm.gamePort, { allowZero: false });
 	    const frpRemoteErr = validatePortUI(installForm.frpRemotePort, { allowZero: true });
 	    const frpProfileErr =
 	      installForm.enableFrp && (!String(installForm.frpProfileId || "").trim() || !profiles.length)
 	        ? "select a FRP server (or disable FRP)"
 	        : "";
-	    const canInstall = !instErr && !verErr && !jarErr && !zipErr && !portErr && !frpRemoteErr;
+	    const canInstall = !kindErr && !instErr && !verErr && !jarErr && !zipErr && !remoteErr && !portErr && !frpRemoteErr;
 	    const canInstallAndStart = canInstall && (!installForm.enableFrp || !frpProfileErr);
-	    return { instErr, verErr, jarErr, zipErr, portErr, frpRemoteErr, frpProfileErr, canInstall, canInstallAndStart };
+	    return { kindErr, instErr, verErr, jarErr, zipErr, remoteErr, portErr, frpRemoteErr, frpProfileErr, canInstall, canInstallAndStart };
 	  }, [installForm, installZipFile, profiles]);
+
+	  const installWizardStep1Ok = useMemo(() => {
+	    return (
+	      !installValidation.kindErr &&
+	      !installValidation.instErr &&
+	      !installValidation.verErr &&
+	      !installValidation.zipErr &&
+	      !installValidation.remoteErr &&
+	      !installValidation.portErr
+	    );
+	  }, [installValidation]);
+
+	  const installWizardStep2Ok = useMemo(() => {
+	    return !installValidation.jarErr;
+	  }, [installValidation]);
 
   const settingsValidation = useMemo(() => {
     const jar = String(jarPath || "").trim();
@@ -546,13 +640,40 @@ export default function HomePage() {
   }, [jarPath, gamePort, frpRemotePort]);
 
   const nodeDetailsNode = useMemo(() => nodes.find((n: any) => n?.id === nodeDetailsId) || null, [nodes, nodeDetailsId]);
+  const nodeDetailsHistory = useMemo(() => {
+    const hist = Array.isArray(nodeDetailsNode?.history) ? nodeDetailsNode.history : [];
+    const rangeSec = Math.max(0, Math.round(Number(nodeDetailsRangeSec || 0)));
+    if (!rangeSec) return hist;
+    const now = Math.floor(Date.now() / 1000);
+    return hist.filter((p: any) => typeof p?.ts_unix === "number" && p.ts_unix >= now - rangeSec);
+  }, [nodeDetailsNode, nodeDetailsRangeSec]);
+  const nodeDetailsHistoryMeta = useMemo(() => {
+    const hist = Array.isArray(nodeDetailsHistory) ? nodeDetailsHistory : [];
+    const last = hist.length ? hist[hist.length - 1] : null;
+    return {
+      points: hist.length,
+      fromUnix: hist.length ? (hist[0]?.ts_unix ?? null) : null,
+      toUnix: hist.length ? (hist[hist.length - 1]?.ts_unix ?? null) : null,
+      cpuLatest: typeof last?.cpu_percent === "number" ? last.cpu_percent : null,
+      memLatest: typeof last?.mem_percent === "number" ? last.mem_percent : null,
+      diskLatest: typeof last?.disk_percent === "number" ? last.disk_percent : null,
+    };
+  }, [nodeDetailsHistory]);
 
   const instanceStatus = useMemo(() => {
     const list = selectedDaemon?.heartbeat?.instances || [];
     return list.find((i: any) => i?.id === instanceId) || null;
   }, [selectedDaemon, instanceId]);
 
-  const frpStatus = useMemo(() => selectedDaemon?.heartbeat?.frp || null, [selectedDaemon]);
+  const frpStatus = useMemo(() => {
+    const inst = String(instanceId || "").trim();
+    const list = selectedDaemon?.heartbeat?.frp_proxies;
+    if (inst && Array.isArray(list)) {
+      const hit = list.find((p: any) => String(p?.proxy_name || "").trim() === inst) || null;
+      if (hit) return hit;
+    }
+    return selectedDaemon?.heartbeat?.frp || null;
+  }, [selectedDaemon, instanceId]);
   const daemonIPv4 = useMemo(() => {
     const list = selectedDaemon?.heartbeat?.net?.ipv4;
     return Array.isArray(list) ? list.map((v: any) => String(v || "").trim()).filter(Boolean) : [];
@@ -627,6 +748,16 @@ export default function HomePage() {
     }
   }, [themeMode]);
 
+  useEffect(() => {
+    const name = String(panelSettings?.brand_name || "").trim();
+    if (!name) return;
+    try {
+      document.title = name;
+    } catch {
+      // ignore
+    }
+  }, [panelSettings?.brand_name]);
+
   // Modal keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -634,6 +765,11 @@ export default function HomePage() {
         if (confirmOpen) {
           e.preventDefault();
           closeConfirm(false);
+          return;
+        }
+        if (promptOpen) {
+          e.preventDefault();
+          closePrompt(null);
           return;
         }
         if (copyOpen) {
@@ -677,7 +813,7 @@ export default function HomePage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [confirmOpen, copyOpen, installOpen, installRunning, settingsOpen, nodeDetailsOpen, addNodeOpen, addFrpOpen]);
+  }, [confirmOpen, promptOpen, copyOpen, installOpen, installRunning, settingsOpen, nodeDetailsOpen, addNodeOpen, addFrpOpen]);
 
   // Panel auth (cookie-based)
   useEffect(() => {
@@ -703,6 +839,38 @@ export default function HomePage() {
     const res = await fetch(url, nextInit);
     if (res.status === 401) setAuthed(false);
     return res;
+  }
+
+  async function refreshPanelSettings() {
+    setPanelSettingsStatus("Loading...");
+    try {
+      const res = await apiFetch("/api/panel/settings", { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "failed");
+      setPanelSettings(json?.settings || null);
+      setPanelSettingsStatus("");
+    } catch (e: any) {
+      setPanelSettings(null);
+      setPanelSettingsStatus(String(e?.message || e));
+    }
+  }
+
+  async function savePanelSettings(next: any) {
+    setPanelSettingsStatus("Saving...");
+    try {
+      const res = await apiFetch("/api/panel/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next ?? {}),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "failed");
+      setPanelSettings(json?.settings || null);
+      setPanelSettingsStatus("Saved");
+      setTimeout(() => setPanelSettingsStatus(""), 900);
+    } catch (e: any) {
+      setPanelSettingsStatus(String(e?.message || e));
+    }
   }
 
   async function login() {
@@ -846,6 +1014,13 @@ export default function HomePage() {
     if (resolve) resolve(ok);
   }
 
+  function closePrompt(value: string | null) {
+    setPromptOpen(false);
+    const resolve = promptResolveRef.current;
+    promptResolveRef.current = null;
+    if (resolve) resolve(value);
+  }
+
   async function confirmDialog(
     message: string,
     opts: { title?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean } = {}
@@ -860,6 +1035,28 @@ export default function HomePage() {
       setConfirmConfirmLabel(opts.confirmLabel || (opts.danger ? "Delete" : "OK"));
       setConfirmCancelLabel(opts.cancelLabel || "Cancel");
       setConfirmOpen(true);
+    });
+  }
+
+  async function promptDialog(
+    opts: {
+      title?: string;
+      message?: string;
+      placeholder?: string;
+      defaultValue?: string;
+      okLabel?: string;
+      cancelLabel?: string;
+    } = {}
+  ) {
+    return new Promise<string | null>((resolve) => {
+      promptResolveRef.current = resolve;
+      setPromptTitle(opts.title || "Input");
+      setPromptMessage(String(opts.message || ""));
+      setPromptPlaceholder(String(opts.placeholder || ""));
+      setPromptValue(String(opts.defaultValue || ""));
+      setPromptOkLabel(opts.okLabel || "OK");
+      setPromptCancelLabel(opts.cancelLabel || "Cancel");
+      setPromptOpen(true);
     });
   }
 
@@ -1188,6 +1385,7 @@ export default function HomePage() {
   useEffect(() => {
     if (authed !== true) return;
     refreshProfiles();
+    refreshPanelSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
@@ -1225,6 +1423,117 @@ export default function HomePage() {
       setFsStatus("");
     } catch (e: any) {
       setFsEntries([]);
+      setFsStatus(String(e?.message || e));
+    }
+  }
+
+  function validateFsNameSegment(name: string) {
+    const v = String(name || "").trim();
+    if (!v) return "name is required";
+    if (v.length > 128) return "name too long";
+    if (v === "." || v === "..") return "invalid name";
+    if (v.includes("/") || v.includes("\\")) return "name must not contain '/'";
+    if (v.includes("\u0000")) return "name contains invalid characters";
+    return "";
+  }
+
+  async function mkdirFsHere() {
+    if (!selected) {
+      setFsStatus("请选择 Daemon");
+      return;
+    }
+    const name = await promptDialog({
+      title: "New Folder",
+      message: `Create a folder under servers/${fsPath || ""}`,
+      placeholder: "folder name",
+      okLabel: "Create",
+      cancelLabel: "Cancel",
+    });
+    if (name == null) return;
+    const err = validateFsNameSegment(name);
+    if (err) {
+      setFsStatus(err);
+      return;
+    }
+    const target = joinRelPath(fsPath, name);
+    setFsStatus(`Creating ${target} ...`);
+    try {
+      await callOkCommand("fs_mkdir", { path: target }, 30_000);
+      await refreshFsNow();
+      setFsStatus("Created");
+      setTimeout(() => setFsStatus(""), 900);
+    } catch (e: any) {
+      setFsStatus(String(e?.message || e));
+    }
+  }
+
+  async function renameFsEntry(entry: any) {
+    const name = String(entry?.name || "").trim();
+    if (!name) return;
+    const from = joinRelPath(fsPath, name);
+    const next = await promptDialog({
+      title: "Rename",
+      message: `Rename ${entry?.isDir ? "folder" : "file"}:\n${from}`,
+      defaultValue: name,
+      placeholder: "new name",
+      okLabel: "Rename",
+      cancelLabel: "Cancel",
+    });
+    if (next == null) return;
+    const toName = String(next || "").trim();
+    const err = validateFsNameSegment(toName);
+    if (err) {
+      setFsStatus(err);
+      return;
+    }
+    if (toName === name) {
+      setFsStatus("No changes");
+      setTimeout(() => setFsStatus(""), 700);
+      return;
+    }
+    const to = joinRelPath(fsPath, toName);
+    setFsStatus(`Renaming ${from} -> ${to} ...`);
+    try {
+      await callOkCommand("fs_move", { from, to }, 60_000);
+      if (fsSelectedFile === from || fsSelectedFile.startsWith(`${from}/`)) {
+        const suffix = fsSelectedFile.slice(from.length);
+        setFsSelectedFile(`${to}${suffix}`);
+      }
+      await refreshFsNow();
+      setFsStatus("Renamed");
+      setTimeout(() => setFsStatus(""), 900);
+    } catch (e: any) {
+      setFsStatus(String(e?.message || e));
+    }
+  }
+
+  async function downloadFsEntry(entry: any) {
+    const name = String(entry?.name || "").trim();
+    if (!name || entry?.isDir) return;
+    const path = joinRelPath(fsPath, name);
+    const size = Math.max(0, Number(entry?.size || 0));
+    const max = 15 * 1024 * 1024;
+    if (size > max) {
+      setFsStatus(`File too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)})`);
+      return;
+    }
+
+    setFsStatus(`Downloading ${path} ...`);
+    try {
+      const payload = await callOkCommand("fs_read", { path }, 60_000);
+      const bytes = b64DecodeBytes(String(payload?.b64 || ""));
+      const blob = new Blob([bytes], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setFsStatus("");
+      pushToast(`Downloaded: ${name}`, "ok");
+    } catch (e: any) {
       setFsStatus(String(e?.message || e));
     }
   }
@@ -1360,30 +1669,164 @@ export default function HomePage() {
     return `server-${Math.floor(Date.now() / 1000)}`;
   }
 
+  async function runMarketSearch() {
+    if (installRunning) return;
+    const provider = installForm.kind;
+    if (provider !== "modrinth" && provider !== "curseforge") return;
+    const q = String(marketQuery || "").trim();
+    if (!q) return;
+
+    setMarketStatus("Searching...");
+    setMarketResults([]);
+    setMarketSelected(null);
+    setMarketVersions([]);
+    setMarketSelectedVersionId("");
+    setInstallForm((f) => ({ ...f, remoteUrl: "", remoteFileName: "" }));
+
+    try {
+      const params = new URLSearchParams();
+      params.set("provider", provider);
+      params.set("query", q);
+      params.set("limit", "12");
+      params.set("offset", "0");
+      const res = await apiFetch(`/api/modpacks/search?${params.toString()}`);
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "search failed");
+      const results = Array.isArray(json?.results) ? json.results : [];
+      setMarketResults(results);
+      setMarketStatus(results.length ? `Found ${results.length} result(s)` : "No results");
+    } catch (e: any) {
+      setMarketStatus(String(e?.message || e));
+    }
+  }
+
+  function pickModrinthVersion(versionId: string, listOverride?: any[]) {
+    const id = String(versionId || "").trim();
+    setMarketSelectedVersionId(id);
+    const list = Array.isArray(listOverride) ? listOverride : marketVersions;
+    const v = (Array.isArray(list) ? list : []).find((x: any) => String(x?.id || "") === id) || null;
+    const files = Array.isArray(v?.files) ? v.files : [];
+    const file = files.find((f: any) => !!f?.primary) || files[0] || null;
+    const url = String(file?.url || "").trim();
+    const name = String(file?.filename || "").trim();
+    if (!url) {
+      setInstallForm((f) => ({ ...f, remoteUrl: "", remoteFileName: "" }));
+      setMarketStatus("No downloadable file for this version");
+      return;
+    }
+    setInstallForm((f) => ({ ...f, remoteUrl: url, remoteFileName: name }));
+    setMarketStatus("");
+  }
+
+  async function pickCurseForgeFile(fileId: string, listOverride?: any[]) {
+    const id = String(fileId || "").trim();
+    setMarketSelectedVersionId(id);
+    setInstallForm((f) => ({ ...f, remoteUrl: "", remoteFileName: "" }));
+    if (!id) return;
+
+    const list = Array.isArray(listOverride) ? listOverride : marketVersions;
+    const file = (Array.isArray(list) ? list : []).find((x: any) => String(x?.id || "") === id) || null;
+    const name = String(file?.file_name || file?.display_name || "").trim();
+
+    setMarketStatus("Resolving download url...");
+    try {
+      const res = await apiFetch(`/api/modpacks/curseforge/files/${encodeURIComponent(id)}/download-url`);
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+      const url = String(json?.url || "").trim();
+      if (!url) throw new Error("no download url");
+      setInstallForm((f) => ({ ...f, remoteUrl: url, remoteFileName: name }));
+      setMarketStatus("");
+    } catch (e: any) {
+      setMarketStatus(String(e?.message || e));
+    }
+  }
+
+  async function selectMarketPack(p: any) {
+    if (installRunning) return;
+    const provider = installForm.kind;
+    if (provider !== "modrinth" && provider !== "curseforge") return;
+    const id = String(p?.id || "").trim();
+    if (!id) return;
+
+    setMarketSelected(p);
+    setMarketVersions([]);
+    setMarketSelectedVersionId("");
+    setInstallForm((f) => ({ ...f, remoteUrl: "", remoteFileName: "" }));
+
+    try {
+      if (provider === "modrinth") {
+        setMarketStatus("Loading versions...");
+        const res = await apiFetch(`/api/modpacks/modrinth/${encodeURIComponent(id)}/versions`);
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error || "fetch versions failed");
+        const versions = Array.isArray(json?.versions) ? json.versions : [];
+        setMarketVersions(versions);
+        const first = versions[0];
+        if (first?.id) pickModrinthVersion(String(first.id), versions);
+        else setMarketStatus("No versions");
+        return;
+      }
+
+      setMarketStatus("Loading files...");
+      const params = new URLSearchParams();
+      params.set("limit", "25");
+      params.set("offset", "0");
+      const res = await apiFetch(`/api/modpacks/curseforge/${encodeURIComponent(id)}/files?${params.toString()}`);
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "fetch files failed");
+      const files = Array.isArray(json?.files) ? json.files : [];
+      setMarketVersions(files);
+      const first = files[0];
+      if (first?.id) await pickCurseForgeFile(String(first.id), files);
+      else setMarketStatus("No files");
+    } catch (e: any) {
+      setMarketStatus(String(e?.message || e));
+    }
+  }
+
 	  function openInstallModal() {
 	    const suggested = suggestInstanceId(serverDirs);
-	    const jarName = normalizeJarName(jarPath);
+	    const jarNameOnly = normalizeJarName(jarPath);
+	    const jarRel = normalizeJarPath(suggested, jarPath);
+	    const defaults = panelSettings?.defaults || {};
+	    const defaultVersion = String(defaults.version || "1.20.1");
+	    const defaultXms = String(defaults.xms || xms);
+	    const defaultXmx = String(defaults.xmx || xmx);
+	    const defaultGamePortRaw = Math.round(Number(defaults.game_port ?? gamePort));
+	    const defaultGamePort = Number.isFinite(defaultGamePortRaw) && defaultGamePortRaw >= 1 && defaultGamePortRaw <= 65535 ? defaultGamePortRaw : gamePort;
+	    const defaultAcceptEula = defaults.accept_eula == null ? true : !!defaults.accept_eula;
+	    const defaultEnableFrp = defaults.enable_frp == null ? enableFrp : !!defaults.enable_frp;
+	    const defaultFrpRemoteRaw = Math.round(Number(defaults.frp_remote_port ?? frpRemotePort));
+	    const defaultFrpRemotePort =
+	      Number.isFinite(defaultFrpRemoteRaw) && defaultFrpRemoteRaw >= 0 && defaultFrpRemoteRaw <= 65535 ? defaultFrpRemoteRaw : frpRemotePort;
 	    const profileId =
 	      profiles.find((p) => p.id === frpProfileId)?.id || profiles[0]?.id || "";
 	    setInstallForm((prev) => ({
 	      instanceId: suggested,
-	      kind: prev?.kind === "paper" || prev?.kind === "zip" ? prev.kind : "vanilla",
-	      version: String(prev?.version || "1.20.1"),
+	      kind:
+	        prev?.kind === "paper" || prev?.kind === "fabric" || prev?.kind === "zip" || prev?.kind === "modrinth" || prev?.kind === "curseforge"
+	          ? prev.kind
+	          : "vanilla",
+	      version: String(prev?.version || defaultVersion),
 	      paperBuild: Number.isFinite(Number(prev?.paperBuild)) ? Number(prev?.paperBuild) : 0,
-	      xms,
-	      xmx,
-	      gamePort,
-	      jarName,
+	      xms: defaultXms,
+	      xmx: defaultXmx,
+	      gamePort: defaultGamePort,
+	      jarName: prev?.kind === "zip" || prev?.kind === "modrinth" || prev?.kind === "curseforge" ? jarRel : jarNameOnly,
 	      javaPath,
-	      acceptEula: prev?.acceptEula ?? true,
-	      enableFrp,
+	      acceptEula: prev?.acceptEula ?? defaultAcceptEula,
+	      enableFrp: defaultEnableFrp,
 	      frpProfileId: profileId,
-	      frpRemotePort,
+	      frpRemotePort: defaultFrpRemotePort,
+	      remoteUrl: "",
+	      remoteFileName: "",
 	    }));
 	    setInstallZipFile(null);
 	    setInstallZipInputKey((k) => k + 1);
 	    setInstallStartUnix(0);
 	    setInstallInstance("");
+	    setInstallStep(1);
 	    setInstallOpen(true);
 	  }
 
@@ -1399,9 +1842,21 @@ export default function HomePage() {
 	      return;
 	    }
 	    const kind = installForm.kind;
+	    if (kind === "fabric") {
+	      setServerOpStatus("Fabric is a placeholder (use ZIP or upload a server jar)");
+	      return;
+	    }
 	    const ver = String(installForm.version || "").trim();
-	    if (kind !== "zip" && !ver) {
+	    if ((kind === "vanilla" || kind === "paper") && !ver) {
 	      setServerOpStatus("version 不能为空");
+	      return;
+	    }
+	    const jarErr =
+	      kind === "zip" || kind === "modrinth" || kind === "curseforge"
+	        ? validateJarPathUI(installForm.jarName)
+	        : validateJarNameUI(installForm.jarName);
+	    if (jarErr) {
+	      setServerOpStatus(jarErr);
 	      return;
 	    }
 
@@ -1410,8 +1865,10 @@ export default function HomePage() {
 	    setInstallRunning(true);
 
 	    try {
-	      const jarName = normalizeJarName(installForm.jarName);
-	      let installedJar = jarName;
+	      const jarInput = String(installForm.jarName || "").trim();
+	      const jarRel =
+	        kind === "vanilla" || kind === "paper" ? normalizeJarName(jarInput) : normalizeJarPath(inst, jarInput);
+	      let installedJar = jarRel;
 	      if (kind === "zip") {
 	        const file = installZipFile;
 	        if (!file) throw new Error("zip file is required");
@@ -1459,13 +1916,38 @@ export default function HomePage() {
 	        } catch {
 	          // ignore
 	        }
-	        setInstallZipFile(null);
-	        setInstallZipInputKey((k) => k + 1);
-	      } else {
-	        const build = Math.round(Number(installForm.paperBuild || 0));
-	        const cmdName = kind === "paper" ? "mc_install_paper" : "mc_install_vanilla";
-	        setServerOpStatus(
-	          kind === "paper" && build > 0 ? `Installing Paper ${ver} (build ${build}) ...` : `Installing ${kind === "paper" ? "Paper" : "Vanilla"} ${ver} ...`
+		        setInstallZipFile(null);
+		        setInstallZipInputKey((k) => k + 1);
+		      } else if (kind === "modrinth" || kind === "curseforge") {
+		        const remoteUrl = String(installForm.remoteUrl || "").trim();
+		        if (!remoteUrl) throw new Error("remote url is required");
+
+		        // Ensure instance dir exists, then download + extract.
+		        await callOkCommand("fs_mkdir", { path: inst }, 30_000);
+
+		        const defaultName = kind === "modrinth" ? "modpack.mrpack" : "modpack.zip";
+		        const fileName = normalizeDownloadName(String(installForm.remoteFileName || "").trim(), defaultName);
+		        const zipRel = joinRelPath(inst, fileName);
+
+		        setServerOpStatus(`Downloading ${fileName} ...`);
+		        await callOkCommand("fs_download", { path: zipRel, url: remoteUrl, instance_id: inst }, 10 * 60_000);
+
+		        setServerOpStatus(`Extracting ${fileName} ...`);
+		        await callOkCommand(
+		          "fs_unzip",
+		          { zip_path: zipRel, dest_dir: inst, instance_id: inst, strip_top_level: true },
+		          10 * 60_000
+		        );
+		        try {
+		          await callOkCommand("fs_delete", { path: zipRel }, 30_000);
+		        } catch {
+		          // ignore
+		        }
+		      } else {
+		        const build = Math.round(Number(installForm.paperBuild || 0));
+		        const cmdName = kind === "paper" ? "mc_install_paper" : "mc_install_vanilla";
+		        setServerOpStatus(
+		          kind === "paper" && build > 0 ? `Installing Paper ${ver} (build ${build}) ...` : `Installing ${kind === "paper" ? "Paper" : "Vanilla"} ${ver} ...`
 	        );
 	        const out = await callOkCommand(
 	          cmdName,
@@ -1473,12 +1955,21 @@ export default function HomePage() {
 	            instance_id: inst,
 	            version: ver,
 	            ...(kind === "paper" ? { build: Number.isFinite(build) ? build : 0 } : {}),
-	            jar_name: jarName,
+	            jar_name: jarRel,
 	            accept_eula: !!installForm.acceptEula,
 	          },
 	          10 * 60_000
 	        );
-	        installedJar = String(out.jar_path || jarName);
+	        installedJar = String(out.jar_path || jarRel);
+	      }
+
+	      if ((kind === "zip" || kind === "modrinth" || kind === "curseforge") && installForm.acceptEula) {
+	        setServerOpStatus("Writing eula.txt ...");
+	        await callOkCommand(
+	          "fs_write",
+	          { path: joinRelPath(inst, "eula.txt"), b64: b64EncodeUtf8("eula=true\n") },
+	          10_000
+	        );
 	      }
 
 	      // Apply port right after install so the server listens on the expected port.
@@ -1752,7 +2243,7 @@ export default function HomePage() {
       await callOkCommand(
         "mc_start",
         { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms: xmsVal, xmx: xmxVal },
-        30_000
+        10 * 60_000
       );
       setServerOpStatus("MC started");
 
@@ -1769,7 +2260,7 @@ export default function HomePage() {
           throw new Error(`FRP token: ${String(e?.message || e)}`);
         }
         const args: any = {
-          name: "mc",
+          instance_id: inst,
           server_addr: profile.server_addr,
           server_port: Number(profile.server_port),
           token,
@@ -1792,13 +2283,11 @@ export default function HomePage() {
         setServerOpStatus("instance_id 不能为空");
         return;
       }
-      if (enableFrp) {
-        try {
-          await callOkCommand("frp_stop", {});
-          setFrpOpStatus("FRP stopped");
-        } catch {
-          // ignore
-        }
+      try {
+        await callOkCommand("frp_stop", { instance_id: inst }, 30_000);
+        setFrpOpStatus("FRP stopped");
+      } catch {
+        // ignore
       }
       await callOkCommand("mc_stop", { instance_id: inst }, 30_000);
       setServerOpStatus("MC stopped");
@@ -1822,13 +2311,11 @@ export default function HomePage() {
 	      });
 	      if (!ok) return;
 
-	      if (enableFrp) {
-	        try {
-	          await callOkCommand("frp_stop", {});
-	          setFrpOpStatus("FRP stopped");
-        } catch {
-          // ignore
-        }
+	      try {
+	        await callOkCommand("frp_stop", { instance_id: id }, 30_000);
+	        setFrpOpStatus("FRP stopped");
+      } catch {
+        // ignore
       }
       try {
         await callOkCommand("mc_stop", { instance_id: id }, 30_000);
@@ -1860,8 +2347,36 @@ export default function HomePage() {
       const jar = normalizeJarPath(inst, jarPath);
       const java = String(javaPath || "").trim();
       await writeInstanceConfig(inst, { jar_path: jar, ...(java ? { java_path: java } : {}), game_port: gamePort });
-      await callOkCommand("mc_restart", { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms, xmx }, 60_000);
+      await callOkCommand("mc_restart", { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms, xmx }, 10 * 60_000);
       setServerOpStatus("MC restarted");
+
+      if (enableFrp) {
+        const profile = profiles.find((p) => p.id === frpProfileId) || null;
+        if (!profile) {
+          setFrpOpStatus("FRP enabled but no profile selected");
+          return;
+        }
+        let token = "";
+        try {
+          token = profile?.has_token ? await fetchFrpProfileToken(profile.id) : "";
+        } catch (e: any) {
+          throw new Error(`FRP token: ${String(e?.message || e)}`);
+        }
+        const remotePort = Math.round(Number(frpRemotePort ?? 0));
+        await callOkCommand(
+          "frp_start",
+          {
+            instance_id: inst,
+            server_addr: profile.server_addr,
+            server_port: Number(profile.server_port),
+            token,
+            local_port: Math.round(Number(gamePort || 25565)),
+            remote_port: Number.isFinite(remotePort) ? remotePort : 0,
+          },
+          30_000
+        );
+        setFrpOpStatus("FRP started");
+      }
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
     }
@@ -1944,6 +2459,7 @@ export default function HomePage() {
     { id: "games", label: "Games" },
     { id: "frp", label: "FRP" },
     { id: "files", label: "Files" },
+    { id: "panel", label: "Panel" },
     ...(enableAdvanced ? [{ id: "advanced" as Tab, label: "Advanced" }] : []),
   ];
 
@@ -1956,6 +2472,13 @@ export default function HomePage() {
     selected,
     setSelected,
     selectedDaemon,
+
+    // Panel
+    panelInfo,
+    panelSettings,
+    panelSettingsStatus,
+    refreshPanelSettings,
+    savePanelSettings,
 
     // Nodes
     nodes,
@@ -2023,6 +2546,9 @@ export default function HomePage() {
     uploadSelectedFile,
     uploadStatus,
     refreshFsNow,
+    mkdirFsHere,
+    renameFsEntry,
+    downloadFsEntry,
     deleteFsEntry,
 
     // Advanced
@@ -2116,6 +2642,45 @@ export default function HomePage() {
 	        </div>
 	      ) : null}
 
+	      {promptOpen ? (
+	        <div className="modalOverlay" onClick={() => closePrompt(null)}>
+	          <div className="modal" style={{ width: "min(520px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+	            <div className="modalHeader">
+	              <div>
+	                <div style={{ fontWeight: 800 }}>{promptTitle}</div>
+	                {promptMessage ? (
+	                  <div className="hint" style={{ whiteSpace: "pre-wrap" }}>
+	                    {promptMessage}
+	                  </div>
+	                ) : null}
+	              </div>
+	              <button type="button" onClick={() => closePrompt(null)}>
+	                Close
+	              </button>
+	            </div>
+	            <form
+	              onSubmit={(e) => {
+	                e.preventDefault();
+	                closePrompt(promptValue);
+	              }}
+	            >
+	              <div className="field" style={{ marginTop: 8 }}>
+	                <label>Value</label>
+	                <input value={promptValue} onChange={(e) => setPromptValue(e.target.value)} placeholder={promptPlaceholder} autoFocus />
+	              </div>
+	              <div className="btnGroup" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+	                <button type="button" onClick={() => closePrompt(null)}>
+	                  {promptCancelLabel}
+	                </button>
+	                <button type="submit" className="primary" disabled={!promptValue.trim()}>
+	                  {promptOkLabel}
+	                </button>
+	              </div>
+	            </form>
+	          </div>
+	        </div>
+	      ) : null}
+
 	      {copyOpen ? (
 	        <div className="modalOverlay" onClick={() => setCopyOpen(false)}>
 	          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
@@ -2166,13 +2731,19 @@ export default function HomePage() {
 	        </div>
 	      ) : null}
 
-	      <div className="appShell">
+      <div className="appShell">
 	      <aside className="sidebar">
         <div className="sidebarHeader">
-          <img className="logo" src="/logo.svg" alt="ElegantMC" />
+          <img
+            className="logo"
+            src={String(panelSettings?.logo_url || "/logo.svg")}
+            alt={String(panelSettings?.brand_name || "ElegantMC")}
+          />
           <div style={{ minWidth: 0 }}>
-            <div className="brandName">ElegantMC</div>
-            <div className="brandTagline">Remote Minecraft Server Manager</div>
+            <div className="brandName">{String(panelSettings?.brand_name || "ElegantMC")}</div>
+            {String(panelSettings?.brand_tagline ?? "Remote Minecraft Server Manager") ? (
+              <div className="brandTagline">{String(panelSettings?.brand_tagline ?? "Remote Minecraft Server Manager")}</div>
+            ) : null}
           </div>
         </div>
 
@@ -2192,26 +2763,13 @@ export default function HomePage() {
         </nav>
 
 	        <div className="sidebarFooter">
-		          <div className="hint" style={{ marginTop: 8 }}>
-		            panel: <code>{panelInfo?.version || "dev"}</code>
-	            {panelInfo?.revision ? (
-	              <>
-	                {" "}
-	                (<code>{panelInfo.revision.slice(0, 8)}</code>)
-	              </>
-	            ) : null}
-	            {panelInfo?.id ? (
-	              <>
-	                {" "}
-	                · id: <code>{panelInfo.id.slice(0, 8)}</code>
-	              </>
-	            ) : null}
-	            {selectedDaemon?.hello?.version ? (
-	              <>
-	                {" "}
-	                · daemon: <code>{String(selectedDaemon.hello.version)}</code>
-	              </>
-	            ) : null}
+	          <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
+	            <span className="muted">Theme</span>
+	            <select value={themeMode} onChange={(e) => setThemeMode(e.target.value as ThemeMode)} style={{ width: 140 }}>
+	              <option value="auto">Auto (System)</option>
+	              <option value="light">Light</option>
+	              <option value="dark">Dark</option>
+	            </select>
 	          </div>
 	          <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
 	            <span className={`badge ${authed === true ? "ok" : ""}`}>{authed === true ? "admin" : "locked"}</span>
@@ -2220,14 +2778,6 @@ export default function HomePage() {
 	                Logout
 	              </button>
 	            ) : null}
-	          </div>
-	          <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
-	            <span className="muted">Theme</span>
-	            <select value={themeMode} onChange={(e) => setThemeMode(e.target.value as ThemeMode)} style={{ width: 140 }}>
-	              <option value="auto">Auto (System)</option>
-	              <option value="light">Light</option>
-	              <option value="dark">Dark</option>
-	            </select>
 	          </div>
 	        </div>
       </aside>
@@ -2283,7 +2833,15 @@ export default function HomePage() {
 	                  </button>
 	                </div>
 
-                <div className="grid2" style={{ alignItems: "start" }}>
+                <div className="row" style={{ marginTop: 6 }}>
+                  <span className={`badge ${installStep === 1 ? "ok" : ""}`}>1 Basic</span>
+                  <span className={`badge ${installStep === 2 ? "ok" : ""}`}>2 Runtime</span>
+                  <span className={`badge ${installStep === 3 ? "ok" : ""}`}>3 FRP</span>
+                </div>
+
+                <div className="grid2" style={{ alignItems: "start", marginTop: 10 }}>
+                  {installStep === 1 ? (
+                    <>
 	                  <div className="field">
 	                    <label>Instance ID</label>
 	                    <input
@@ -2299,19 +2857,48 @@ export default function HomePage() {
 	                      <div className="hint">建议：A-Z a-z 0-9 . _ -（最长 64）</div>
 	                    )}
 	                  </div>
-		                  <div className="field">
-		                    <label>Type</label>
-		                    <select value={installForm.kind} onChange={(e) => setInstallForm((f) => ({ ...f, kind: e.target.value as any }))}>
-		                      <option value="vanilla">Vanilla</option>
-		                      <option value="paper">Paper</option>
-		                      <option value="zip">Modpack ZIP</option>
-		                    </select>
-		                    <div className="hint">Vanilla/Paper：自动下载服务端；ZIP：上传整合包/服务端包并解压</div>
-		                  </div>
+			                  <div className="field">
+			                    <label>Type</label>
+			                    <select
+			                      value={installForm.kind}
+			                      onChange={(e) => {
+			                        const k = e.target.value as any;
+			                        setInstallForm((f) => ({
+			                          ...f,
+			                          kind: k,
+			                          jarName:
+			                            k === "zip" || k === "modrinth" || k === "curseforge"
+			                              ? normalizeJarPath(String(f.instanceId || "").trim(), f.jarName)
+			                              : normalizeJarName(f.jarName),
+			                          remoteUrl: "",
+			                          remoteFileName: "",
+			                        }));
+			                        setMarketStatus("");
+			                        setMarketResults([]);
+			                        setMarketSelected(null);
+			                        setMarketVersions([]);
+			                        setMarketSelectedVersionId("");
+			                      }}
+			                    >
+			                      <option value="vanilla">Vanilla</option>
+			                      <option value="paper">Paper</option>
+			                      <option value="fabric">Fabric (Placeholder)</option>
+			                      <option value="modrinth">Modrinth (Search)</option>
+			                      <option value="curseforge">CurseForge (Search)</option>
+			                      <option value="zip">Modpack ZIP (Upload)</option>
+			                    </select>
+			                    {installValidation.kindErr ? (
+			                      <div className="hint" style={{ color: "var(--danger)" }}>
+			                        {installValidation.kindErr}
+			                      </div>
+			                    ) : (
+			                      <div className="hint">Vanilla/Paper：自动下载服务端；Modrinth/CurseForge：搜索并拉取压缩包；ZIP：上传并解压</div>
+			                    )}
+			                  </div>
 
-		                  {installForm.kind === "zip" ? (
-		                    <div className="field" style={{ gridColumn: "1 / -1" }}>
-		                      <label>Modpack ZIP</label>
+			                  {installForm.kind === "zip" ? (
+			                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+			                      <label>Modpack ZIP</label>
 		                      <input
 		                        key={installZipInputKey}
 		                        type="file"
@@ -2326,10 +2913,129 @@ export default function HomePage() {
 		                        <div className="hint">将 zip 上传到 <code>servers/&lt;instance&gt;/</code> 并自动解压（默认会剥离单一顶层目录）</div>
 		                      )}
 		                    </div>
-		                  ) : (
-		                    <>
-		                      <div className="field" style={{ gridColumn: installForm.kind === "paper" ? undefined : "1 / -1" }}>
-		                        <label>Version</label>
+			                  ) : installForm.kind === "modrinth" || installForm.kind === "curseforge" ? (
+			                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+			                      <label>{installForm.kind === "modrinth" ? "Modrinth Modpacks" : "CurseForge Modpacks"}</label>
+			                      <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
+			                        <input
+			                          value={marketQuery}
+			                          onChange={(e) => setMarketQuery(e.target.value)}
+			                          placeholder="Search modpacks…"
+			                          style={{ flex: 1, minWidth: 220 }}
+			                        />
+			                        <button
+			                          type="button"
+			                          className="iconBtn"
+			                          onClick={runMarketSearch}
+			                          disabled={!marketQuery.trim() || installRunning}
+			                        >
+			                          <Icon name="search" />
+			                          Search
+			                        </button>
+			                        <button
+			                          type="button"
+			                          className="iconBtn"
+			                          onClick={() => {
+			                            setMarketStatus("");
+			                            setMarketResults([]);
+			                            setMarketSelected(null);
+			                            setMarketVersions([]);
+			                            setMarketSelectedVersionId("");
+			                            setInstallForm((f) => ({ ...f, remoteUrl: "", remoteFileName: "" }));
+			                          }}
+			                          disabled={installRunning}
+			                        >
+			                          Clear
+			                        </button>
+			                      </div>
+			                      {marketStatus ? <div className="hint">{marketStatus}</div> : <div className="hint">提示：CurseForge 需要配置 API Key 才能使用</div>}
+
+			                      {marketResults.length ? (
+			                        <div className="cardGrid" style={{ marginTop: 10 }}>
+			                          {marketResults.slice(0, 12).map((p: any) => (
+			                            <div
+			                              key={`${p.provider || installForm.kind}-${p.id}`}
+			                              className="itemCard"
+			                              style={{
+			                                cursor: "pointer",
+			                                borderColor: marketSelected?.id === p.id ? "rgba(139, 92, 246, 0.65)" : undefined,
+			                              }}
+			                              onClick={() => selectMarketPack(p)}
+			                            >
+			                              <div className="itemCardHeader">
+			                                <div style={{ minWidth: 0 }}>
+			                                  <div className="itemTitle">{p.title || p.name || p.slug || p.id}</div>
+			                                  <div className="itemMeta">{p.description || ""}</div>
+			                                </div>
+			                                <span className="badge">{p.provider || installForm.kind}</span>
+			                              </div>
+			                              <div className="row" style={{ gap: 8 }}>
+			                                <span className="badge">{typeof p.downloads === "number" ? `${p.downloads} downloads` : "downloads -"}</span>
+			                                {Array.isArray(p.game_versions) && p.game_versions.length ? (
+			                                  <span className="badge">{p.game_versions.slice(0, 2).join(", ")}</span>
+			                                ) : null}
+			                              </div>
+			                            </div>
+			                          ))}
+			                        </div>
+			                      ) : null}
+
+			                      {marketSelected ? (
+			                        <div className="card" style={{ marginTop: 12 }}>
+			                          <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
+			                            <div style={{ minWidth: 0 }}>
+			                              <div style={{ fontWeight: 760 }}>{marketSelected.title || marketSelected.name || marketSelected.id}</div>
+			                              <div className="hint">{marketSelected.description || ""}</div>
+			                            </div>
+			                            <span className="badge ok">selected</span>
+			                          </div>
+
+			                          {installForm.kind === "modrinth" ? (
+			                            <>
+			                              <div className="field" style={{ marginTop: 10 }}>
+			                                <label>Version</label>
+			                                <select value={marketSelectedVersionId} onChange={(e) => pickModrinthVersion(e.target.value)} disabled={!marketVersions.length}>
+			                                  {marketVersions.map((v: any) => (
+			                                    <option key={v.id} value={v.id}>
+			                                      {String(v.version_number || v.name || v.id)}
+			                                    </option>
+			                                  ))}
+			                                </select>
+			                                <div className="hint">选择后会自动选取该版本的 primary file（若无则取第一个文件）</div>
+			                              </div>
+			                            </>
+			                          ) : (
+			                            <>
+			                              <div className="field" style={{ marginTop: 10 }}>
+			                                <label>File</label>
+			                                <select value={marketSelectedVersionId} onChange={(e) => pickCurseForgeFile(e.target.value)} disabled={!marketVersions.length}>
+			                                  {marketVersions.map((f: any) => (
+			                                    <option key={f.id} value={f.id}>
+			                                      {String(f.display_name || f.file_name || f.id)}
+			                                    </option>
+			                                  ))}
+			                                </select>
+			                                <div className="hint">选择后会解析/获取 download url 并用于安装</div>
+			                              </div>
+			                            </>
+			                          )}
+
+			                          {installValidation.remoteErr ? (
+			                            <div className="hint" style={{ color: "var(--danger)" }}>
+			                              {installValidation.remoteErr}
+			                            </div>
+			                          ) : installForm.remoteUrl ? (
+			                            <div className="hint" style={{ marginTop: 8 }}>
+			                              file: <code>{installForm.remoteFileName || "-"}</code>
+			                            </div>
+			                          ) : null}
+			                        </div>
+			                      ) : null}
+			                    </div>
+			                  ) : (
+			                    <>
+			                      <div className="field" style={{ gridColumn: installForm.kind === "paper" ? undefined : "1 / -1" }}>
+			                        <label>Version</label>
 		                        <input
 		                          value={installForm.version}
 		                          onChange={(e) => setInstallForm((f) => ({ ...f, version: e.target.value }))}
@@ -2395,8 +3101,17 @@ export default function HomePage() {
 	                    )}
 	                  </div>
 
+                    </>
+                  ) : null}
+
+                  {installStep === 2 ? (
+                    <>
 		                  <div className="field">
-		                    <label>{installForm.kind === "zip" ? "Jar path (after extract)" : "Jar name"}</label>
+		                    <label>
+		                      {installForm.kind === "zip" || installForm.kind === "modrinth" || installForm.kind === "curseforge"
+		                        ? "Jar path (after extract)"
+		                        : "Jar name"}
+		                    </label>
 		                    <input
 		                      value={installForm.jarName}
 		                      onChange={(e) => setInstallForm((f) => ({ ...f, jarName: e.target.value }))}
@@ -2408,8 +3123,8 @@ export default function HomePage() {
 		                      </div>
 		                    ) : (
 		                      <div className="hint">
-		                        {installForm.kind === "zip"
-		                          ? "用于一键 Start（默认 server.jar，可在 Settings 里随时修改）"
+		                        {installForm.kind === "zip" || installForm.kind === "modrinth" || installForm.kind === "curseforge"
+		                          ? "相对 instance 目录的 jar 路径（可带子目录），用于一键 Start"
 		                          : "只填文件名（不含路径），例如 server.jar"}
 		                      </div>
 		                    )}
@@ -2423,20 +3138,23 @@ export default function HomePage() {
 	                    />
 	                    <div className="hint">留空则由 Daemon 自动选择（推荐）</div>
 	                  </div>
-		                  {installForm.kind !== "zip" ? (
-		                    <div className="field">
-		                      <label>EULA</label>
-		                      <label className="checkRow">
-		                        <input
-		                          type="checkbox"
-		                          checked={!!installForm.acceptEula}
-		                          onChange={(e) => setInstallForm((f) => ({ ...f, acceptEula: e.target.checked }))}
-		                        />
-		                        自动写入 eula.txt（推荐）
-		                      </label>
-		                    </div>
-		                  ) : null}
+		                  <div className="field">
+		                    <label>EULA</label>
+		                    <label className="checkRow">
+		                      <input
+		                        type="checkbox"
+		                        checked={!!installForm.acceptEula}
+		                        onChange={(e) => setInstallForm((f) => ({ ...f, acceptEula: e.target.checked }))}
+		                      />
+		                      自动写入 eula.txt（推荐）
+		                    </label>
+		                  </div>
 
+                    </>
+                  ) : null}
+
+                  {installStep === 3 ? (
+                    <>
 	                  <div className="field">
 	                    <label>FRP (optional)</label>
 	                    <label className="checkRow">
@@ -2498,35 +3216,62 @@ export default function HomePage() {
                       </div>
                     )}
                   </div>
+
+                    </>
+                  ) : null}
                 </div>
 
-                <div className="row" style={{ marginTop: 12 }}>
-                  <button
-                    className="primary"
-                    onClick={() => runInstall(false)}
-                    disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstall}
-                  >
-                    Install
-                  </button>
-                  <button
-                    className="primary"
-                    onClick={() => runInstall(true)}
-                    disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstallAndStart}
-                  >
-                    Install & Start
-                  </button>
-                  <button
-                    type="button"
-	                    onClick={() => {
-	                      setInstallStartUnix(0);
-	                      setInstallInstance(installForm.instanceId.trim());
-	                    }}
-                    disabled={installRunning}
-                  >
-                    Reset Logs
-                  </button>
-                  {installRunning ? <span className="badge">installing…</span> : null}
-                  {serverOpStatus ? <span className="muted">{serverOpStatus}</span> : null}
+                <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
+                    <span className="badge">step {installStep}/3</span>
+                    {installStep > 1 ? (
+                      <button type="button" onClick={() => setInstallStep((s) => (Math.max(1, s - 1) as 1 | 2 | 3))} disabled={installRunning}>
+                        Back
+                      </button>
+                    ) : null}
+                    {installStep < 3 ? (
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => setInstallStep((s) => (Math.min(3, s + 1) as 1 | 2 | 3))}
+                        disabled={installRunning || (installStep === 1 ? !installWizardStep1Ok : !installWizardStep2Ok)}
+                      >
+                        Next
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="primary"
+                          onClick={() => runInstall(false)}
+                          disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstall}
+                        >
+                          Install
+                        </button>
+                        <button
+                          className="primary"
+                          onClick={() => runInstall(true)}
+                          disabled={!selectedDaemon?.connected || installRunning || !installValidation.canInstallAndStart}
+                        >
+                          Install & Start
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInstallStartUnix(0);
+                        setInstallInstance(installForm.instanceId.trim());
+                      }}
+                      disabled={installRunning}
+                    >
+                      Reset Logs
+                    </button>
+                    {installRunning ? <span className="badge">installing…</span> : null}
+                    {serverOpStatus ? <span className="muted">{serverOpStatus}</span> : null}
+                  </div>
                 </div>
 
                 <h3 style={{ marginTop: 12 }}>Install Logs</h3>
@@ -2814,21 +3559,48 @@ export default function HomePage() {
 
 	                  <div className="card">
 	                    <h3>Charts</h3>
-                    <div className="hint">CPU%</div>
-                    <Sparkline
-                      values={(Array.isArray(nodeDetailsNode.history) ? nodeDetailsNode.history : []).map((p: any) => p?.cpu_percent)}
-                      width={460}
-                      height={80}
-                      stroke="rgba(147, 197, 253, 0.95)"
-                    />
-                    <div className="hint" style={{ marginTop: 10 }}>
-                      MEM%
-                    </div>
+	                    <div className="row" style={{ justifyContent: "space-between", alignItems: "end", gap: 10, marginBottom: 8 }}>
+	                      <div className="field" style={{ minWidth: 180 }}>
+	                        <label>Range</label>
+	                        <select value={String(nodeDetailsRangeSec)} onChange={(e) => setNodeDetailsRangeSec(Number(e.target.value) || 0)}>
+	                          <option value={60}>Last 1m</option>
+	                          <option value={5 * 60}>Last 5m</option>
+	                          <option value={15 * 60}>Last 15m</option>
+	                          <option value={60 * 60}>Last 1h</option>
+	                          <option value={0}>All</option>
+	                        </select>
+	                      </div>
+	                      <div className="hint" style={{ marginBottom: 4 }}>
+	                        {nodeDetailsHistoryMeta.points
+	                          ? `points: ${nodeDetailsHistoryMeta.points} · ${fmtUnix(nodeDetailsHistoryMeta.fromUnix)} - ${fmtUnix(nodeDetailsHistoryMeta.toUnix)}`
+	                          : "No history yet"}
+	                      </div>
+	                    </div>
+
+	                    <div className="hint">CPU% · latest: {nodeDetailsHistoryMeta.cpuLatest == null ? "-" : `${nodeDetailsHistoryMeta.cpuLatest.toFixed(1)}%`}</div>
 	                    <Sparkline
-	                      values={(Array.isArray(nodeDetailsNode.history) ? nodeDetailsNode.history : []).map((p: any) => p?.mem_percent)}
-	                      width={460}
+	                      values={nodeDetailsHistory.map((p: any) => p?.cpu_percent)}
+	                      width={520}
+	                      height={80}
+	                      stroke="rgba(147, 197, 253, 0.95)"
+	                    />
+	                    <div className="hint" style={{ marginTop: 10 }}>
+	                      MEM% · latest: {nodeDetailsHistoryMeta.memLatest == null ? "-" : `${nodeDetailsHistoryMeta.memLatest.toFixed(0)}%`}
+	                    </div>
+	                    <Sparkline
+	                      values={nodeDetailsHistory.map((p: any) => p?.mem_percent)}
+	                      width={520}
 	                      height={80}
 	                      stroke="rgba(34, 197, 94, 0.9)"
+	                    />
+	                    <div className="hint" style={{ marginTop: 10 }}>
+	                      DISK% · latest: {nodeDetailsHistoryMeta.diskLatest == null ? "-" : `${nodeDetailsHistoryMeta.diskLatest.toFixed(0)}%`}
+	                    </div>
+	                    <Sparkline
+	                      values={nodeDetailsHistory.map((p: any) => p?.disk_percent)}
+	                      width={520}
+	                      height={80}
+	                      stroke="rgba(251, 191, 36, 0.95)"
 	                    />
 	                  </div>
 	                </div>
@@ -3080,6 +3852,8 @@ export default function HomePage() {
       {tab === "frp" ? <FrpView /> : null}
 
       {tab === "files" ? <FilesView /> : null}
+
+      {tab === "panel" ? <PanelView /> : null}
 
       {enableAdvanced && tab === "advanced" ? <AdvancedView /> : null}
         </div>

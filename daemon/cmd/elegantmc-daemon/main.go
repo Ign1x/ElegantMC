@@ -13,6 +13,7 @@ import (
 	"elegantmc/daemon/internal/config"
 	"elegantmc/daemon/internal/frp"
 	"elegantmc/daemon/internal/mc"
+	"elegantmc/daemon/internal/scheduler"
 	"elegantmc/daemon/internal/sandbox"
 	"elegantmc/daemon/internal/wsclient"
 )
@@ -45,6 +46,9 @@ func main() {
 		ServersFS: rootFS,
 		Log:       logger,
 		JavaCandidates: cfg.JavaCandidates,
+		JavaAutoDownload: cfg.JavaAutoDownload,
+		JavaCacheDir: cfg.JavaCacheDir,
+		JavaAdoptiumAPIBaseURL: cfg.JavaAdoptiumAPIBaseURL,
 	})
 
 	exec := commands.NewExecutor(commands.ExecutorDeps{
@@ -63,6 +67,18 @@ func main() {
 			APIBaseURL: cfg.PaperAPIBaseURL,
 		},
 	})
+
+	if cfg.ScheduleEnabled {
+		go scheduler.New(scheduler.Config{
+			Enabled:   true,
+			FilePath:  cfg.ScheduleFile,
+			PollEvery: time.Duration(cfg.SchedulePollSec) * time.Second,
+		}, scheduler.Deps{
+			ServersFS: rootFS,
+			MC:        mcMgr,
+			Log:       logger,
+		}).Run(ctx)
+	}
 
 	client := wsclient.New(wsclient.Config{
 		URL:             cfg.PanelWSURL,

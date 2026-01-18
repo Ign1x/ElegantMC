@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 
+	"elegantmc/daemon/internal/backup"
 	"elegantmc/daemon/internal/download"
 	"elegantmc/daemon/internal/frp"
 	"elegantmc/daemon/internal/mc"
@@ -67,6 +68,163 @@ func NewExecutor(deps ExecutorDeps) *Executor {
 		ex.uploads = newUploadManager(deps.FS)
 	}
 	return ex
+}
+
+func (e *Executor) mcTemplates() protocol.CommandResult {
+	return ok(map[string]any{
+		"templates": []any{
+			map[string]any{
+				"id":          "vanilla",
+				"name":        "Vanilla",
+				"supported":   true,
+				"install_cmd": "mc_install_vanilla",
+				"presets": map[string]any{
+					"jar_name":     "server.jar",
+					"xms":          "1G",
+					"xmx":          "2G",
+					"accept_eula":  true,
+					"enable_frp":   true,
+					"frp_remote_port":  0,
+				},
+			},
+			map[string]any{
+				"id":          "paper",
+				"name":        "Paper",
+				"supported":   true,
+				"install_cmd": "mc_install_paper",
+				"presets": map[string]any{
+					"jar_name":     "server.jar",
+					"xms":          "1G",
+					"xmx":          "2G",
+					"accept_eula":  true,
+					"enable_frp":   true,
+					"frp_remote_port":  0,
+				},
+			},
+			map[string]any{
+				"id":        "fabric",
+				"name":      "Fabric",
+				"supported": false,
+				"note":      "placeholder (not built-in yet). Use Modpack ZIP / upload your server jar.",
+				"presets": map[string]any{
+					"jar_name": "server.jar",
+					"xms":      "1G",
+					"xmx":      "2G",
+				},
+			},
+		},
+	})
+}
+
+func (e *Executor) mcBackup(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	instanceID, _ := asString(cmd.Args["instance_id"])
+	if strings.TrimSpace(instanceID) == "" {
+		return fail("instance_id is required")
+	}
+	if err := validateInstanceID(instanceID); err != nil {
+		return fail(err.Error())
+	}
+	if e.deps.FS == nil {
+		return fail("servers filesystem not configured")
+	}
+
+	backupName, _ := asString(cmd.Args["backup_name"])
+	if strings.TrimSpace(backupName) == "" {
+		backupName = fmt.Sprintf("%s-%d.zip", instanceID, timeNowUnix())
+	}
+	backupName = strings.TrimSpace(backupName)
+	if backupName == "" {
+		return fail("backup_name is empty")
+	}
+	if strings.Contains(backupName, "/") || strings.Contains(backupName, "\\") {
+		return fail("backup_name must be a filename (no /)")
+	}
+	if !strings.HasSuffix(strings.ToLower(backupName), ".zip") {
+		backupName += ".zip"
+	}
+	if len(backupName) > 128 {
+		return fail("backup_name too long")
+	}
+
+	// Best-effort stop (optional).
+	shouldStop := true
+	if v, ok := asBool(cmd.Args["stop"]); ok {
+		shouldStop = v
+	}
+	if shouldStop {
+		_ = e.deps.MC.Stop(ctx, instanceID)
+	}
+
+	srcAbs, err := e.deps.FS.Resolve(instanceID)
+	if err != nil {
+		return fail(err.Error())
+	}
+	if _, err := os.Stat(srcAbs); err != nil {
+		return fail(err.Error())
+	}
+
+	destRel := filepath.Join("_backups", instanceID, backupName)
+	destAbs, err := e.deps.FS.Resolve(destRel)
+	if err != nil {
+		return fail(err.Error())
+	}
+	if err := os.MkdirAll(filepath.Dir(destAbs), 0o755); err != nil {
+		return fail(err.Error())
+	}
+
+	e.emitInstall(instanceID, fmt.Sprintf("backup: zipping %s -> %s", instanceID, destRel))
+	files, err := backup.ZipDir(srcAbs, destAbs)
+	if err != nil {
+		return fail(err.Error())
+	}
+	e.emitInstall(instanceID, fmt.Sprintf("backup done: %d files -> %s", files, destRel))
+	return ok(map[string]any{"instance_id": instanceID, "path": destRel, "files": files})
+}
+
+func (e *Executor) mcRestore(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	instanceID, _ := asString(cmd.Args["instance_id"])
+	if strings.TrimSpace(instanceID) == "" {
+		return fail("instance_id is required")
+	}
+	if err := validateInstanceID(instanceID); err != nil {
+		return fail(err.Error())
+	}
+	if e.deps.FS == nil {
+		return fail("servers filesystem not configured")
+	}
+
+	zipRel, _ := asString(cmd.Args["zip_path"])
+	if strings.TrimSpace(zipRel) == "" {
+		return fail("zip_path is required")
+	}
+	zipAbs, err := e.deps.FS.Resolve(zipRel)
+	if err != nil {
+		return fail(err.Error())
+	}
+
+	// Stop instance (best-effort).
+	_ = e.deps.MC.Stop(ctx, instanceID)
+
+	instAbs, err := e.deps.FS.Resolve(instanceID)
+	if err != nil {
+		return fail(err.Error())
+	}
+
+	// Remove old dir then restore.
+	if err := os.RemoveAll(instAbs); err != nil {
+		return fail(err.Error())
+	}
+	if err := os.MkdirAll(instAbs, 0o755); err != nil {
+		return fail(err.Error())
+	}
+
+	e.emitInstall(instanceID, fmt.Sprintf("restore: %s -> %s", zipRel, instanceID))
+	files, err := backup.UnzipToDir(zipAbs, instAbs)
+	if err != nil {
+		return fail(err.Error())
+	}
+	e.emitInstall(instanceID, fmt.Sprintf("restore done: %d files", files))
+	return ok(map[string]any{"instance_id": instanceID, "restored": true, "files": files})
 }
 
 func (e *Executor) HeartbeatSnapshot() protocol.Heartbeat {
@@ -127,15 +285,18 @@ func (e *Executor) HeartbeatSnapshot() protocol.Heartbeat {
 	}
 
 	// FRP
-	frpSt := e.deps.FRP.Status()
-	if frpSt.Running {
-		hb.FRP = &protocol.FRPStatus{
+	for _, st := range e.deps.FRP.Statuses() {
+		hb.FRPProxies = append(hb.FRPProxies, protocol.FRPStatus{
 			Running:     true,
-			ProxyName:   frpSt.ProxyName,
-			RemoteAddr:  frpSt.RemoteAddr,
-			RemotePort:  frpSt.RemotePort,
-			StartedUnix: frpSt.StartedUnix,
-		}
+			ProxyName:   st.ProxyName,
+			RemoteAddr:  st.RemoteAddr,
+			RemotePort:  st.RemotePort,
+			StartedUnix: st.StartedUnix,
+		})
+	}
+	if len(hb.FRPProxies) > 0 {
+		first := hb.FRPProxies[0]
+		hb.FRP = &first
 	}
 
 	// MC instances
@@ -166,6 +327,12 @@ func (e *Executor) Execute(ctx context.Context, cmd protocol.Command) protocol.C
 	switch cmd.Name {
 	case "ping":
 		return ok(map[string]any{"pong": true})
+	case "mc_templates":
+		return e.mcTemplates()
+	case "mc_backup":
+		return e.mcBackup(ctx, cmd)
+	case "mc_restore":
+		return e.mcRestore(ctx, cmd)
 	case "fs_read":
 		return e.fsRead(cmd)
 	case "fs_write":
@@ -209,7 +376,7 @@ func (e *Executor) Execute(ctx context.Context, cmd protocol.Command) protocol.C
 	case "frp_start":
 		return e.frpStart(ctx, cmd)
 	case "frp_stop":
-		return e.frpStop(ctx)
+		return e.frpStop(ctx, cmd)
 	default:
 		return fail(fmt.Sprintf("unknown command: %s", cmd.Name))
 	}
@@ -220,6 +387,7 @@ func (e *Executor) fsDownload(ctx context.Context, cmd protocol.Command) protoco
 	url, _ := asString(cmd.Args["url"])
 	sha256, _ := asString(cmd.Args["sha256"])
 	sha1, _ := asString(cmd.Args["sha1"])
+	instanceID, _ := asString(cmd.Args["instance_id"])
 	if strings.TrimSpace(path) == "" {
 		return fail("path is required")
 	}
@@ -230,9 +398,22 @@ func (e *Executor) fsDownload(ctx context.Context, cmd protocol.Command) protoco
 	if err != nil {
 		return fail(err.Error())
 	}
+	if strings.TrimSpace(instanceID) != "" {
+		e.emitInstall(instanceID, fmt.Sprintf("download: %s -> %s", url, path))
+	}
 	res, err := download.DownloadFileWithChecksums(ctx, url, abs, sha256, sha1)
 	if err != nil {
 		return fail(err.Error())
+	}
+	if strings.TrimSpace(instanceID) != "" {
+		msg := fmt.Sprintf("download ok: bytes=%d", res.Bytes)
+		if res.SHA256 != "" {
+			msg += fmt.Sprintf(" sha256=%s", res.SHA256)
+		}
+		if res.SHA1 != "" {
+			msg += fmt.Sprintf(" sha1=%s", res.SHA1)
+		}
+		e.emitInstall(instanceID, msg)
 	}
 	return ok(map[string]any{
 		"path":   path,
@@ -803,7 +984,14 @@ func (e *Executor) frpStart(ctx context.Context, cmd protocol.Command) protocol.
 	var proxy frp.ProxyConfig
 	var err error
 
-	proxy.Name, _ = asString(cmd.Args["name"])
+	instanceID, _ := asString(cmd.Args["instance_id"])
+	proxy.Name = strings.TrimSpace(instanceID)
+	if proxy.Name == "" {
+		proxy.Name, _ = asString(cmd.Args["name"])
+	}
+	if err := validateInstanceID(proxy.Name); err != nil {
+		return fail(err.Error())
+	}
 	proxy.ServerAddr, _ = asString(cmd.Args["server_addr"])
 	proxy.ServerPort, err = asInt(cmd.Args["server_port"])
 	if err != nil {
@@ -824,6 +1012,7 @@ func (e *Executor) frpStart(ctx context.Context, cmd protocol.Command) protocol.
 		e.emitLog(protocol.LogLine{
 			Source: "frp",
 			Stream: stream,
+			Instance: proxy.Name,
 			Line:   line,
 		})
 	}); err != nil {
@@ -832,11 +1021,24 @@ func (e *Executor) frpStart(ctx context.Context, cmd protocol.Command) protocol.
 	return ok(map[string]any{"name": proxy.Name})
 }
 
-func (e *Executor) frpStop(ctx context.Context) protocol.CommandResult {
-	if err := e.deps.FRP.Stop(ctx); err != nil {
+func (e *Executor) frpStop(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
+	name, _ := asString(cmd.Args["instance_id"])
+	if strings.TrimSpace(name) == "" {
+		name, _ = asString(cmd.Args["name"])
+	}
+	if strings.TrimSpace(name) == "" {
+		if err := e.deps.FRP.StopAll(ctx); err != nil {
+			return fail(err.Error())
+		}
+		return ok(map[string]any{"stopped": true})
+	}
+	if err := validateInstanceID(name); err != nil {
 		return fail(err.Error())
 	}
-	return ok(map[string]any{"stopped": true})
+	if err := e.deps.FRP.StopProxy(ctx, name); err != nil {
+		return fail(err.Error())
+	}
+	return ok(map[string]any{"stopped": true, "name": name})
 }
 
 func (e *Executor) emitLog(line protocol.LogLine) {

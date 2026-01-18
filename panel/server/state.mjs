@@ -13,6 +13,7 @@ const PANEL_DATA_DIR = process.env.ELEGANTMC_PANEL_DATA_DIR
 const FRP_PROFILES_PATH = path.join(PANEL_DATA_DIR, "frp_profiles.json");
 const DAEMON_TOKENS_PATH = path.join(PANEL_DATA_DIR, "daemon_tokens.json");
 const PANEL_ID_PATH = path.join(PANEL_DATA_DIR, "panel_id.txt");
+const PANEL_SETTINGS_PATH = path.join(PANEL_DATA_DIR, "panel_settings.json");
 
 let frpLoaded = false;
 let frpWriteChain = Promise.resolve();
@@ -22,6 +23,9 @@ let tokensWriteChain = Promise.resolve();
 
 let panelIDLoaded = false;
 let panelID = "";
+
+let panelSettingsLoaded = false;
+let panelSettingsWriteChain = Promise.resolve();
 
 function nowUnix() {
   return Math.floor(Date.now() / 1000);
@@ -42,6 +46,7 @@ export const state = {
   pending: new Map(), // commandId -> { resolve, reject, timeout }
   frpProfiles: [],
   daemonTokens: {},
+  panelSettings: null,
 };
 
 async function ensurePanelID() {
@@ -133,6 +138,7 @@ export async function ensureReady() {
   await ensurePanelID();
   await ensureTokensLoaded();
   await ensureFrpLoaded();
+  await ensurePanelSettingsLoaded();
 }
 
 export function getDaemonTokenSync(id) {
@@ -167,6 +173,92 @@ export async function deleteNode(id) {
   delete state.daemonTokens[id];
   await queueTokensSave();
   return true;
+}
+
+function normalizePanelSettings(input) {
+  const obj = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const defaultsIn =
+    obj.defaults && typeof obj.defaults === "object" && !Array.isArray(obj.defaults) ? obj.defaults : {};
+
+  const brandName = String(obj.brand_name ?? "").trim() || "ElegantMC";
+  if (brandName.length > 64) throw new Error("brand_name too long");
+
+  const brandTagline = String(obj.brand_tagline ?? "").trim();
+  if (brandTagline.length > 120) throw new Error("brand_tagline too long");
+
+  const logoUrl = String(obj.logo_url ?? "").trim() || "/logo.svg";
+  if (logoUrl.length > 255) throw new Error("logo_url too long");
+
+  const version = String(defaultsIn.version ?? "").trim() || "1.20.1";
+  if (version.length > 32) throw new Error("defaults.version too long");
+
+  const xms = String(defaultsIn.xms ?? "").trim() || "1G";
+  const xmx = String(defaultsIn.xmx ?? "").trim() || "2G";
+  if (xms.length > 16) throw new Error("defaults.xms too long");
+  if (xmx.length > 16) throw new Error("defaults.xmx too long");
+
+  const gamePort = Math.round(Number(defaultsIn.game_port ?? 25565));
+  if (!Number.isFinite(gamePort) || gamePort < 1 || gamePort > 65535) throw new Error("defaults.game_port invalid");
+
+  const acceptEula = defaultsIn.accept_eula == null ? true : !!defaultsIn.accept_eula;
+  const enableFrp = defaultsIn.enable_frp == null ? true : !!defaultsIn.enable_frp;
+
+  const frpRemotePort = Math.round(Number(defaultsIn.frp_remote_port ?? 25566));
+  if (!Number.isFinite(frpRemotePort) || frpRemotePort < 0 || frpRemotePort > 65535) throw new Error("defaults.frp_remote_port invalid");
+
+  return {
+    brand_name: brandName,
+    brand_tagline: brandTagline,
+    logo_url: logoUrl,
+    defaults: {
+      version,
+      xms,
+      xmx,
+      game_port: gamePort,
+      accept_eula: acceptEula,
+      enable_frp: enableFrp,
+      frp_remote_port: frpRemotePort,
+    },
+  };
+}
+
+async function ensurePanelSettingsLoaded() {
+  if (panelSettingsLoaded) return;
+  await fs.mkdir(PANEL_DATA_DIR, { recursive: true });
+  try {
+    const raw = await fs.readFile(PANEL_SETTINGS_PATH, "utf8");
+    const parsed = safeJsonParse(raw);
+    state.panelSettings = normalizePanelSettings(parsed);
+  } catch (e) {
+    if (e?.code !== "ENOENT") {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] failed to load panel settings:", e?.message || e);
+    }
+    state.panelSettings = normalizePanelSettings({});
+  }
+  panelSettingsLoaded = true;
+}
+
+function queuePanelSettingsSave() {
+  panelSettingsWriteChain = panelSettingsWriteChain.then(async () => {
+    await ensurePanelSettingsLoaded();
+    const payload = JSON.stringify({ ...state.panelSettings, updated_at_unix: nowUnix() }, null, 2);
+    await writeFileAtomic(PANEL_SETTINGS_PATH, payload);
+  });
+  return panelSettingsWriteChain;
+}
+
+export async function getPanelSettings() {
+  await ensurePanelSettingsLoaded();
+  const cur = state.panelSettings || normalizePanelSettings({});
+  return { ...cur, updated_at_unix: nowUnix() };
+}
+
+export async function savePanelSettings(input) {
+  await ensurePanelSettingsLoaded();
+  state.panelSettings = normalizePanelSettings(input);
+  await queuePanelSettingsSave();
+  return { ...state.panelSettings, updated_at_unix: nowUnix() };
 }
 
 async function ensureFrpLoaded() {

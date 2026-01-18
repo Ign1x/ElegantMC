@@ -15,9 +15,11 @@ import {
   ensureReady,
   getOrCreateDaemon,
   getDaemonTokenSync,
+  getPanelSettings,
   handleDaemonMessage,
   listFrpProfiles,
   listNodes,
+  savePanelSettings,
   sendCommand,
   state,
 } from "./state.mjs";
@@ -253,6 +255,168 @@ async function getMcVersions() {
   return versions;
 }
 
+async function fetchJsonWithTimeout(url, opts = {}, timeoutMs = 12_000) {
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    const json = await res.json().catch(() => null);
+    return { res, json };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const MODRINTH_BASE_URL = String(process.env.ELEGANTMC_MODRINTH_BASE_URL || "https://api.modrinth.com").replace(/\/+$/, "");
+const CURSEFORGE_BASE_URL = String(process.env.ELEGANTMC_CURSEFORGE_BASE_URL || "https://api.curseforge.com").replace(/\/+$/, "");
+const CURSEFORGE_API_KEY = String(process.env.ELEGANTMC_CURSEFORGE_API_KEY || "").trim();
+
+async function modrinthSearchModpacks(query, limit = 12, offset = 0) {
+  const q = String(query || "").trim();
+  if (!q) throw new Error("query is required");
+  if (q.length > 120) throw new Error("query too long");
+  const lim = Math.max(1, Math.min(50, Number(limit || 12)));
+  const off = Math.max(0, Math.min(5000, Number(offset || 0)));
+
+  const params = new URLSearchParams();
+  params.set("query", q);
+  params.set("limit", String(lim));
+  params.set("offset", String(off));
+  params.set("facets", JSON.stringify([["project_type:modpack"]]));
+
+  const url = `${MODRINTH_BASE_URL}/v2/search?${params.toString()}`;
+  const { res, json } = await fetchJsonWithTimeout(url, { headers: { "User-Agent": "ElegantMC Panel" } }, 12_000);
+  if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+  const hits = Array.isArray(json?.hits) ? json.hits : [];
+  return hits.map((h) => ({
+    provider: "modrinth",
+    id: h.project_id,
+    slug: h.slug,
+    title: h.title,
+    description: h.description,
+    icon_url: h.icon_url,
+    downloads: h.downloads,
+    follows: h.follows,
+    updated: h.date_modified,
+    game_versions: Array.isArray(h.versions) ? h.versions : [],
+  }));
+}
+
+async function modrinthProjectVersions(projectId) {
+  const id = String(projectId || "").trim();
+  if (!id) throw new Error("project_id is required");
+  if (id.length > 128) throw new Error("project_id too long");
+  const url = `${MODRINTH_BASE_URL}/v2/project/${encodeURIComponent(id)}/version`;
+  const { res, json } = await fetchJsonWithTimeout(url, { headers: { "User-Agent": "ElegantMC Panel" } }, 15_000);
+  if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+  const list = Array.isArray(json) ? json : [];
+  return list.slice(0, 60).map((v) => ({
+    provider: "modrinth",
+    id: v.id,
+    name: v.name,
+    version_number: v.version_number,
+    date_published: v.date_published,
+    game_versions: Array.isArray(v.game_versions) ? v.game_versions : [],
+    loaders: Array.isArray(v.loaders) ? v.loaders : [],
+    files: Array.isArray(v.files)
+      ? v.files.map((f) => ({
+          filename: f.filename,
+          size: f.size,
+          primary: !!f.primary,
+          url: f.url,
+          hashes: f.hashes || {},
+        }))
+      : [],
+  }));
+}
+
+async function curseforgeSearchModpacks(query, pageSize = 12, index = 0) {
+  if (!CURSEFORGE_API_KEY) {
+    throw new Error("CURSEFORGE API key not configured (set ELEGANTMC_CURSEFORGE_API_KEY)");
+  }
+  const q = String(query || "").trim();
+  if (!q) throw new Error("query is required");
+  if (q.length > 120) throw new Error("query too long");
+
+  const size = Math.max(1, Math.min(50, Number(pageSize || 12)));
+  const idx = Math.max(0, Math.min(5000, Number(index || 0)));
+  const params = new URLSearchParams();
+  params.set("gameId", "432"); // Minecraft
+  params.set("classId", "4471"); // Modpacks
+  params.set("pageSize", String(size));
+  params.set("index", String(idx));
+  params.set("searchFilter", q);
+
+  const url = `${CURSEFORGE_BASE_URL}/v1/mods/search?${params.toString()}`;
+  const { res, json } = await fetchJsonWithTimeout(
+    url,
+    { headers: { "User-Agent": "ElegantMC Panel", "x-api-key": CURSEFORGE_API_KEY } },
+    15_000
+  );
+  if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+  const list = Array.isArray(json?.data) ? json.data : [];
+  return list.map((m) => ({
+    provider: "curseforge",
+    id: String(m.id),
+    title: m.name,
+    description: m.summary,
+    icon_url: m.logo?.url || "",
+    downloads: m.downloadCount,
+    game_versions: Array.isArray(m.latestFilesIndexes) ? m.latestFilesIndexes.map((x) => x?.gameVersion).filter(Boolean) : [],
+  }));
+}
+
+async function curseforgeModFiles(modId, pageSize = 25, index = 0) {
+  if (!CURSEFORGE_API_KEY) {
+    throw new Error("CURSEFORGE API key not configured (set ELEGANTMC_CURSEFORGE_API_KEY)");
+  }
+  const id = String(modId || "").trim();
+  if (!id) throw new Error("mod_id is required");
+  const size = Math.max(1, Math.min(50, Number(pageSize || 25)));
+  const idx = Math.max(0, Math.min(5000, Number(index || 0)));
+
+  const params = new URLSearchParams();
+  params.set("pageSize", String(size));
+  params.set("index", String(idx));
+  const url = `${CURSEFORGE_BASE_URL}/v1/mods/${encodeURIComponent(id)}/files?${params.toString()}`;
+  const { res, json } = await fetchJsonWithTimeout(
+    url,
+    { headers: { "User-Agent": "ElegantMC Panel", "x-api-key": CURSEFORGE_API_KEY } },
+    15_000
+  );
+  if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+  const list = Array.isArray(json?.data) ? json.data : [];
+  return list.map((f) => ({
+    provider: "curseforge",
+    id: String(f.id),
+    display_name: f.displayName,
+    file_name: f.fileName,
+    file_date: f.fileDate,
+    release_type: f.releaseType,
+    download_url: f.downloadUrl || "",
+    file_length: f.fileLength,
+    game_versions: Array.isArray(f.gameVersions) ? f.gameVersions : [],
+  }));
+}
+
+async function curseforgeFileDownloadUrl(fileId) {
+  if (!CURSEFORGE_API_KEY) {
+    throw new Error("CURSEFORGE API key not configured (set ELEGANTMC_CURSEFORGE_API_KEY)");
+  }
+  const id = String(fileId || "").trim();
+  if (!id) throw new Error("file_id is required");
+  const url = `${CURSEFORGE_BASE_URL}/v1/mods/files/${encodeURIComponent(id)}/download-url`;
+  const { res, json } = await fetchJsonWithTimeout(
+    url,
+    { headers: { "User-Agent": "ElegantMC Panel", "x-api-key": CURSEFORGE_API_KEY } },
+    15_000
+  );
+  if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+  const dl = json?.data;
+  if (!dl || typeof dl !== "string") throw new Error("no download url");
+  return dl;
+}
+
 const frpStatusCache = new Map(); // profileId -> { checkedAtUnix, online, latencyMs, error }
 const FRP_STATUS_TTL_SEC = 15;
 
@@ -400,6 +564,20 @@ const server = http.createServer(async (req, res) => {
       if (!open && !requireAdmin(req, res)) return;
     }
 
+    if (url.pathname === "/api/panel/settings" && req.method === "GET") {
+      const settings = await getPanelSettings();
+      return json(res, 200, { settings });
+    }
+    if (url.pathname === "/api/panel/settings" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const settings = await savePanelSettings(body);
+        return json(res, 200, { settings });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
     if (url.pathname === "/api/daemons" && req.method === "GET") {
       // Include configured nodes even if never connected.
       const nodes = await listNodes();
@@ -425,6 +603,70 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         mcVersionsCache.error = String(e?.message || e);
         return json(res, 502, { error: mcVersionsCache.error });
+      }
+    }
+
+    if (url.pathname === "/api/modpacks/providers" && req.method === "GET") {
+      return json(res, 200, {
+        providers: [
+          { id: "modrinth", name: "Modrinth", enabled: true },
+          { id: "curseforge", name: "CurseForge", enabled: !!CURSEFORGE_API_KEY },
+        ],
+      });
+    }
+
+    if (url.pathname === "/api/modpacks/search" && req.method === "GET") {
+      const provider = String(url.searchParams.get("provider") || "modrinth").trim().toLowerCase();
+      const query = String(url.searchParams.get("query") || "").trim();
+      const limit = Number(url.searchParams.get("limit") || "12");
+      const offset = Number(url.searchParams.get("offset") || "0");
+      try {
+        if (provider === "modrinth") {
+          const results = await modrinthSearchModpacks(query, limit, offset);
+          return json(res, 200, { provider, results });
+        }
+        if (provider === "curseforge") {
+          const results = await curseforgeSearchModpacks(query, limit, offset);
+          return json(res, 200, { provider, results });
+        }
+        return json(res, 400, { error: "unknown provider" });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    const mMrVersions = url.pathname.match(/^\/api\/modpacks\/modrinth\/([^/]+)\/versions$/);
+    if (mMrVersions && req.method === "GET") {
+      const id = decodeURIComponent(mMrVersions[1]);
+      try {
+        const versions = await modrinthProjectVersions(id);
+        return json(res, 200, { provider: "modrinth", project_id: id, versions });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    const mCfFiles = url.pathname.match(/^\/api\/modpacks\/curseforge\/([^/]+)\/files$/);
+    if (mCfFiles && req.method === "GET") {
+      const id = decodeURIComponent(mCfFiles[1]);
+      const limit = Number(url.searchParams.get("limit") || "25");
+      const offset = Number(url.searchParams.get("offset") || "0");
+      try {
+        const files = await curseforgeModFiles(id, limit, offset);
+        return json(res, 200, { provider: "curseforge", mod_id: id, files });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    const mCfDl = url.pathname.match(/^\/api\/modpacks\/curseforge\/files\/([^/]+)\/download-url$/);
+    if (mCfDl && req.method === "GET") {
+      const id = decodeURIComponent(mCfDl[1]);
+      try {
+        const urlText = await curseforgeFileDownloadUrl(id);
+        return json(res, 200, { provider: "curseforge", file_id: id, url: urlText });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
       }
     }
 

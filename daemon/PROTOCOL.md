@@ -58,6 +58,15 @@ Daemon 主动连接 Panel 的 WebSocket：
       "remote_port": 25566,
       "started_unix": 1730000000
     },
+    "frp_proxies": [
+      {
+        "running": true,
+        "proxy_name": "server1",
+        "remote_addr": "frp.example.com",
+        "remote_port": 25566,
+        "started_unix": 1730000000
+      }
+    ],
     "cpu": {"usage_percent": 12.3},
     "mem": {"total_bytes": 17179869184, "used_bytes": 4294967296, "free_bytes": 12884901888},
     "disk": {"path": "/data", "total_bytes": 107374182400, "used_bytes": 123456789, "free_bytes": 107250725611},
@@ -126,6 +135,31 @@ Daemon 主动连接 Panel 的 WebSocket：
 ### `ping`
 
 返回 `{"pong": true}`。
+
+### `mc_templates`
+
+返回内置的服务端模板列表（含预设参数；Fabric 目前为占位符）：
+
+- output: `{ "templates": [ ... ] }`
+
+### `mc_backup`
+
+将 `servers/<instance_id>/` 目录打包为 zip（写入 `servers/_backups/<instance_id>/`）：
+
+- args:
+  - `instance_id`: 必填
+  - `backup_name`: 可选（默认 `<instance>-<ts>.zip`）
+  - `stop`: 可选（默认 true；备份前 best-effort stop）
+- output: `{ "instance_id": "...", "path": "_backups/<instance>/<name>.zip", "files": 123 }`
+
+### `mc_restore`
+
+用 zip 覆盖恢复 `servers/<instance_id>/`：
+
+- args:
+  - `instance_id`: 必填
+  - `zip_path`: 必填（相对 `servers/` 根，如 `_backups/<instance>/<name>.zip`）
+- output: `{ "instance_id": "...", "restored": true, "files": 123 }`
 
 ### `fs_read`
 
@@ -226,6 +260,7 @@ Daemon 主动连接 Panel 的 WebSocket：
 启动 `frpc`（Daemon 托管进程）：
 
 - args:
+  - `instance_id`: 可选。用于 per-instance FRP（建议传 instance_id；会作为 proxy 名称）
   - `name`: `mc`
   - `server_addr`: `frp.example.com`
   - `server_port`: `7000`
@@ -237,6 +272,9 @@ Daemon 主动连接 Panel 的 WebSocket：
 ### `frp_stop`
 
 停止 `frpc`。
+
+- args:
+  - `instance_id` / `name`: 可选。传入则只停止该 proxy；不传则停止全部 proxies。
 
 ### `frpc_install`
 

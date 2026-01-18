@@ -21,6 +21,9 @@ type ManagerConfig struct {
 	ServersFS *sandbox.FS
 	Log       *log.Logger
 	JavaCandidates []string
+	JavaAutoDownload bool
+	JavaCacheDir string
+	JavaAdoptiumAPIBaseURL string
 }
 
 type Manager struct {
@@ -30,6 +33,7 @@ type Manager struct {
 	instances map[string]*Instance
 
 	java *javaSelector
+	javaRuntime *JavaRuntimeManager
 }
 
 type Instance struct {
@@ -62,10 +66,19 @@ type Status struct {
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
+	var rt *JavaRuntimeManager
+	if cfg.JavaAutoDownload {
+		rt = NewJavaRuntimeManager(JavaRuntimeManagerConfig{
+			CacheDir: cfg.JavaCacheDir,
+			AdoptiumAPIBaseURL: cfg.JavaAdoptiumAPIBaseURL,
+			Log: cfg.Log,
+		})
+	}
 	return &Manager{
 		cfg:       cfg,
 		instances: make(map[string]*Instance),
 		java:      newJavaSelector(cfg.JavaCandidates),
+		javaRuntime: rt,
 	}
 }
 
@@ -96,7 +109,7 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions, logSink func(inst
 	}
 	m.mu.Unlock()
 
-	return inst.start(ctx, m.cfg.ServersFS, opt, logSink, m.cfg.Log, m.java)
+	return inst.start(ctx, m.cfg.ServersFS, opt, logSink, m.cfg.Log, m.java, m.javaRuntime)
 }
 
 func (m *Manager) Stop(ctx context.Context, instanceID string) error {
@@ -153,7 +166,7 @@ func (inst *Instance) Status() Status {
 	return Status{Running: true, PID: inst.cmd.Process.Pid}
 }
 
-func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOptions, logSink func(instanceID, stream, line string), logger *log.Logger, javaSel *javaSelector) error {
+func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOptions, logSink func(instanceID, stream, line string), logger *log.Logger, javaSel *javaSelector, javaRuntime *JavaRuntimeManager) error {
 	inst.mu.Lock()
 	defer inst.mu.Unlock()
 
@@ -177,8 +190,15 @@ func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOption
 		return fmt.Errorf("jar not found: %w", err)
 	}
 
+	if host, port, ok := detectServerListenAddr(instanceDir); ok {
+		if err := checkTCPPortAvailable(host, port); err != nil {
+			return err
+		}
+	}
+
 	java := opt.JavaPath
 	requiredMajor, err := requiredJavaMajorFromJar(jarAbs)
+	detectedMajor := err == nil
 	if err != nil {
 		requiredMajor = 8
 		if logger != nil {
@@ -197,7 +217,32 @@ func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOption
 			var selErr error
 			java, selectedMajor, selErr = javaSel.Select(ctx, requiredMajor)
 			if selErr != nil {
-				return selErr
+				if detectedMajor && javaRuntime != nil {
+					if logSink != nil {
+						logSink(inst.ID, "stdout", fmt.Sprintf("[elegantmc] downloading Temurin JRE %d (auto)", requiredMajor))
+					}
+					if ensuredJava, ensuredMajor, err := javaRuntime.EnsureTemurinJRE(ctx, requiredMajor); err == nil {
+						java = ensuredJava
+						selectedMajor = ensuredMajor
+						selErr = nil
+					} else if logger != nil {
+						logger.Printf("mc: java auto-download failed (major=%d): %v", requiredMajor, err)
+					}
+				}
+				if selErr != nil {
+					return selErr
+				}
+			}
+			if detectedMajor && javaRuntime != nil && selectedMajor > 0 && selectedMajor != requiredMajor {
+				if logSink != nil {
+					logSink(inst.ID, "stdout", fmt.Sprintf("[elegantmc] downloading Temurin JRE %d (auto)", requiredMajor))
+				}
+				if ensuredJava, ensuredMajor, err := javaRuntime.EnsureTemurinJRE(ctx, requiredMajor); err == nil {
+					java = ensuredJava
+					selectedMajor = ensuredMajor
+				} else if logger != nil {
+					logger.Printf("mc: java auto-download failed (major=%d): %v", requiredMajor, err)
+				}
 			}
 		}
 	} else {

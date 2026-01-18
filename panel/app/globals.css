@@ -947,6 +947,27 @@ button.logLineCopyBtn:hover {
   opacity: 1;
 }
 
+.logScrollWrap {
+  position: relative;
+}
+
+button.logNewPill {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border-color: rgba(139, 92, 246, 0.55);
+  background: rgba(139, 92, 246, 0.16);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+button.logNewPill:hover {
+  background: rgba(139, 92, 246, 0.24);
+  border-color: rgba(139, 92, 246, 0.75);
+}
+
 .logLine.warn {
   color: rgba(251, 191, 36, 0.95);
 }

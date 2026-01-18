@@ -74,6 +74,8 @@ export default function GamesView() {
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [logScrollTop, setLogScrollTop] = useState<number>(0);
   const [logNearBottom, setLogNearBottom] = useState<boolean>(true);
+  const [newLogsCount, setNewLogsCount] = useState<number>(0);
+  const prevLogLinesLenRef = useRef<number>(0);
 
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [cmdHistoryIdx, setCmdHistoryIdx] = useState<number>(0);
@@ -253,6 +255,27 @@ export default function GamesView() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [logLines.length, autoScroll, logNearBottom]);
+
+  useEffect(() => {
+    if (logPaused) {
+      prevLogLinesLenRef.current = logLines.length;
+      setNewLogsCount(0);
+      return;
+    }
+    const prev = prevLogLinesLenRef.current;
+    const cur = logLines.length;
+    prevLogLinesLenRef.current = cur;
+
+    if (logNearBottom) {
+      setNewLogsCount(0);
+      return;
+    }
+    if (cur > prev) {
+      setNewLogsCount((n) => n + (cur - prev));
+      return;
+    }
+    if (cur < prev) setNewLogsCount(0);
+  }, [logLines.length, logNearBottom, logPaused]);
 
   const logVirtual = useMemo<{
     start: number;
@@ -827,28 +850,46 @@ export default function GamesView() {
             </button>
           </div>
         </div>
-        <div
-          ref={logScrollRef}
-          style={{ maxHeight: 640, overflow: "auto" }}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            setLogScrollTop(el.scrollTop);
-            const remaining = el.scrollHeight - (el.scrollTop + el.clientHeight);
-            setLogNearBottom(remaining <= 64);
-          }}
-        >
-          <div style={{ height: logVirtual.topPad }} />
-          <pre style={{ margin: 0 }}>
-            {logVirtual.visible.map((l, idx) => (
-              <span key={`${logVirtual.start + idx}`} className={`logLine ${highlightLogs ? l.level : ""}`}>
-                <button type="button" className="logLineCopyBtn" title="Copy line" onClick={() => copyText(l.text)}>
-                  <Icon name="copy" />
-                </button>
-                <span className="logLineText">{l.text}</span>
-              </span>
-            ))}
-          </pre>
-          <div style={{ height: logVirtual.bottomPad }} />
+        <div className="logScrollWrap">
+          <div
+            ref={logScrollRef}
+            style={{ maxHeight: 640, overflow: "auto" }}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              setLogScrollTop(el.scrollTop);
+              const remaining = el.scrollHeight - (el.scrollTop + el.clientHeight);
+              setLogNearBottom(remaining <= 64);
+            }}
+          >
+            <div style={{ height: logVirtual.topPad }} />
+            <pre style={{ margin: 0 }}>
+              {logVirtual.visible.map((l, idx) => (
+                <span key={`${logVirtual.start + idx}`} className={`logLine ${highlightLogs ? l.level : ""}`}>
+                  <button type="button" className="logLineCopyBtn" title="Copy line" onClick={() => copyText(l.text)}>
+                    <Icon name="copy" />
+                  </button>
+                  <span className="logLineText">{l.text}</span>
+                </span>
+              ))}
+            </pre>
+            <div style={{ height: logVirtual.bottomPad }} />
+          </div>
+          {newLogsCount > 0 && !logNearBottom && !logPaused ? (
+            <button
+              type="button"
+              className="logNewPill"
+              onClick={() => {
+                const el = logScrollRef.current;
+                if (!el) return;
+                el.scrollTop = el.scrollHeight;
+                setNewLogsCount(0);
+                setAutoScroll(true);
+              }}
+              title="Jump to bottom"
+            >
+              {newLogsCount} new logs
+            </button>
+          ) : null}
         </div>
         <div className="hint">提示：All 会显示当前游戏 + FRP 的日志。</div>
 

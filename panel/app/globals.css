@@ -915,6 +915,36 @@ pre {
 
 .logLine {
   display: block;
+  position: relative;
+  padding-left: 28px;
+}
+
+.logLineText {
+  display: block;
+}
+
+button.logLineCopyBtn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+  border-radius: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+button.logLineCopyBtn:hover {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+.logLine:hover button.logLineCopyBtn {
+  opacity: 1;
 }
 
 .logLine.warn {

@@ -74,7 +74,7 @@ WF-20260118-72,P2,scheduler,todo,Schedule backups from UI,"Backups require manua
 WF-20260118-73,P2,scheduler,todo,Cron builder and validation,"Cron expressions are hard to write and easy to get wrong","Scheduler UI provides a cron builder and validates next run times",ux(scheduler): cron builder
 WF-20260118-74,P2,scheduler,todo,Scheduler task templates,"Common tasks require re-typing commands","Provide templates for restart, stop, backup, prune logs, and announce messages",ux(scheduler): templates
 WF-20260118-75,P2,logs,done,Download latest.log,"Users often need to share logs for debugging","Logs view includes a one-click download for latest.log (and gz where available)",feat(logs): download latest
-WF-20260118-76,P3,logs,todo,Copy log line,"Copying a specific line is tedious","Each rendered log line has a copy button with visual feedback",ux(logs): copy line
+WF-20260118-76,P3,logs,done,Copy log line,"Copying a specific line is tedious","Each rendered log line has a copy button with visual feedback",ux(logs): copy line
 WF-20260118-77,P3,logs,todo,Scroll-to-bottom indicator,"Users lose track when new logs arrive while scrolled up","Show a 'new logs' pill that jumps to bottom and resumes follow",ux(logs): new logs indicator
 WF-20260118-78,P2,logs,done,Smart auto-follow,"Auto-scroll behavior feels jumpy and unpredictable","Auto-follow only when near bottom; scrolling up auto-pauses and can resume",ux(logs): smart follow
 WF-20260118-79,P3,logs,todo,Regex log filter,"Simple substring search is not enough for power users","Logs filter supports optional regex mode with safe limits and error display",feat(logs): regex filter

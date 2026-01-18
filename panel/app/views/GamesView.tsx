@@ -839,14 +839,14 @@ export default function GamesView() {
         >
           <div style={{ height: logVirtual.topPad }} />
           <pre style={{ margin: 0 }}>
-            {highlightLogs
-              ? logVirtual.visible.map((l, idx) => (
-                  <span key={`${logVirtual.start + idx}`} className={`logLine ${l.level}`}>
-                    {l.text}
-                    {"\n"}
-                  </span>
-                ))
-              : logVirtual.visible.map((l) => l.text).join("\n")}
+            {logVirtual.visible.map((l, idx) => (
+              <span key={`${logVirtual.start + idx}`} className={`logLine ${highlightLogs ? l.level : ""}`}>
+                <button type="button" className="logLineCopyBtn" title="Copy line" onClick={() => copyText(l.text)}>
+                  <Icon name="copy" />
+                </button>
+                <span className="logLineText">{l.text}</span>
+              </span>
+            ))}
           </pre>
           <div style={{ height: logVirtual.bottomPad }} />
         </div>

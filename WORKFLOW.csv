@@ -84,7 +84,7 @@ WF-20260118-82,P3,panel-ui,todo,Skeleton loaders,"Loading states flash text and 
 WF-20260118-83,P3,panel-ui,todo,Toast improvements,"Toasts can overlap and vanish too fast for errors","Toast stack has max count, pause-on-hover, and 'Copy details' for errors",ux(panel): toast improvements
 WF-20260118-84,P2,panel-ui,todo,UI error boundary,"A single render error can break the entire panel view","Add a top-level error boundary with a reset option and debug details",fix(panel): error boundary
 WF-20260118-85,P2,panel-ui,todo,Mobile Games layout,"Games actions still feel cramped on small screens","Games view uses a responsive layout with an overflow menu on narrow widths",ux(games): mobile layout
-WF-20260118-86,P2,panel-ui,todo,Select keyboard navigation,"Custom Select lacks good keyboard UX compared to native select","Select supports arrow navigation, typeahead, Enter select, and Esc close",ux(ui): select keyboard
+WF-20260118-86,P2,panel-ui,done,Select keyboard navigation,"Custom Select lacks good keyboard UX compared to native select","Select supports arrow navigation, typeahead, Enter select, and Esc close",ux(ui): select keyboard
 WF-20260118-87,P3,panel-ui,todo,Accessible focus rings,"Focus indicators are inconsistent and sometimes invisible in dark mode","All interactive controls show clear focus ring with WCAG-friendly colors",a11y(panel): focus rings
 WF-20260118-88,P3,panel-ui,todo,ARIA labels for icon buttons,"Icon-only buttons are not accessible","All icon buttons have aria-labels and tooltips",a11y(panel): aria labels
 WF-20260118-89,P3,panel-ui,todo,System theme option,"Users want the UI to follow OS light/dark automatically","Theme supports system mode and updates on prefers-color-scheme changes",feat(panel): system theme

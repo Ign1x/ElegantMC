@@ -27,6 +27,28 @@ function findNextEnabled(options: SelectOption[], from: number, dir: 1 | -1) {
   return -1;
 }
 
+function optionText(o: SelectOption) {
+  const label = o?.label as any;
+  if (typeof label === "string") return label;
+  if (typeof label === "number") return String(label);
+  return String(o?.value ?? "");
+}
+
+function findNextMatch(options: SelectOption[], from: number, q: string) {
+  const query = String(q || "").trim().toLowerCase();
+  if (!query) return -1;
+  if (!options.length) return -1;
+  let i = from;
+  for (let step = 0; step < options.length; step++) {
+    i = (i + 1 + options.length) % options.length;
+    const o = options[i];
+    if (!o || o.disabled) continue;
+    const t = optionText(o).trim().toLowerCase();
+    if (t.startsWith(query)) return i;
+  }
+  return -1;
+}
+
 export default function Select({
   value,
   onChange,
@@ -52,6 +74,8 @@ export default function Select({
   const [open, setOpen] = useState<boolean>(false);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [menuPos, setMenuPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
+  const typeaheadRef = useRef<string>("");
+  const typeaheadTimerRef = useRef<number | null>(null);
 
   const selected = useMemo(() => options.find((o) => String(o.value) === String(value)) || null, [options, value]);
   const selectedLabel = selected ? selected.label : placeholder;
@@ -159,6 +183,23 @@ export default function Select({
       setOpen(false);
       return;
     }
+    if (e.key === "Home") {
+      e.preventDefault();
+      if (!open) return setOpen(true);
+      const first = findFirstEnabled(options);
+      if (first >= 0) setActiveIdx(first);
+      return;
+    }
+    if (e.key === "End") {
+      e.preventDefault();
+      if (!open) return setOpen(true);
+      const last = (() => {
+        for (let i = options.length - 1; i >= 0; i--) if (!options[i]?.disabled) return i;
+        return -1;
+      })();
+      if (last >= 0) setActiveIdx(last);
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (!open) return setOpen(true);
@@ -173,11 +214,44 @@ export default function Select({
       if (next >= 0) setActiveIdx(next);
       return;
     }
+    if (e.key === "Backspace" && open) {
+      const prev = typeaheadRef.current;
+      if (!prev) return;
+      e.preventDefault();
+      const nextQ = prev.slice(0, -1);
+      typeaheadRef.current = nextQ;
+      const from = activeIdx >= 0 ? activeIdx : findFirstEnabled(options);
+      const idx = findNextMatch(options, from, nextQ);
+      if (idx >= 0) setActiveIdx(idx);
+      return;
+    }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       if (!open) return setOpen(true);
       if (activeIdx >= 0) commit(activeIdx);
     }
+
+    const isType =
+      typeof e.key === "string" &&
+      e.key.length === 1 &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey;
+    if (!isType) return;
+
+    e.preventDefault();
+    if (!open) setOpen(true);
+    const nextQ = (typeaheadRef.current + e.key).slice(-32);
+    typeaheadRef.current = nextQ;
+    if (typeaheadTimerRef.current != null) window.clearTimeout(typeaheadTimerRef.current);
+    typeaheadTimerRef.current = window.setTimeout(() => {
+      typeaheadRef.current = "";
+      typeaheadTimerRef.current = null;
+    }, 600);
+
+    const from = activeIdx >= 0 ? activeIdx : findFirstEnabled(options);
+    const idx = findNextMatch(options, from, nextQ);
+    if (idx >= 0) setActiveIdx(idx);
   }
 
   const menu =

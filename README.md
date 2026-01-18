@@ -156,6 +156,25 @@ Panel 会优先用这个地址来展示 “Socket”（不影响实际监听端�
 
 启动后，Games 页的 “Socket” 会显示公网地址（可复制给朋友）。
 
+## Modpack 安装说明（mrpack / ZIP / CurseForge）
+
+### Modrinth（mrpack）
+
+- Panel 支持通过 **Modrinth Search** 安装 `.mrpack`（目前支持 **Fabric / Quilt**）。
+- Daemon 会根据 mrpack 的依赖自动下载对应的服务端（Fabric/Quilt server jar）并下载 mods。
+- Forge / NeoForge 类整合包通常需要官方提供的 **server pack zip**（见下文 ZIP）。
+
+### ZIP / URL（推荐通用方案）
+
+- **Server Pack ZIP (Upload)**：上传服务端整合包 zip/mrpack。
+- **Server Pack ZIP/MRPACK (URL)**：粘贴直链（`.zip` / `.mrpack`）。
+  - CurseForge 如果没有 API Key：可以把文件页面链接（`/files/<id>`）粘贴进去并点 **Resolve** 转成直链再安装。
+
+### CurseForge
+
+- CurseForge 搜索/拉取需要 API Key：在 **Panel → CurseForge API Key** 填入即可（不需要再设置环境变量）。
+- 没有 API Key 时：用上面的 **URL + Resolve** 方案安装 server pack zip。
+
 ## Java 自动选择（重要）
 
 Minecraft 新版本会要求更高的 Java（例如 class file 65 对应 Java 21）。Daemon 在 `mc_start` 时会：

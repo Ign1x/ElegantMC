@@ -48,7 +48,7 @@ WF-20260118-46,P2,daemon,done,Improved port check diagnostics,"Port check failur
 WF-20260118-47,P2,panel-server,done,Persist sessions,"Admin session is memory-only and lost on restart","Persist sessions to disk with TTL and cleanup",feat(panel-server): persist sessions
 WF-20260118-48,P3,security,done,Audit log,"No audit trail for destructive/admin actions","Write admin action audit log to panel data dir",feat(security): audit log
 WF-20260118-49,P3,security,done,Command allowlist,"Advanced command runner can do risky operations","Add server-side allowlist/denylist for advanced commands",sec(panel): command policy
-WF-20260118-50,P3,docs,todo,Update docs for mrpack,"Docs do not explain mrpack limitations","Document Fabric-only mrpack support and URL install mode",docs: mrpack guide
+WF-20260118-50,P3,docs,done,Update docs for mrpack,"Docs do not explain mrpack limitations","Document Fabric-only mrpack support and URL install mode",docs: mrpack guide
 WF-20260118-51,P3,docs,todo,Update docs for backups,"Backup/restore features are not documented","Add README section for backup/restore and backup location",docs: backups guide
 WF-20260118-52,P2,ci,todo,Panel lint in CI,"Panel build can pass but hide type issues","Add typecheck step for Panel in CI",ci(panel): typecheck
 WF-20260118-53,P2,ci,todo,Frontend smoke tests,"No automated UI regression checks","Add minimal Playwright smoke test for login + theme",ci(panel): smoke tests

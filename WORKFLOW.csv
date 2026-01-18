@@ -109,7 +109,7 @@ WF-20260118-107,P2,files,todo,Upload server jar from UI,"Users want to install a
 WF-20260118-108,P1,files,done,Drag-and-drop file upload,"File management is limited without upload","Files view supports drag-and-drop upload with progress and size limits",feat(files): upload
 WF-20260118-109,P2,files,todo,Upload folder via zip,"Uploading many files is tedious","Support uploading a zip and extracting into target directory safely",feat(files): upload zip extract
 WF-20260118-110,P1,files,done,Rename and move files,"Users cannot rename/move files from the UI","Files view supports rename/move with validation and conflict checks",feat(files): rename move
-WF-20260118-111,P1,files,todo,Delete files and folders,"Cleaning up files requires SSH","Files view supports delete with confirmation and uses trash when enabled",feat(files): delete
+WF-20260118-111,P1,files,done,Delete files and folders,"Cleaning up files requires SSH","Files view supports delete with confirmation and uses trash when enabled",feat(files): delete
 WF-20260118-112,P2,files,todo,Download folder as zip,"Downloading a directory tree is hard","Files view supports zipping and downloading a folder server-side",feat(files): download folder zip
 WF-20260118-113,P3,files,todo,Diff viewer,"Comparing config changes is hard","Add a simple diff viewer for two selected text files with syntax highlight",feat(files): diff viewer
 WF-20260118-114,P2,files,todo,Syntax highlighting,"Editing config files without highlighting causes mistakes","Editor supports highlighting for properties/json/yaml/log files",ui(files): syntax highlighting

@@ -39,6 +39,7 @@ export default function FilesView() {
     moveFsEntry,
     downloadFsEntry,
     deleteFsEntry,
+    openTrashModal,
   } = useAppCtx();
 
   const [queryRaw, setQueryRaw] = useState<string>("");
@@ -107,6 +108,9 @@ export default function FilesView() {
 	          <input value={queryRaw} onChange={(e: any) => setQueryRaw(e.target.value)} placeholder="Search entries…" style={{ width: 220 }} />
           <button type="button" onClick={() => refreshFsNow()} disabled={!selected}>
             Refresh
+          </button>
+          <button type="button" onClick={() => openTrashModal({ showAll: true })} disabled={!selected}>
+            Trash
           </button>
           <button type="button" className="iconBtn" onClick={mkdirFsHere} disabled={!selected}>
             <Icon name="plus" />

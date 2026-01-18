@@ -578,6 +578,7 @@ export default function HomePage() {
   const [trashOpen, setTrashOpen] = useState<boolean>(false);
   const [trashStatus, setTrashStatus] = useState<string>("");
   const [trashItems, setTrashItems] = useState<any[]>([]);
+  const [trashShowAll, setTrashShowAll] = useState<boolean>(false);
   const [serverPropsOpen, setServerPropsOpen] = useState<boolean>(false);
   const [serverPropsStatus, setServerPropsStatus] = useState<string>("");
   const [serverPropsRaw, setServerPropsRaw] = useState<string>("");
@@ -1996,15 +1997,20 @@ export default function HomePage() {
 	    const ok = await confirmDialog(`Delete ${label}?`, { title: "Delete", confirmLabel: "Delete", danger: true });
 	    if (!ok) return;
 
-	    setFsStatus(`Deleting ${target} ...`);
+	    const inTrash = target === "_trash" || target.startsWith("_trash/");
+	    setFsStatus(inTrash ? `Deleting ${target} ...` : `Moving to trash: ${target} ...`);
 	    try {
-	      await callOkCommand("fs_delete", { path: target }, 60_000);
+	      if (inTrash) {
+	        await callOkCommand("fs_delete", { path: target }, 60_000);
+	      } else {
+	        await callOkCommand("fs_trash", { path: target }, 60_000);
+	      }
       if (fsSelectedFile === target || fsSelectedFile.startsWith(`${target}/`)) {
         setFsSelectedFile("");
         setFsFileText("");
       }
       await refreshFsNow();
-      setFsStatus("Deleted");
+      setFsStatus(inTrash ? "Deleted" : "Moved to trash");
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
@@ -3408,7 +3414,8 @@ export default function HomePage() {
     }
   }
 
-  async function refreshTrashItems() {
+  async function refreshTrashItems(showAllOverride?: boolean) {
+    const showAll = showAllOverride != null ? !!showAllOverride : trashShowAll;
     if (!selectedDaemon?.connected) {
       setTrashStatus("daemon offline");
       setTrashItems([]);
@@ -3422,8 +3429,10 @@ export default function HomePage() {
         const info = it?.info || {};
         const orig = String(info?.original_path || "").trim();
         if (!orig) return false;
-        if (orig.includes("/")) return false;
-        if (orig.startsWith("_") || orig.startsWith(".")) return false;
+        if (!showAll) {
+          if (orig.includes("/")) return false;
+          if (orig.startsWith("_") || orig.startsWith(".")) return false;
+        }
         return true;
       });
       setTrashItems(filtered);
@@ -3434,15 +3443,13 @@ export default function HomePage() {
     }
   }
 
-  async function openTrashModal() {
-    if (!selectedDaemon?.connected) {
-      setServerOpStatus("daemon offline");
-      return;
-    }
+  async function openTrashModal(opts: { showAll?: boolean } = {}) {
+    const showAll = !!opts.showAll;
     setTrashItems([]);
     setTrashStatus("");
+    setTrashShowAll(showAll);
     setTrashOpen(true);
-    await refreshTrashItems();
+    await refreshTrashItems(showAll);
   }
 
   async function restoreTrashItem(it: any) {
@@ -3461,8 +3468,13 @@ export default function HomePage() {
     setTrashStatus("Restoring...");
     try {
       await callOkCommand("fs_trash_restore", { trash_path: trashPath }, 60_000);
-      await refreshServerDirs();
-      setInstanceId(orig);
+      if (!orig.includes("/")) {
+        await refreshServerDirs();
+        setInstanceId(orig);
+      } else {
+        await openFileByPath(orig);
+        setTab("files");
+      }
       setTrashStatus("Restored");
       setTimeout(() => setTrashStatus(""), 900);
       setTrashOpen(false);
@@ -5034,12 +5046,24 @@ export default function HomePage() {
                   <div>
                     <div style={{ fontWeight: 800 }}>Trash</div>
                     <div className="hint">
-                      location: <code>servers/_trash/</code> · only shows deleted games (top-level folders)
+                      location: <code>servers/_trash/</code> · {trashShowAll ? "showing all trashed items" : "showing games only"}
                     </div>
                     {trashStatus ? <div className="hint">{trashStatus}</div> : null}
                   </div>
                   <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                    <button type="button" onClick={refreshTrashItems} disabled={!selectedDaemon?.connected}>
+                    <label className="checkRow" style={{ userSelect: "none" }}>
+                      <input
+                        type="checkbox"
+                        checked={trashShowAll}
+                        onChange={(e) => {
+                          const v = e.target.checked;
+                          setTrashShowAll(v);
+                          refreshTrashItems(v);
+                        }}
+                      />{" "}
+                      Show all
+                    </label>
+                    <button type="button" onClick={() => refreshTrashItems()} disabled={!selectedDaemon?.connected}>
                       Refresh
                     </button>
                     <button type="button" onClick={() => setTrashOpen(false)}>

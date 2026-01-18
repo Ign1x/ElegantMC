@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
 
 export default function PanelView() {
-  const { panelSettings, panelSettingsStatus, refreshPanelSettings, savePanelSettings, selectedDaemon, loadSchedule, saveScheduleJson, runScheduleTask, confirmDialog, fmtUnix } =
+  const { t, panelSettings, panelSettingsStatus, refreshPanelSettings, savePanelSettings, selectedDaemon, loadSchedule, saveScheduleJson, runScheduleTask, confirmDialog, fmtUnix } =
     useAppCtx();
 
   const [draft, setDraft] = useState<any>(panelSettings || null);
@@ -43,10 +43,10 @@ export default function PanelView() {
   async function reloadSchedule() {
     if (scheduleBusy) return;
     setScheduleBusy(true);
-    setScheduleStatus("Loading...");
+    setScheduleStatus(t.tr("Loading...", "加载中..."));
     try {
       await fetchSchedule();
-      setScheduleStatus("Loaded");
+      setScheduleStatus(t.tr("Loaded", "已加载"));
       window.setTimeout(() => setScheduleStatus(""), 900);
     } catch (e: any) {
       setScheduleStatus(String(e?.message || e));
@@ -57,20 +57,20 @@ export default function PanelView() {
 
   async function saveSchedule() {
     if (scheduleBusy) return;
-    const ok = await confirmDialog(`Save schedule.json to daemon ${selectedDaemon?.id || "-"}?`, {
-      title: "Save Scheduler",
-      confirmLabel: "Save",
-      cancelLabel: "Cancel",
+    const ok = await confirmDialog(t.tr(`Save schedule.json to daemon ${selectedDaemon?.id || "-"}?`, `保存 schedule.json 到 Daemon ${selectedDaemon?.id || "-"}？`), {
+      title: t.tr("Save Scheduler", "保存定时任务"),
+      confirmLabel: t.tr("Save", "保存"),
+      cancelLabel: t.tr("Cancel", "取消"),
       danger: true,
     });
     if (!ok) return;
 
     setScheduleBusy(true);
-    setScheduleStatus("Saving...");
+    setScheduleStatus(t.tr("Saving...", "保存中..."));
     try {
       const out = await saveScheduleJson(scheduleText);
       setSchedulePath(String(out?.path || schedulePath));
-      setScheduleStatus("Saved");
+      setScheduleStatus(t.tr("Saved", "已保存"));
       window.setTimeout(() => setScheduleStatus(""), 900);
     } catch (e: any) {
       setScheduleStatus(String(e?.message || e));
@@ -85,51 +85,56 @@ export default function PanelView() {
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
-              <h2>Panel</h2>
+              <h2>{t.tr("Panel", "面板")}</h2>
               {panelSettingsStatus ? <div className="hint">{panelSettingsStatus}</div> : null}
             </div>
           </div>
           <div className="toolbarRight">
-            <input value={settingsQuery} onChange={(e) => setSettingsQuery(e.target.value)} placeholder="Search settings…" style={{ width: 220 }} />
+            <input
+              value={settingsQuery}
+              onChange={(e) => setSettingsQuery(e.target.value)}
+              placeholder={t.tr("Search settings…", "搜索设置…")}
+              style={{ width: 220 }}
+            />
             <button type="button" className="iconBtn" onClick={refreshPanelSettings}>
-              Reload
+              {t.tr("Reload", "刷新")}
             </button>
           </div>
         </div>
 
         {!draft ? (
-          <div className="emptyState">No settings loaded.</div>
+          <div className="emptyState">{t.tr("No settings loaded.", "未加载设置。")}</div>
         ) : (
           <>
             <div className="grid2" style={{ alignItems: "start" }}>
               {show("brand name", "brand", "title", "sidebar") ? (
                 <div className="field">
-                  <label>Brand Name</label>
+                  <label>{t.tr("Brand Name", "品牌名称")}</label>
                   <input value={String(draft.brand_name || "")} onChange={(e) => setDraft((d: any) => ({ ...d, brand_name: e.target.value }))} />
-                  <div className="hint">显示在侧边栏与浏览器标题</div>
+                  <div className="hint">{t.tr("Shown in sidebar and browser title.", "显示在侧边栏与浏览器标题")}</div>
                 </div>
               ) : null}
               {show("brand tagline", "tagline") ? (
                 <div className="field">
-                  <label>Brand Tagline</label>
+                  <label>{t.tr("Brand Tagline", "品牌标语")}</label>
                   <input
                     value={String(draft.brand_tagline || "")}
                     onChange={(e) => setDraft((d: any) => ({ ...d, brand_tagline: e.target.value }))}
                   />
-                  <div className="hint">可留空</div>
+                  <div className="hint">{t.tr("Optional.", "可留空")}</div>
                 </div>
               ) : null}
               {show("logo", "logo url", "icon") ? (
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
-                  <label>Logo URL</label>
+                  <label>{t.tr("Logo URL", "Logo URL")}</label>
                   <input value={String(draft.logo_url || "")} onChange={(e) => setDraft((d: any) => ({ ...d, logo_url: e.target.value }))} />
-                  <div className="hint">默认：/logo.svg（可填自定义 URL）</div>
+                  <div className="hint">{t.tr("Default: /logo.svg (or a custom URL).", "默认：/logo.svg（可填自定义 URL）")}</div>
                 </div>
               ) : null}
 
               {show("curseforge", "api key", "cf_") ? (
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
-                  <label>CurseForge API Key (optional)</label>
+                  <label>{t.tr("CurseForge API Key (optional)", "CurseForge API Key（可选）")}</label>
                   <input
                     type="password"
                     value={String(draft.curseforge_api_key || "")}
@@ -137,13 +142,18 @@ export default function PanelView() {
                     placeholder="cf_..."
                     autoComplete="off"
                   />
-                  <div className="hint">配置后可直接使用 CurseForge 搜索/下载安装（不需要再改环境变量）</div>
+                  <div className="hint">
+                    {t.tr(
+                      "After setting this, CurseForge search/install works without environment variables.",
+                      "配置后可直接使用 CurseForge 搜索/下载安装（不需要再改环境变量）"
+                    )}
+                  </div>
                 </div>
               ) : null}
 
               {show("default version", "version") ? (
                 <div className="field">
-                  <label>Default Version</label>
+                  <label>{t.tr("Default Version", "默认版本")}</label>
                   <input
                     value={String(draft.defaults?.version || "")}
                     onChange={(e) => setDraft((d: any) => ({ ...d, defaults: { ...(d.defaults || {}), version: e.target.value } }))}
@@ -153,7 +163,7 @@ export default function PanelView() {
               ) : null}
               {show("default game port", "port", "25565") ? (
                 <div className="field">
-                  <label>Default Game Port</label>
+                  <label>{t.tr("Default Game Port", "默认端口")}</label>
                   <input
                     type="number"
                     value={Number.isFinite(Number(draft.defaults?.game_port)) ? Number(draft.defaults.game_port) : 25565}
@@ -165,7 +175,7 @@ export default function PanelView() {
               ) : null}
               {show("default memory", "memory", "xms", "xmx") ? (
                 <div className="field">
-                  <label>Default Memory</label>
+                  <label>{t.tr("Default Memory", "默认内存")}</label>
                   <div className="row">
                     <input
                       value={String(draft.defaults?.xms || "")}
@@ -182,7 +192,7 @@ export default function PanelView() {
               ) : null}
               {show("eula", "accept eula") ? (
                 <div className="field">
-                  <label>Default EULA</label>
+                  <label>{t.tr("Default EULA", "默认同意 EULA")}</label>
                   <label className="checkRow">
                     <input
                       type="checkbox"
@@ -191,13 +201,13 @@ export default function PanelView() {
                         setDraft((d: any) => ({ ...d, defaults: { ...(d.defaults || {}), accept_eula: e.target.checked } }))
                       }
                     />
-                    auto write eula.txt
+                    {t.tr("auto write eula.txt", "自动写入 eula.txt")}
                   </label>
                 </div>
               ) : null}
               {show("frp", "default frp") ? (
                 <div className="field">
-                  <label>Default FRP</label>
+                  <label>{t.tr("Default FRP", "默认启用 FRP")}</label>
                   <label className="checkRow">
                     <input
                       type="checkbox"
@@ -206,13 +216,13 @@ export default function PanelView() {
                         setDraft((d: any) => ({ ...d, defaults: { ...(d.defaults || {}), enable_frp: e.target.checked } }))
                       }
                     />
-                    enable by default
+                    {t.tr("enable by default", "默认启用")}
                   </label>
                 </div>
               ) : null}
               {show("frp remote port", "remote port", "25566") ? (
                 <div className="field">
-                  <label>Default FRP Remote Port</label>
+                  <label>{t.tr("Default FRP Remote Port", "默认 FRP Remote Port")}</label>
                   <input
                     type="number"
                     value={Number.isFinite(Number(draft.defaults?.frp_remote_port)) ? Number(draft.defaults.frp_remote_port) : 25566}
@@ -220,14 +230,14 @@ export default function PanelView() {
                     min={0}
                     max={65535}
                   />
-                  <div className="hint">0 表示由服务端分配</div>
+                  <div className="hint">{t.tr("0 means server-assigned.", "0 表示由服务端分配")}</div>
                 </div>
               ) : null}
             </div>
 
             <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
               <button type="button" className="primary" onClick={() => savePanelSettings(draft)}>
-                Save
+                {t.tr("Save", "保存")}
               </button>
             </div>
           </>
@@ -238,26 +248,31 @@ export default function PanelView() {
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
-              <h2>Scheduler</h2>
-              {scheduleStatus ? <div className="hint">{scheduleStatus}</div> : <div className="hint">Edit daemon schedule.json (restart/backup tasks)</div>}
+              <h2>{t.tr("Scheduler", "定时任务")}</h2>
+              {scheduleStatus ? (
+                <div className="hint">{scheduleStatus}</div>
+              ) : (
+                <div className="hint">{t.tr("Edit daemon schedule.json (restart/backup tasks)", "编辑 daemon schedule.json（重启/备份任务）")}</div>
+              )}
               <div className="hint" style={{ marginTop: 6 }}>
-                daemon: <code>{selectedDaemon?.id || "-"}</code> · file: <code>{schedulePath || "(unknown)"}</code>
+                {t.tr("daemon", "daemon")}: <code>{selectedDaemon?.id || "-"}</code> · {t.tr("file", "文件")}:{" "}
+                <code>{schedulePath || t.tr("(unknown)", "(未知)")}</code>
               </div>
             </div>
           </div>
           <div className="toolbarRight">
             <button type="button" className="iconBtn" onClick={reloadSchedule} disabled={!selectedDaemon?.connected || scheduleBusy}>
-              Reload
+              {t.tr("Reload", "刷新")}
             </button>
             <button type="button" className="primary iconBtn" onClick={saveSchedule} disabled={!selectedDaemon?.connected || scheduleBusy || !parsedSchedule.ok}>
-              Save
+              {t.tr("Save", "保存")}
             </button>
           </div>
         </div>
 
         {!parsedSchedule.ok ? (
           <div className="hint" style={{ color: "var(--danger)" }}>
-            JSON parse error: {parsedSchedule.error}
+            {t.tr("JSON parse error", "JSON 解析错误")}: {parsedSchedule.error}
           </div>
         ) : null}
 
@@ -272,17 +287,17 @@ export default function PanelView() {
 
         {parsedSchedule.ok && Array.isArray((parsedSchedule as any).schedule?.tasks) ? (
           <div style={{ marginTop: 12 }}>
-            <h3>Tasks</h3>
+            <h3>{t.tr("Tasks", "任务")}</h3>
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Type</th>
-                  <th>Instance</th>
-                  <th>Every</th>
-                  <th>At</th>
-                  <th>Last run</th>
-                  <th>Error</th>
+                  <th>{t.tr("ID", "ID")}</th>
+                  <th>{t.tr("Type", "类型")}</th>
+                  <th>{t.tr("Instance", "实例")}</th>
+                  <th>{t.tr("Every", "间隔")}</th>
+                  <th>{t.tr("At", "时间")}</th>
+                  <th>{t.tr("Last run", "上次运行")}</th>
+                  <th>{t.tr("Error", "错误")}</th>
                   <th />
                 </tr>
               </thead>
@@ -308,19 +323,19 @@ export default function PanelView() {
                         onClick={async () => {
                           const id = String(t.id || "").trim();
                           if (!id) return;
-                          const ok = await confirmDialog(`Run task "${id}" now?`, {
-                            title: "Run Task",
-                            confirmLabel: "Run",
-                            cancelLabel: "Cancel",
+                          const ok = await confirmDialog(t.tr(`Run task "${id}" now?`, `立即运行任务「${id}」？`), {
+                            title: t.tr("Run Task", "运行任务"),
+                            confirmLabel: t.tr("Run", "运行"),
+                            cancelLabel: t.tr("Cancel", "取消"),
                             danger: String(t.type || "").toLowerCase() === "restart",
                           });
                           if (!ok) return;
                           setScheduleBusy(true);
-                          setScheduleStatus(`Running ${id} ...`);
+                          setScheduleStatus(t.tr(`Running ${id} ...`, `正在运行 ${id} ...`));
                           try {
                             await runScheduleTask(id);
                             await fetchSchedule();
-                            setScheduleStatus("Done");
+                            setScheduleStatus(t.tr("Done", "完成"));
                             window.setTimeout(() => setScheduleStatus(""), 900);
                           } catch (e: any) {
                             setScheduleStatus(String(e?.message || e));
@@ -330,7 +345,7 @@ export default function PanelView() {
                         }}
                         disabled={!selectedDaemon?.connected || scheduleBusy}
                       >
-                        Run now
+                        {t.tr("Run now", "立即运行")}
                       </button>
                     </td>
                   </tr>
@@ -338,7 +353,10 @@ export default function PanelView() {
               </tbody>
             </table>
             <div className="hint" style={{ marginTop: 8 }}>
-              Note: Scheduler runs on the daemon (polls schedule.json). Save updates the file; Run now triggers a single task immediately.
+              {t.tr(
+                "Note: Scheduler runs on the daemon (polls schedule.json). Save updates the file; Run now triggers a single task immediately.",
+                "提示：Scheduler 运行在 Daemon 上（轮询 schedule.json）。Save 会更新文件；Run now 立即触发单个任务。"
+              )}
             </div>
           </div>
         ) : null}

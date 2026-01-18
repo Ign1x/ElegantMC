@@ -6,6 +6,7 @@ import Icon from "../ui/Icon";
 
 export default function FrpView() {
   const {
+    t,
     profiles,
     profilesStatus,
     refreshProfiles,
@@ -29,22 +30,26 @@ export default function FrpView() {
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
-              <h2>Saved FRP Servers</h2>
-              {profilesStatus ? <div className="hint">{profilesStatus}</div> : <div className="hint">保存后可在 Games 里一键复用</div>}
+              <h2>{t.tr("Saved FRP Servers", "已保存的 FRP Server")}</h2>
+              {profilesStatus ? (
+                <div className="hint">{profilesStatus}</div>
+              ) : (
+                <div className="hint">{t.tr("After saving, you can reuse it from Games.", "保存后可在 Games 里一键复用")}</div>
+              )}
             </div>
           </div>
           <div className="toolbarRight">
             <button type="button" className="primary iconBtn" onClick={openAddFrpModal}>
               <Icon name="plus" />
-              Add
+              {t.tr("Add", "添加")}
             </button>
             <button type="button" className="iconBtn" onClick={refreshProfiles}>
               <Icon name="refresh" />
-              Refresh
+              {t.tr("Refresh", "刷新")}
             </button>
             <button type="button" className="iconBtn" onClick={() => refreshProfiles({ force: true })}>
               <Icon name="refresh" />
-              Test All
+              {t.tr("Test All", "全部测试")}
             </button>
           </div>
         </div>
@@ -67,28 +72,32 @@ export default function FrpView() {
                       </div>
                     </div>
                     {online === true ? (
-                      <span className="badge ok">online {latency}ms</span>
+                      <span className="badge ok">
+                        {t.tr("online", "在线")} {latency}ms
+                      </span>
                     ) : online === false ? (
-                      <span className="badge">offline</span>
+                      <span className="badge">{t.tr("offline", "离线")}</span>
                     ) : (
-                      <span className="badge">unknown</span>
+                      <span className="badge">{t.tr("unknown", "未知")}</span>
                     )}
                   </div>
 
-                  <div className="hint">checked: {fmtUnix(checkedAt)}</div>
+                  <div className="hint">
+                    {t.tr("checked", "检测")}: {fmtUnix(checkedAt)}
+                  </div>
                   {p.status?.error && online === false ? <div className="hint">{p.status.error}</div> : null}
 
                   <div className="row" style={{ gap: 8, minWidth: 0 }}>
-                    <span className="muted">token</span>
-                    <code>{String(p.token_masked || "(none)")}</code>
+                    <span className="muted">{t.tr("token", "token")}</span>
+                    <code>{String(p.token_masked || t.tr("(none)", "(无)"))}</code>
                     <button
                       type="button"
                       className="iconBtn"
                       onClick={async () => {
-                        const ok = await confirmDialog(`Reveal and copy token for FRP profile "${p.name}"?`, {
-                          title: "Reveal Token",
-                          confirmLabel: "Reveal",
-                          cancelLabel: "Cancel",
+                        const ok = await confirmDialog(t.tr(`Reveal and copy token for FRP profile "${p.name}"?`, `显示并复制 FRP 配置「${p.name}」的 token？`), {
+                          title: t.tr("Reveal Token", "显示 Token"),
+                          confirmLabel: t.tr("Reveal", "显示"),
+                          cancelLabel: t.tr("Cancel", "取消"),
                         });
                         if (!ok) return;
                         try {
@@ -96,16 +105,16 @@ export default function FrpView() {
                           const json = await res.json();
                           if (!res.ok) throw new Error(json?.error || "failed");
                           await copyText(String(json?.token || ""));
-                          setProfilesStatus("Copied");
+                          setProfilesStatus(t.tr("Copied", "已复制"));
                           setTimeout(() => setProfilesStatus(""), 800);
                         } catch (e: any) {
                           setProfilesStatus(String(e?.message || e));
                         }
                       }}
                       disabled={!p.has_token}
-                    >
-                      <Icon name="copy" />
-                      Copy
+                      >
+                        <Icon name="copy" />
+                      {t.tr("Copy", "复制")}
                     </button>
                   </div>
 
@@ -119,7 +128,7 @@ export default function FrpView() {
                           setTab("games");
                         }}
                       >
-                        Use
+                        {t.tr("Use", "使用")}
                       </button>
                       <button
                         type="button"
@@ -127,7 +136,7 @@ export default function FrpView() {
                         onClick={async () => {
                           try {
                             setTestingId(p.id);
-                            setProfilesStatus(`Testing ${p.name} ...`);
+                            setProfilesStatus(t.tr(`Testing ${p.name} ...`, `正在测试 ${p.name} ...`));
                             const res = await apiFetch(`/api/frp/profiles/${encodeURIComponent(p.id)}/probe`, {
                               method: "POST",
                               cache: "no-store",
@@ -142,29 +151,29 @@ export default function FrpView() {
                           }
                         }}
                         disabled={testingId === p.id}
-                        title="Test reachability from Panel to FRP server"
+                        title={t.tr("Test reachability from Panel to FRP server", "测试 Panel 到 FRP Server 的连通性")}
                       >
                         <Icon name="refresh" />
-                        Test
+                        {t.tr("Test", "测试")}
                       </button>
                     </div>
                     <button type="button" className="dangerBtn iconBtn" onClick={() => removeFrpProfile(p.id)}>
                       <Icon name="trash" />
-                      Delete
+                      {t.tr("Delete", "删除")}
                     </button>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : profilesStatus === "Loading..." ? (
+        ) : profilesStatus === "Loading..." || profilesStatus === "加载中..." ? (
           <div className="cardGrid">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="skeleton" />
             ))}
           </div>
         ) : (
-          <div className="emptyState">暂无配置。点击右上角 Add 保存一个 FRP Server profile。</div>
+          <div className="emptyState">{t.tr("No profiles yet. Click Add to save an FRP server profile.", "暂无配置。点击右上角 Add 保存一个 FRP Server profile。")}</div>
         )}
       </div>
     </div>

@@ -4473,6 +4473,9 @@ export default function HomePage() {
   const appCtxValue = {
     tab,
     setTab,
+    locale,
+    setLocale,
+    t,
     daemons,
     selected,
     setSelected,

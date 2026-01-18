@@ -21,6 +21,10 @@ const dict = {
 
 export type I18nKey = keyof (typeof dict)["en"];
 
+export type TFunc = ((key: I18nKey) => string) & {
+  tr: (en: string, zh: string) => string;
+};
+
 export function normalizeLocale(v: unknown): Locale {
   const s = String(v || "").toLowerCase().trim();
   if (s === "zh" || s === "zh-cn" || s === "zh_hans") return "zh";
@@ -28,8 +32,9 @@ export function normalizeLocale(v: unknown): Locale {
   return "en";
 }
 
-export function createT(locale: Locale) {
+export function createT(locale: Locale): TFunc {
   const loc: Locale = locale === "zh" ? "zh" : "en";
-  return (key: I18nKey) => dict[loc][key] || dict.en[key] || key;
+  const fn = ((key: I18nKey) => dict[loc][key] || dict.en[key] || key) as TFunc;
+  fn.tr = (en: string, zh: string) => (loc === "zh" ? zh : en);
+  return fn;
 }
-

@@ -189,3 +189,4 @@ WF-20260118-187,P3,perf,done,Dynamic log viewport height,Logs virtualization use
 WF-20260118-188,P3,docs,done,Keyboard shortcuts cheat sheet,Shortcuts exist but are undiscoverable,Add a small in-app cheat sheet modal listing shortcuts,docs(panel): shortcuts cheat sheet
 WF-20260118-189,P3,panel-ui,done,Settings search,Panel settings are growing and hard to find,Panel/Advanced settings views support quick search across fields,ux(panel): settings search
 WF-20260118-190,P3,reliability,done,Offline banner,"When disconnected, the UI can look broken without explanation",Show a clear offline banner and last-updated timestamp when disconnected,ux(panel): offline banner
+WF-20260118-191,P2,i18n,done,Partial i18n migration (views),"UI has mixed zh/en strings and locale switch is inconsistent","Add t.tr helper and translate common UI strings in secondary views (Nodes/Files/FRP/Panel/Advanced)",ux(i18n): translate views

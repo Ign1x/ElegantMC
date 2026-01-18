@@ -7,6 +7,7 @@ import Select from "../ui/Select";
 
 export default function NodesView() {
   const {
+    t,
     nodes,
     nodesStatus,
     setNodesStatus,
@@ -67,7 +68,7 @@ export default function NodesView() {
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
-              <h2>Nodes</h2>
+              <h2>{t.tr("Nodes", "节点")}</h2>
               {nodesStatus ? <div className="hint">{nodesStatus}</div> : null}
             </div>
           </div>
@@ -76,9 +77,9 @@ export default function NodesView() {
               value={statusFilter}
               onChange={(v) => setStatusFilter(v as any)}
               options={[
-                { value: "all", label: "All" },
-                { value: "online", label: "Online" },
-                { value: "offline", label: "Offline" },
+                { value: "all", label: t.tr("All", "全部") },
+                { value: "online", label: t.tr("Online", "在线") },
+                { value: "offline", label: t.tr("Offline", "离线") },
               ]}
               style={{ width: 140 }}
             />
@@ -86,8 +87,8 @@ export default function NodesView() {
               value={sortBy}
               onChange={(v) => setSortBy(v as any)}
               options={[
-                { value: "online", label: "Online first" },
-                { value: "last", label: "Last seen" },
+                { value: "online", label: t.tr("Online first", "在线优先") },
+                { value: "last", label: t.tr("Last seen", "最近在线") },
                 { value: "cpu", label: "CPU%" },
                 { value: "mem", label: "MEM%" },
                 { value: "id", label: "ID" },
@@ -97,18 +98,18 @@ export default function NodesView() {
             <input
               value={query}
               onChange={(e: any) => setQuery(e.target.value)}
-              placeholder="Search nodes…"
+              placeholder={t.tr("Search nodes…", "搜索节点…")}
               style={{ width: 220 }}
             />
             <button type="button" className="primary iconBtn" onClick={openAddNodeModal}>
               <Icon name="plus" />
-              Add
+              {t.tr("Add", "添加")}
             </button>
             <button
               type="button"
               className="iconBtn"
               onClick={async () => {
-                setNodesStatus("Loading...");
+                setNodesStatus(t.tr("Loading...", "加载中..."));
                 try {
                   const res = await apiFetch("/api/nodes", { cache: "no-store" });
                   const json = await res.json();
@@ -122,7 +123,7 @@ export default function NodesView() {
               }}
             >
               <Icon name="refresh" />
-              Refresh
+              {t.tr("Refresh", "刷新")}
             </button>
             <span className="badge">
               {viewNodes.length}/{nodes.length}
@@ -144,38 +145,38 @@ export default function NodesView() {
                     <div style={{ minWidth: 0 }}>
                       <div className="itemTitle">{n.id}</div>
                       <div className="itemMeta">
-                        last: {fmtUnix(n.lastSeenUnix)} · instances: {instances.length}
+                        {t.tr("last", "最近")}: {fmtUnix(n.lastSeenUnix)} · {t.tr("instances", "实例")}: {instances.length}
                       </div>
                     </div>
-                    <span className={`badge ${n.connected ? "ok" : ""}`}>{n.connected ? "online" : "offline"}</span>
+                    <span className={`badge ${n.connected ? "ok" : ""}`}>{n.connected ? t.tr("online", "在线") : t.tr("offline", "离线")}</span>
                   </div>
 
                   <div className="row" style={{ gap: 8 }}>
-                    <span className="badge">{cpu == null ? "CPU -" : `CPU ${cpu.toFixed(1)}%`}</span>
-                    <span className="badge">{memPct == null ? "MEM -" : `MEM ${memPct.toFixed(0)}%`}</span>
+                    <span className="badge">{cpu == null ? t.tr("CPU -", "CPU -") : `CPU ${cpu.toFixed(1)}%`}</span>
+                    <span className="badge">{memPct == null ? t.tr("MEM -", "MEM -") : `MEM ${memPct.toFixed(0)}%`}</span>
                   </div>
                   {mem?.total_bytes ? (
                     <div className="hint">
                       {fmtBytes(mem.used_bytes)}/{fmtBytes(mem.total_bytes)}
                     </div>
                   ) : (
-                    <div className="hint">memory: -</div>
+                    <div className="hint">{t.tr("memory: -", "内存：-")}</div>
                   )}
 
                   <div className="row" style={{ justifyContent: "space-between", gap: 10, minWidth: 0 }}>
                     <div className="row" style={{ gap: 8, minWidth: 0 }}>
-                      <span className="muted">token</span>
-                      <code>{String(n.token_masked || "(hidden)")}</code>
+                      <span className="muted">{t.tr("token", "token")}</span>
+                      <code>{String(n.token_masked || t.tr("(hidden)", "(隐藏)"))}</code>
                       <button
                         type="button"
                         className="iconBtn iconOnly"
-                        title="Copy token"
-                        aria-label="Copy token"
+                        title={t.tr("Copy token", "复制 token")}
+                        aria-label={t.tr("Copy token", "复制 token")}
                         onClick={async () => {
-                          const ok = await confirmDialog(`Reveal and copy token for node ${n.id}?`, {
-                            title: "Reveal Token",
-                            confirmLabel: "Reveal",
-                            cancelLabel: "Cancel",
+                          const ok = await confirmDialog(t.tr(`Reveal and copy token for node ${n.id}?`, `显示并复制节点 ${n.id} 的 token？`), {
+                            title: t.tr("Reveal Token", "显示 Token"),
+                            confirmLabel: t.tr("Reveal", "显示"),
+                            cancelLabel: t.tr("Cancel", "取消"),
                           });
                           if (!ok) return;
                           try {
@@ -183,7 +184,7 @@ export default function NodesView() {
                             const json = await res.json();
                             if (!res.ok) throw new Error(json?.error || "failed");
                             await copyText(String(json?.token || ""));
-                            setNodesStatus("Copied");
+                            setNodesStatus(t.tr("Copied", "已复制"));
                             setTimeout(() => setNodesStatus(""), 800);
                           } catch (e: any) {
                             setNodesStatus(String(e?.message || e));
@@ -198,16 +199,16 @@ export default function NodesView() {
                   <div className="itemFooter">
                     <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
                       <button type="button" onClick={() => openNodeDetails(n.id)}>
-                        Details
+                        {t.tr("Details", "详情")}
                       </button>
                       <button
                         type="button"
                         className="iconBtn"
                         onClick={async () => {
-                          const ok = await confirmDialog(`Copy docker-compose snippet for node ${n.id}? (includes token)`, {
-                            title: "Copy Deploy Snippet",
-                            confirmLabel: "Copy",
-                            cancelLabel: "Cancel",
+                          const ok = await confirmDialog(t.tr(`Copy docker-compose snippet for node ${n.id}? (includes token)`, `复制节点 ${n.id} 的 docker-compose 片段？（包含 token）`), {
+                            title: t.tr("Copy Deploy Snippet", "复制部署片段"),
+                            confirmLabel: t.tr("Copy", "复制"),
+                            cancelLabel: t.tr("Cancel", "取消"),
                           });
                           if (!ok) return;
                           setNodesStatus("");
@@ -218,7 +219,7 @@ export default function NodesView() {
                             const token = String(json?.token || "");
                             const yml = makeDeployComposeYml(n.id, token);
                             await copyText(yml);
-                            setNodesStatus("Copied");
+                            setNodesStatus(t.tr("Copied", "已复制"));
                             setTimeout(() => setNodesStatus(""), 800);
                           } catch (e: any) {
                             setNodesStatus(String(e?.message || e));
@@ -226,16 +227,16 @@ export default function NodesView() {
                         }}
                       >
                         <Icon name="copy" />
-                        Copy Compose
+                        {t.tr("Copy Compose", "复制 Compose")}
                       </button>
                       <button
                         type="button"
                         className="iconBtn"
                         onClick={async () => {
-                          const ok = await confirmDialog(`Reveal token and generate compose for node ${n.id}?`, {
-                            title: "Deploy Node",
-                            confirmLabel: "Generate",
-                            cancelLabel: "Cancel",
+                          const ok = await confirmDialog(t.tr(`Reveal token and generate compose for node ${n.id}?`, `显示 token 并为节点 ${n.id} 生成 compose？`), {
+                            title: t.tr("Deploy Node", "部署节点"),
+                            confirmLabel: t.tr("Generate", "生成"),
+                            cancelLabel: t.tr("Cancel", "取消"),
                           });
                           if (!ok) return;
                           setNodesStatus("");
@@ -250,7 +251,7 @@ export default function NodesView() {
                         }}
                       >
                         <Icon name="download" />
-                        Deploy
+                        {t.tr("Deploy", "部署")}
                       </button>
                       <button
                         type="button"
@@ -259,14 +260,14 @@ export default function NodesView() {
                           setTab("games");
                         }}
                       >
-                        Manage
+                        {t.tr("Manage", "管理")}
                       </button>
                     </div>
                     <button
                       type="button"
                       className="dangerBtn"
                       onClick={async () => {
-                        const ok = await confirmDialog(`Delete node ${n.id}?`, { title: "Delete Node", confirmLabel: "Delete", danger: true });
+                        const ok = await confirmDialog(t.tr(`Delete node ${n.id}?`, `删除节点 ${n.id}？`), { title: t.tr("Delete Node", "删除节点"), confirmLabel: t.tr("Delete", "删除"), danger: true });
                         if (!ok) return;
                         setNodesStatus("");
                         try {
@@ -281,14 +282,14 @@ export default function NodesView() {
                         }
                       }}
                     >
-                      Delete
+                      {t.tr("Delete", "删除")}
                     </button>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : nodesStatus === "Loading..." ? (
+        ) : nodesStatus === "Loading..." || nodesStatus === "加载中..." ? (
           <div className="cardGrid">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="skeleton" />
@@ -297,21 +298,24 @@ export default function NodesView() {
         ) : (
           <div className="emptyState">
             {nodes.length ? (
-              "No results."
+              t.tr("No results.", "没有匹配结果。")
             ) : (
               <>
-                <div style={{ fontWeight: 800 }}>暂无节点</div>
+                <div style={{ fontWeight: 800 }}>{t.tr("No nodes yet", "暂无节点")}</div>
                 <div className="hint" style={{ marginTop: 6 }}>
-                  点击 Add 创建一个节点（生成 token），然后点 Deploy 生成 docker compose 一键部署。
+                  {t.tr(
+                    "Click Add to create a node (token), then Deploy to generate a docker compose snippet.",
+                    "点击 Add 创建一个节点（生成 token），然后点 Deploy 生成 docker compose 一键部署。"
+                  )}
                 </div>
                 <div className="btnGroup" style={{ justifyContent: "center", marginTop: 10 }}>
                   <button type="button" className="primary iconBtn" onClick={openAddNodeModal}>
                     <Icon name="plus" />
-                    Add
+                    {t.tr("Add", "添加")}
                   </button>
                   <button type="button" className="iconBtn" onClick={openAddNodeAndDeploy}>
                     <Icon name="download" />
-                    Deploy
+                    {t.tr("Deploy", "部署")}
                   </button>
                 </div>
               </>

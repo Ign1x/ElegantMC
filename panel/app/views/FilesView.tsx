@@ -7,6 +7,7 @@ import Select from "../ui/Select";
 
 export default function FilesView() {
   const {
+    t,
     selected,
     instanceId,
     fsPath,
@@ -73,12 +74,12 @@ export default function FilesView() {
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
-              <h2>Files</h2>
-              <div className="hint">Select a daemon first, then pick a game to quick-open common files.</div>
+              <h2>{t.tr("Files", "文件")}</h2>
+              <div className="hint">{t.tr("Select a daemon first, then pick a game to quick-open common files.", "先选择一个 Daemon，再选择游戏以快速打开常用文件。")}</div>
             </div>
           </div>
         </div>
-        <div className="emptyState">No daemon selected.</div>
+        <div className="emptyState">{t.tr("No daemon selected.", "未选择 Daemon。")}</div>
       </div>
     );
   }
@@ -88,9 +89,9 @@ export default function FilesView() {
       <div className="toolbar">
         <div className="toolbarLeft" style={{ alignItems: "center" }}>
           <div>
-            <h2>Files</h2>
+            <h2>{t.tr("Files", "文件")}</h2>
             <div className="hint">
-              sandbox: <code>servers/</code>
+              {t.tr("sandbox", "沙箱")}: <code>servers/</code>
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
               {fsBreadcrumbs.map((c: any, idx: number) => (
@@ -121,8 +122,8 @@ export default function FilesView() {
               <button
                 type="button"
                 className="iconBtn iconOnly"
-                title="Copy path"
-                aria-label="Copy path"
+                title={t.tr("Copy path", "复制路径")}
+                aria-label={t.tr("Copy path", "复制路径")}
                 style={{ marginLeft: 8 }}
                 onClick={() => {
                   const p = fsPath ? `servers/${fsPath}` : "servers/";
@@ -141,7 +142,7 @@ export default function FilesView() {
               value=""
               onChange={(v) => (v ? openFileByPath(v) : null)}
               disabled={!selected || !inst}
-              placeholder={inst ? "Quick open…" : "Select a game first"}
+              placeholder={inst ? t.tr("Quick open…", "快速打开…") : t.tr("Select a game first", "请先选择游戏")}
               options={[
                 { value: joinRelPath(inst, "server.properties"), label: "server.properties" },
                 { value: joinRelPath(inst, "eula.txt"), label: "eula.txt" },
@@ -150,20 +151,20 @@ export default function FilesView() {
               ]}
             />
           </div>
-	          <input value={queryRaw} onChange={(e: any) => setQueryRaw(e.target.value)} placeholder="Search entries…" style={{ width: 220 }} />
+	          <input value={queryRaw} onChange={(e: any) => setQueryRaw(e.target.value)} placeholder={t.tr("Search entries…", "搜索条目…")} style={{ width: 220 }} />
           <button type="button" onClick={() => refreshFsNow()} disabled={!selected}>
-            Refresh
+            {t.tr("Refresh", "刷新")}
           </button>
           <button type="button" onClick={() => openTrashModal({ showAll: true })} disabled={!selected}>
-            Trash
+            {t.tr("Trash", "回收站")}
           </button>
           <button type="button" className="iconBtn" onClick={mkdirFsHere} disabled={!selected}>
             <Icon name="plus" />
-            New folder
+            {t.tr("New folder", "新建文件夹")}
           </button>
           <button type="button" className="iconBtn" onClick={createFileHere} disabled={!selected}>
             <Icon name="plus" />
-            New file
+            {t.tr("New file", "新建文件")}
           </button>
           <button
             type="button"
@@ -183,7 +184,7 @@ export default function FilesView() {
             }}
             disabled={!fsPath}
           >
-            Up
+            {t.tr("Up", "上级")}
           </button>
           <span className="badge">
             {viewEntries.length}/{fsEntries.length}
@@ -225,38 +226,38 @@ export default function FilesView() {
             onChange={(e) => setUploadFile(e.target.files && e.target.files.length ? e.target.files[0] : null)}
           />
           <button type="button" onClick={uploadSelectedFile} disabled={!uploadFile}>
-            Upload
+            {t.tr("Upload", "上传")}
           </button>
           <button
             type="button"
             onClick={uploadZipAndExtractHere}
             disabled={!uploadFile || !String(uploadFile?.name || "").toLowerCase().endsWith(".zip") || !fsPath}
-            title={fsPath ? "" : "Cannot extract to servers/ root; select a folder first"}
+            title={fsPath ? "" : t.tr("Cannot extract to servers/ root; select a folder first", "不能解压到 servers/ 根目录；请先选择文件夹")}
           >
-            Upload & Extract (.zip)
+            {t.tr("Upload & Extract (.zip)", "上传并解压 (.zip)")}
           </button>
           {uploadFile ? (
             <span className="muted">
-              to: <code>{joinRelPath(fsPath, uploadFile.name)}</code>
+              {t.tr("to", "到")}: <code>{joinRelPath(fsPath, uploadFile.name)}</code>
             </span>
           ) : null}
           {uploadStatus ? <span className="muted">{uploadStatus}</span> : null}
         </div>
         <div className="hint" style={{ marginTop: 6 }}>
-          Drag & drop files here to upload into <code>servers/{fsPath || ""}</code>.
+          {t.tr("Drag & drop files here to upload into", "将文件拖拽到这里上传到")} <code>servers/{fsPath || ""}</code>.
         </div>
       </div>
 
       <div className="grid2" style={{ marginTop: 12, alignItems: "start" }}>
         <div style={{ minWidth: 0 }}>
-          <h3>Entries</h3>
+          <h3>{t.tr("Entries", "条目")}</h3>
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Size</th>
-                <th>Modified</th>
+                <th>{t.tr("Name", "名称")}</th>
+                <th>{t.tr("Type", "类型")}</th>
+                <th>{t.tr("Size", "大小")}</th>
+                <th>{t.tr("Modified", "修改时间")}</th>
                 <th />
               </tr>
             </thead>
@@ -282,24 +283,24 @@ export default function FilesView() {
                       <td style={{ textAlign: "right" }}>
                         <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
                           <button type="button" onClick={() => renameFsEntry(e)}>
-                            Rename
+                            {t.tr("Rename", "重命名")}
                           </button>
                           <button type="button" onClick={() => moveFsEntry(e)}>
-                            Move
+                            {t.tr("Move", "移动")}
                           </button>
                           {!e.isDir ? (
                             <button type="button" className="iconBtn" onClick={() => downloadFsEntry(e)}>
                               <Icon name="download" />
-                              Download
+                              {t.tr("Download", "下载")}
                             </button>
                           ) : (
                             <button type="button" className="iconBtn" onClick={() => downloadFsFolderAsZip(e)}>
                               <Icon name="download" />
-                              Zip
+                              {t.tr("Zip", "打包")}
                             </button>
                           )}
                           <button type="button" className="dangerBtn" onClick={() => deleteFsEntry(e)}>
-                            Delete
+                            {t.tr("Delete", "删除")}
                           </button>
                         </div>
                       </td>
@@ -310,23 +311,23 @@ export default function FilesView() {
         </div>
 
         <div style={{ minWidth: 0 }}>
-          <h3>Editor</h3>
+          <h3>{t.tr("Editor", "编辑器")}</h3>
           <div className="row">
             <span className="muted">
-              file: <code>{fsSelectedFile || "-"}</code>
+              {t.tr("file", "文件")}: <code>{fsSelectedFile || "-"}</code>
             </span>
-            {fsDirty ? <span className="badge">unsaved</span> : null}
-            {fsSelectedFile && fsSelectedFileMode !== "text" ? <span className="badge">download-only</span> : null}
+            {fsDirty ? <span className="badge">{t.tr("unsaved", "未保存")}</span> : null}
+            {fsSelectedFile && fsSelectedFileMode !== "text" ? <span className="badge">{t.tr("download-only", "仅下载")}</span> : null}
             {fsSelectedFile &&
             fsSelectedFile.toLowerCase().endsWith(".jar") &&
             inst &&
             (fsSelectedFile === inst || fsSelectedFile.startsWith(`${inst}/`)) ? (
               <button type="button" onClick={() => setServerJarFromFile(fsSelectedFile)}>
-                Set as server jar
+                {t.tr("Set as server jar", "设为 server jar")}
               </button>
             ) : null}
             <button type="button" onClick={saveFile} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
-              Save
+              {t.tr("Save", "保存")}
             </button>
           </div>
           <textarea
@@ -335,13 +336,13 @@ export default function FilesView() {
             rows={16}
             placeholder={
               fsSelectedFile && fsSelectedFileMode !== "text"
-                ? "Binary file (editing disabled). Use Download."
-                : "Select a text file to edit (e.g. server.properties)"
+                ? t.tr("Binary file (editing disabled). Use Download.", "二进制文件（禁止编辑）。请使用 Download 下载。")
+                : t.tr("Select a text file to edit (e.g. server.properties)", "选择一个文本文件进行编辑（例如 server.properties）")
             }
             style={{ width: "100%", marginTop: 8 }}
             disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}
           />
-          <div className="hint">提示：二进制/大文件为 download-only（可用 Download 下载）。</div>
+          <div className="hint">{t.tr("Tip: binary/large files are download-only.", "提示：二进制/大文件为 download-only（可用 Download 下载）。")}</div>
         </div>
       </div>
     </div>

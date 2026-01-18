@@ -711,6 +711,13 @@ export default function HomePage() {
 	    return !installValidation.jarErr;
 	  }, [installValidation]);
 
+  const marketSelectedVersion = useMemo(() => {
+    const id = String(marketSelectedVersionId || "").trim();
+    if (!id) return null;
+    const list = Array.isArray(marketVersions) ? marketVersions : [];
+    return list.find((v: any) => String(v?.id || "").trim() === id) || null;
+  }, [marketSelectedVersionId, marketVersions]);
+
   const settingsValidation = useMemo(() => {
     const jar = String(jarPath || "").trim();
     const jarErr = jar ? "" : "jar_path is required";
@@ -4194,6 +4201,18 @@ export default function HomePage() {
 			                              </div>
 			                            </>
 			                          )}
+
+			                          {installForm.kind === "modrinth" && marketSelectedVersion ? (
+			                            <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+			                              {Array.isArray((marketSelectedVersion as any).game_versions) && (marketSelectedVersion as any).game_versions.length ? (
+			                                <span className="badge">mc: {(marketSelectedVersion as any).game_versions[0]}</span>
+			                              ) : null}
+			                              {Array.isArray((marketSelectedVersion as any).loaders) && (marketSelectedVersion as any).loaders.length ? (
+			                                <span className="badge">loader: {(marketSelectedVersion as any).loaders.join(", ")}</span>
+			                              ) : null}
+			                              <span className="badge">files: {Array.isArray((marketSelectedVersion as any).files) ? (marketSelectedVersion as any).files.length : 0}</span>
+			                            </div>
+			                          ) : null}
 
 			                          {installValidation.remoteErr ? (
 			                            <div className="hint" style={{ color: "var(--danger)" }}>

@@ -51,6 +51,7 @@ export default function GamesView() {
 
   const [logQuery, setLogQuery] = useState<string>("");
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
+  const [highlightLogs, setHighlightLogs] = useState<boolean>(true);
   const preRef = useRef<HTMLPreElement | null>(null);
 
   const socketText = useMemo(() => {
@@ -89,6 +90,16 @@ export default function GamesView() {
           .join("\n")
       : "<no logs>";
   }, [filteredLogs]);
+
+  const logLines = useMemo(() => {
+    const lines = String(logText || "").split("\n");
+    return lines.map((text) => {
+      const upper = String(text || "").toUpperCase();
+      const isErr = /\b(ERROR|FATAL)\b/.test(upper) || upper.includes("EXCEPTION") || upper.includes("STACKTRACE");
+      const isWarn = /\bWARN(ING)?\b/.test(upper);
+      return { text, level: isErr ? "error" : isWarn ? "warn" : "" };
+    });
+  }, [logText]);
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -367,6 +378,9 @@ export default function GamesView() {
             <label className="checkRow" style={{ userSelect: "none" }}>
               <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} /> autoscroll
             </label>
+            <label className="checkRow" style={{ userSelect: "none" }}>
+              <input type="checkbox" checked={highlightLogs} onChange={(e) => setHighlightLogs(e.target.checked)} /> highlight
+            </label>
             <button
               type="button"
               className="iconBtn"
@@ -420,7 +434,16 @@ export default function GamesView() {
             </button>
           </div>
         </div>
-        <pre ref={preRef} style={{ maxHeight: 640, overflow: "auto" }}>{logText}</pre>
+        <pre ref={preRef} style={{ maxHeight: 640, overflow: "auto" }}>
+          {highlightLogs
+            ? logLines.map((l, idx) => (
+                <span key={idx} className={`logLine ${l.level}`}>
+                  {l.text}
+                  {"\n"}
+                </span>
+              ))
+            : logText}
+        </pre>
         <div className="hint">提示：All 会显示当前游戏 + FRP 的日志。</div>
 
         <div className="row" style={{ marginTop: 12 }}>

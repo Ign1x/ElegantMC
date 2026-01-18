@@ -20,7 +20,7 @@ WF-20260118-18,P2,files,done,Binary file handling,"Editing binary files as text 
 WF-20260118-19,P2,files,done,Create new file,"Cannot create new file from Files UI","Add Create file action with safe path validation",feat(files): create file
 WF-20260118-20,P2,files,done,File search,"Finding a file in large directories is painful","Add client-side filter/search for current directory listing",ux(files): search filter
 WF-20260118-21,P2,files,done,Quick open common files,"Common server files require manual navigation","Add shortcuts: server.properties, eula.txt, logs/latest.log, .elegantmc.json",ux(files): quick open
-WF-20260118-22,P2,logs,todo,Log highlighting,"Logs are hard to scan for errors/warnings","Highlight ERROR/WARN/Exception lines and allow toggle",ux(logs): highlight
+WF-20260118-22,P2,logs,done,Log highlighting,"Logs are hard to scan for errors/warnings","Highlight ERROR/WARN/Exception lines and allow toggle",ux(logs): highlight
 WF-20260118-23,P2,logs,todo,Log pause,"Live logs auto-scroll makes reading hard","Add pause/resume streaming view per tab",ux(logs): pause
 WF-20260118-24,P2,games,todo,Jar picker,"Jar path is manual and error-prone","Settings can browse and pick a .jar under instance directory",ux(games): jar picker
 WF-20260118-25,P2,games,todo,Server.properties editor,"Port and other settings require manual file editing","Add basic server.properties editor with safe keys",feat(games): properties editor

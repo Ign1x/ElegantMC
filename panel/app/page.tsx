@@ -678,7 +678,7 @@ export default function HomePage() {
 	      installForm.kind === "zip" || installForm.kind === "zip_url" || installForm.kind === "modrinth" || installForm.kind === "curseforge"
 	        ? validateJarPathUI(installForm.jarName)
 	        : validateJarNameUI(installForm.jarName);
-	    const zipErr = installForm.kind === "zip" && !installZipFile ? "zip file is required" : "";
+	    const zipErr = installForm.kind === "zip" && !installZipFile ? "zip/mrpack file is required" : "";
 	    const remoteErr = (() => {
 	      const url = String(installForm.remoteUrl || "").trim();
 	      if (installForm.kind === "zip_url") return url ? "" : "remote url is required";
@@ -2422,15 +2422,16 @@ export default function HomePage() {
 	      let installedJar = jarRel;
 	      if (kind === "zip") {
 	        const file = installZipFile;
-	        if (!file) throw new Error("zip file is required");
+	        if (!file) throw new Error("zip/mrpack file is required");
 
 	        // Ensure instance dir exists, then upload + extract.
 	        await callOkCommand("fs_mkdir", { path: inst }, 30_000);
 
-	        const zipRel = joinRelPath(inst, "modpack.zip");
+	        const uploadName = String(file.name || "").toLowerCase().endsWith(".mrpack") ? "modpack.mrpack" : "modpack.zip";
+	        const zipRel = joinRelPath(inst, uploadName);
 	        const chunkSize = 256 * 1024; // 256KB
 	        let uploadID = "";
-	        setServerOpStatus(`Uploading modpack.zip: 0/${file.size} bytes`);
+	        setServerOpStatus(`Uploading ${uploadName}: 0/${file.size} bytes`);
 	        try {
 	          const begin = await callOkCommand("fs_upload_begin", { path: zipRel }, 30_000);
 	          uploadID = String(begin.upload_id || "");
@@ -2441,7 +2442,7 @@ export default function HomePage() {
 	            const ab = await file.slice(off, end).arrayBuffer();
 	            const b64 = b64EncodeBytes(new Uint8Array(ab));
 	            await callOkCommand("fs_upload_chunk", { upload_id: uploadID, b64 }, 60_000);
-	            setServerOpStatus(`Uploading modpack.zip: ${end}/${file.size} bytes`);
+	            setServerOpStatus(`Uploading ${uploadName}: ${end}/${file.size} bytes`);
 	          }
 
 	          await callOkCommand("fs_upload_commit", { upload_id: uploadID }, 60_000);
@@ -2456,12 +2457,18 @@ export default function HomePage() {
 	          throw e;
 	        }
 
-	        setServerOpStatus("Extracting modpack.zip ...");
-	        await callOkCommand(
-	          "fs_unzip",
-	          { zip_path: zipRel, dest_dir: inst, instance_id: inst, strip_top_level: true },
-	          10 * 60_000
-	        );
+	        if (uploadName.toLowerCase().endsWith(".mrpack")) {
+	          setServerOpStatus(`Installing ${uploadName} (.mrpack) ...`);
+	          await installModrinthMrpack(inst, zipRel, jarRel);
+	        } else {
+	          setServerOpStatus(`Extracting ${uploadName} ...`);
+	          await callOkCommand(
+	            "fs_unzip",
+	            { zip_path: zipRel, dest_dir: inst, instance_id: inst, strip_top_level: true },
+	            10 * 60_000
+	          );
+	          installedJar = await pickJarFromInstanceRoot(inst, installedJar);
+	        }
 	        try {
 	          await callOkCommand("fs_delete", { path: zipRel }, 30_000);
 	        } catch {
@@ -3955,11 +3962,11 @@ export default function HomePage() {
 
 			                  {installForm.kind === "zip" ? (
 			                    <div className="field" style={{ gridColumn: "1 / -1" }}>
-			                      <label>Modpack ZIP</label>
+			                      <label>Modpack ZIP / MRPACK</label>
 		                      <input
 		                        key={installZipInputKey}
 		                        type="file"
-		                        accept=".zip"
+		                        accept=".zip,.mrpack"
 		                        onChange={(e) => setInstallZipFile(e.target.files?.[0] || null)}
 		                      />
 		                      {installValidation.zipErr ? (
@@ -3967,7 +3974,9 @@ export default function HomePage() {
 		                          {installValidation.zipErr}
 		                        </div>
 		                      ) : (
-		                        <div className="hint">将 zip 上传到 <code>servers/&lt;instance&gt;/</code> 并自动解压（默认会剥离单一顶层目录）</div>
+		                        <div className="hint">
+		                          支持 <code>.zip</code> / <code>.mrpack</code>：上传到 <code>servers/&lt;instance&gt;/</code> 并自动安装/解压（mrpack 目前只支持 Fabric）
+		                        </div>
 		                      )}
 		                    </div>
 			                  ) : installForm.kind === "zip_url" ? (

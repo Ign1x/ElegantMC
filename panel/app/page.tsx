@@ -2260,23 +2260,45 @@ export default function HomePage() {
 
     // Download files (mods/config/etc) listed in the index.
     const files = Array.isArray(index?.files) ? index.files : [];
-    for (const f of files) {
-      const envServer = String(f?.env?.server || "").trim().toLowerCase();
-      if (envServer === "unsupported") continue;
+    const queue = files
+      .map((f: any) => {
+        const envServer = String(f?.env?.server || "").trim().toLowerCase();
+        if (envServer === "unsupported") return null;
+        const rel = normalizeRelFilePath(String(f?.path || ""));
+        if (!rel) return null;
+        const downloads = Array.isArray(f?.downloads) ? f.downloads : [];
+        const url = String(downloads[0] || "").trim();
+        if (!url) throw new Error(`mrpack file missing download url: ${rel}`);
+        const sha1 = String(f?.hashes?.sha1 || "").trim();
+        return { rel, url, sha1 };
+      })
+      .filter(Boolean) as { rel: string; url: string; sha1: string }[];
 
-      const rel = normalizeRelFilePath(String(f?.path || ""));
-      if (!rel) continue;
-      const downloads = Array.isArray(f?.downloads) ? f.downloads : [];
-      const url = String(downloads[0] || "").trim();
-      if (!url) throw new Error(`mrpack file missing download url: ${rel}`);
+    const total = queue.length;
+    let done = 0;
+    if (total) setServerOpStatus(`Downloading mrpack files: 0/${total} ...`);
 
-      const sha1 = String(f?.hashes?.sha1 || "").trim();
-      await callOkCommand(
-        "fs_download",
-        { path: joinRelPath(inst, rel), url, ...(isHex40(sha1) ? { sha1 } : {}), instance_id: inst },
-        10 * 60_000
-      );
-    }
+    const concurrency = Math.max(1, Math.min(4, total));
+    let failed: any = null;
+    const workers = Array.from({ length: concurrency }).map(async () => {
+      while (queue.length && !failed) {
+        const item = queue.shift();
+        if (!item) break;
+        try {
+          await callOkCommand(
+            "fs_download",
+            { path: joinRelPath(inst, item.rel), url: item.url, ...(isHex40(item.sha1) ? { sha1: item.sha1 } : {}), instance_id: inst },
+            10 * 60_000
+          );
+          done++;
+          if (total) setServerOpStatus(`Downloading mrpack files: ${done}/${total} ...`);
+        } catch (e) {
+          failed = e || new Error("download failed");
+          throw failed;
+        }
+      }
+    });
+    await Promise.all(workers);
 
     // Install Fabric server launcher jar.
     setServerOpStatus(`Installing Fabric server (${mc} / loader ${fabricLoader}) ...`);

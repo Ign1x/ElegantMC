@@ -29,7 +29,7 @@ WF-20260118-27,P2,games,done,Instance clone,"Copying servers requires manual fil
 WF-20260118-28,P2,games,done,Instance disk usage,"No per-instance size info","Show instance folder size and last backup time",ux(games): usage info
 WF-20260118-29,P1,modpacks,done,Upload mrpack,"Upload flow only accepts .zip and is confusing for .mrpack files","Allow uploading .mrpack and treat it like Modrinth mrpack install",feat(modpacks): upload mrpack
 WF-20260118-30,P1,modpacks,done,Better zip jar detection,"Zip installs often fail because jar_path is wrong after extraction","After unzip, auto-detect server jar (including subdirs) or prompt selection",fix(modpacks): detect jar
-WF-20260118-31,P2,modpacks,todo,Parallel mrpack downloads,"Mrpack files download sequentially and can be slow","Download mrpack files with limited concurrency and progress",perf(modpacks): parallel downloads
+WF-20260118-31,P2,modpacks,done,Parallel mrpack downloads,"Mrpack files download sequentially and can be slow","Download mrpack files with limited concurrency and progress",perf(modpacks): parallel downloads
 WF-20260118-32,P2,modpacks,todo,Show mrpack metadata,"User cannot see loader/minecraft version before install","Display minecraft version + loader + file count before install",ux(modpacks): show metadata
 WF-20260118-33,P1,modpacks,todo,Quilt mrpack support,"Quilt-based mrpacks cannot be installed","Support quilt-loader dependency and install quilt server jar",feat(modpacks): quilt mrpack
 WF-20260118-34,P1,modpacks,todo,Forge/NeoForge server packs,"Many modpacks require Forge/NeoForge and currently fail","Support server pack zip workflow and clear guidance",feat(modpacks): forge server packs

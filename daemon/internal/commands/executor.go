@@ -359,6 +359,14 @@ func (e *Executor) Execute(ctx context.Context, cmd protocol.Command) protocol.C
 		return e.fsStat(cmd)
 	case "fs_delete":
 		return e.fsDelete(cmd)
+	case "fs_trash":
+		return e.fsTrash(cmd)
+	case "fs_trash_restore":
+		return e.fsTrashRestore(cmd)
+	case "fs_trash_list":
+		return e.fsTrashList(cmd)
+	case "fs_trash_delete":
+		return e.fsTrashDelete(cmd)
 	case "fs_mkdir":
 		return e.fsMkdir(cmd)
 	case "fs_move":

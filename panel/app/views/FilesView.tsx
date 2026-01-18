@@ -11,6 +11,7 @@ export default function FilesView() {
     fsStatus,
     fsEntries,
     fsSelectedFile,
+    fsSelectedFileMode,
     fsFileText,
     setFsFileText,
     setFsSelectedFile,
@@ -151,7 +152,8 @@ export default function FilesView() {
             <span className="muted">
               file: <code>{fsSelectedFile || "-"}</code>
             </span>
-            <button type="button" onClick={saveFile} disabled={!fsSelectedFile}>
+            {fsSelectedFile && fsSelectedFileMode !== "text" ? <span className="badge">download-only</span> : null}
+            <button type="button" onClick={saveFile} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
               Save
             </button>
           </div>
@@ -159,11 +161,15 @@ export default function FilesView() {
             value={fsFileText}
             onChange={(e) => setFsFileText(e.target.value)}
             rows={16}
-            placeholder="Select a text file to edit (e.g. server.properties)"
+            placeholder={
+              fsSelectedFile && fsSelectedFileMode !== "text"
+                ? "Binary file (editing disabled). Use Download."
+                : "Select a text file to edit (e.g. server.properties)"
+            }
             style={{ width: "100%", marginTop: 8 }}
-            disabled={!fsSelectedFile}
+            disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}
           />
-          <div className="hint">提示：大文件/二进制文件不会在编辑器打开，可用 Download 下载。</div>
+          <div className="hint">提示：二进制/大文件为 download-only（可用 Download 下载）。</div>
         </div>
       </div>
     </div>

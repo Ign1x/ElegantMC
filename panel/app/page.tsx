@@ -196,6 +196,18 @@ function b64DecodeBytes(b64: string) {
   return bytes;
 }
 
+function isProbablyBinary(bytes: Uint8Array) {
+  const len = Math.min(bytes.length, 4096);
+  if (!len) return false;
+  let suspicious = 0;
+  for (let i = 0; i < len; i++) {
+    const b = bytes[i];
+    if (b === 0) return true;
+    if (b < 9 || (b > 13 && b < 32) || b === 127) suspicious++;
+  }
+  return suspicious / len > 0.2;
+}
+
 function fmtUnix(ts?: number | null) {
   if (!ts) return "-";
   return new Date(ts * 1000).toLocaleString();
@@ -534,6 +546,7 @@ export default function HomePage() {
   const [fsPath, setFsPath] = useState<string>("");
   const [fsEntries, setFsEntries] = useState<any[]>([]);
   const [fsSelectedFile, setFsSelectedFile] = useState<string>("");
+  const [fsSelectedFileMode, setFsSelectedFileMode] = useState<"none" | "text" | "binary">("none");
   const [fsFileText, setFsFileText] = useState<string>("");
   const [fsStatus, setFsStatus] = useState<string>("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -1589,6 +1602,10 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
+  useEffect(() => {
+    if (!fsSelectedFile) setFsSelectedFileMode("none");
+  }, [fsSelectedFile]);
+
   // Files listing
   useEffect(() => {
     if (authed !== true) return;
@@ -1768,23 +1785,56 @@ export default function HomePage() {
     if (entry?.isDir) {
       setFsSelectedFile("");
       setFsFileText("");
+      setFsSelectedFileMode("none");
       setFsPath(joinRelPath(fsPath, name));
       return;
     }
     const size = Number(entry?.size || 0);
     const lower = String(name).toLowerCase();
     const filePath = joinRelPath(fsPath, name);
-    if (size > 512 * 1024 || lower.endsWith(".jar") || lower.endsWith(".zip")) {
+    const likelyBinaryExt =
+      lower.endsWith(".jar") ||
+      lower.endsWith(".zip") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".gif") ||
+      lower.endsWith(".webp") ||
+      lower.endsWith(".ico") ||
+      lower.endsWith(".pdf") ||
+      lower.endsWith(".mp3") ||
+      lower.endsWith(".mp4") ||
+      lower.endsWith(".mkv") ||
+      lower.endsWith(".wav") ||
+      lower.endsWith(".ogg") ||
+      lower.endsWith(".class") ||
+      lower.endsWith(".dll") ||
+      lower.endsWith(".exe") ||
+      lower.endsWith(".so") ||
+      lower.endsWith(".dat") ||
+      lower.endsWith(".nbt");
+
+    if (size > 512 * 1024 || likelyBinaryExt) {
       setFsSelectedFile(filePath);
       setFsFileText("");
-      setFsStatus("Binary/large file: not opened in editor");
+      setFsSelectedFileMode("binary");
+      setFsStatus("Binary/large file: download-only");
       return;
     }
     setFsStatus(`Reading ${filePath} ...`);
     try {
       const payload = await callOkCommand("fs_read", { path: filePath });
-      const text = b64DecodeUtf8(payload.b64 || "");
+      const bytes = b64DecodeBytes(String(payload?.b64 || ""));
+      if (isProbablyBinary(bytes)) {
+        setFsSelectedFile(filePath);
+        setFsFileText("");
+        setFsSelectedFileMode("binary");
+        setFsStatus("Binary file: download-only");
+        return;
+      }
+      const text = new TextDecoder().decode(bytes);
       setFsSelectedFile(filePath);
+      setFsSelectedFileMode("text");
       setFsFileText(text);
       setFsStatus("");
     } catch (e: any) {
@@ -1795,6 +1845,10 @@ export default function HomePage() {
   async function saveFile() {
     if (!fsSelectedFile) {
       setFsStatus("No file selected");
+      return;
+    }
+    if (fsSelectedFileMode !== "text") {
+      setFsStatus("Binary file: edit disabled (download instead)");
       return;
     }
     setFsStatus(`Saving ${fsSelectedFile} ...`);
@@ -3013,6 +3067,7 @@ export default function HomePage() {
     fsEntries,
     fsSelectedFile,
     setFsSelectedFile,
+    fsSelectedFileMode,
     fsFileText,
     setFsFileText,
     openEntry,

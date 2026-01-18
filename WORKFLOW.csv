@@ -16,7 +16,7 @@ WF-20260118-14,P2,panel-ui,done,Responsive sidebar,"Sidebar is always visible an
 WF-20260118-15,P3,panel-ui,done,Keyboard shortcuts,"Frequent actions require mouse clicks","Add shortcuts: Ctrl+K command palette, Esc closes modals, / focuses search",ux(panel): shortcuts
 WF-20260118-16,P2,nodes,done,Nodes overview improvements,"Nodes list lacks quick health glance and sorting options","Add sorting, filters, and clearer online/offline + last seen",ux(nodes): overview polish
 WF-20260118-17,P2,nodes,done,Copy deploy snippet,"Deploying daemon requires manual compose editing","Provide one-click copy docker-compose snippet per node",ux(nodes): deploy copy
-WF-20260118-18,P2,files,todo,Binary file handling,"Editing binary files as text is confusing and can corrupt data","Detect binary and show download-only view",fix(files): binary detect
+WF-20260118-18,P2,files,done,Binary file handling,"Editing binary files as text is confusing and can corrupt data","Detect binary and show download-only view",fix(files): binary detect
 WF-20260118-19,P2,files,todo,Create new file,"Cannot create new file from Files UI","Add Create file action with safe path validation",feat(files): create file
 WF-20260118-20,P2,files,todo,File search,"Finding a file in large directories is painful","Add client-side filter/search for current directory listing",ux(files): search filter
 WF-20260118-21,P2,files,todo,Quick open common files,"Common server files require manual navigation","Add shortcuts: server.properties, eula.txt, logs/latest.log, .elegantmc.json",ux(files): quick open

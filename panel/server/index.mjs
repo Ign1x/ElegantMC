@@ -1,6 +1,7 @@
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import next from "next";
@@ -15,6 +16,7 @@ import {
   ensureReady,
   getOrCreateDaemon,
   getDaemonTokenSync,
+  PANEL_DATA_DIR,
   getPanelSettings,
   handleDaemonMessage,
   listFrpProfiles,
@@ -114,6 +116,75 @@ const enableHSTS = truthy(process.env.ELEGANTMC_PANEL_HSTS);
 const SESSION_COOKIE = "elegantmc_session";
 const SESSION_TTL_SEC = 60 * 60 * 24 * 7;
 const sessions = new Map(); // token -> { expiresAtUnix }
+const SESSIONS_PATH = path.join(PANEL_DATA_DIR, "sessions.json");
+let sessionsWriteChain = Promise.resolve();
+
+async function writeFileAtomic(filePath, contents) {
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  const tmp = `${filePath}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  await fs.writeFile(tmp, contents, { mode: 0o600 });
+  try {
+    await fs.rename(tmp, filePath);
+  } catch {
+    try {
+      await fs.rm(filePath, { force: true });
+    } catch {
+      // ignore
+    }
+    await fs.rename(tmp, filePath);
+  } finally {
+    try {
+      await fs.rm(tmp, { force: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function serializeSessions() {
+  const out = {};
+  for (const [token, s] of sessions.entries()) {
+    if (!token || typeof token !== "string") continue;
+    const expiresAtUnix = Number(s?.expiresAtUnix || 0);
+    if (!Number.isFinite(expiresAtUnix) || expiresAtUnix <= 0) continue;
+    out[token] = { expiresAtUnix };
+  }
+  return { updated_at_unix: nowUnix(), sessions: out };
+}
+
+function queueSessionsSave() {
+  sessionsWriteChain = sessionsWriteChain
+    .then(async () => {
+      const payload = JSON.stringify(serializeSessions(), null, 2);
+      await writeFileAtomic(SESSIONS_PATH, payload);
+    })
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] sessions save failed:", e?.message || e);
+    });
+  return sessionsWriteChain;
+}
+
+async function loadSessionsFromDisk() {
+  try {
+    const raw = await fs.readFile(SESSIONS_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const obj = parsed?.sessions && typeof parsed.sessions === "object" && !Array.isArray(parsed.sessions) ? parsed.sessions : {};
+    const now = nowUnix();
+    for (const [token, s] of Object.entries(obj)) {
+      const expiresAtUnix = Number(s?.expiresAtUnix || 0);
+      if (!token || typeof token !== "string") continue;
+      if (!Number.isFinite(expiresAtUnix) || expiresAtUnix <= now) continue;
+      sessions.set(token, { expiresAtUnix });
+    }
+  } catch (e) {
+    if (e?.code !== "ENOENT") {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] failed to load sessions:", e?.message || e);
+    }
+  }
+}
 
 const LOGIN_WINDOW_SEC = 5 * 60;
 const LOGIN_MAX_ATTEMPTS = 8;
@@ -175,6 +246,7 @@ function getSession(req) {
   const now = nowUnix();
   if (session.expiresAtUnix && now > session.expiresAtUnix) {
     sessions.delete(token);
+    queueSessionsSave();
     return null;
   }
   return { token, ...session };
@@ -222,16 +294,22 @@ const nextHandle = nextApp.getRequestHandler();
 
 await nextApp.prepare();
 await ensureReady();
+await loadSessionsFromDisk();
 
 // Periodic GC for expired sessions and rate-limit buckets.
 setInterval(() => {
   const now = nowUnix();
+  let sessionsChanged = false;
   for (const [token, s] of sessions.entries()) {
-    if (s?.expiresAtUnix && now > s.expiresAtUnix) sessions.delete(token);
+    if (s?.expiresAtUnix && now > s.expiresAtUnix) {
+      sessions.delete(token);
+      sessionsChanged = true;
+    }
   }
   for (const [ip, st] of loginAttempts.entries()) {
     if (!st?.resetAtUnix || now >= st.resetAtUnix) loginAttempts.delete(ip);
   }
+  if (sessionsChanged) queueSessionsSave();
 }, 60_000).unref?.();
 
 let mcVersionsCache = { atUnix: 0, versions: null, error: "" };
@@ -631,6 +709,7 @@ const server = http.createServer(async (req, res) => {
         const token = randomBytes(24).toString("base64url");
         const now = nowUnix();
         sessions.set(token, { expiresAtUnix: now + SESSION_TTL_SEC });
+        queueSessionsSave();
         loginAttempts.delete(getClientIP(req) || "unknown");
         res.setHeader(
           "Set-Cookie",
@@ -649,7 +728,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/auth/logout" && req.method === "POST") {
       const session = getSession(req);
-      if (session?.token) sessions.delete(session.token);
+      if (session?.token) {
+        sessions.delete(session.token);
+        queueSessionsSave();
+      }
       res.setHeader(
         "Set-Cookie",
         serializeCookie(SESSION_COOKIE, "", {

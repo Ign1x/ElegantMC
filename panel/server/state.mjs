@@ -7,7 +7,7 @@ const MAX_HB_POINTS = 600;
 const FRP_MAX_PROFILES = 50;
 const DAEMON_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-const PANEL_DATA_DIR = process.env.ELEGANTMC_PANEL_DATA_DIR
+export const PANEL_DATA_DIR = process.env.ELEGANTMC_PANEL_DATA_DIR
   ? path.resolve(process.env.ELEGANTMC_PANEL_DATA_DIR)
   : path.resolve(process.cwd(), ".elegantmc-panel");
 const FRP_PROFILES_PATH = path.join(PANEL_DATA_DIR, "frp_profiles.json");

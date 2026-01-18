@@ -119,6 +119,8 @@ const sessions = new Map(); // token -> { expiresAtUnix }
 const SESSIONS_PATH = path.join(PANEL_DATA_DIR, "sessions.json");
 let sessionsWriteChain = Promise.resolve();
 
+const AUDIT_LOG_PATH = path.join(PANEL_DATA_DIR, "audit.log");
+
 async function writeFileAtomic(filePath, contents) {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
@@ -139,6 +141,48 @@ async function writeFileAtomic(filePath, contents) {
     } catch {
       // ignore
     }
+  }
+}
+
+function sanitizeForAudit(v, depth = 0) {
+  if (depth > 6) return "[depth]";
+  if (v == null) return v;
+  if (typeof v === "string") {
+    if (v.length > 800) return `${v.slice(0, 800)}…`;
+    return v;
+  }
+  if (typeof v === "number" || typeof v === "boolean") return v;
+  if (Array.isArray(v)) return v.slice(0, 80).map((x) => sanitizeForAudit(x, depth + 1));
+  if (typeof v === "object") {
+    const out = {};
+    const entries = Object.entries(v).slice(0, 120);
+    for (const [k, val] of entries) {
+      const key = String(k || "");
+      if (/token|password|secret|api[_-]?key|authorization/i.test(key)) {
+        out[key] = "[redacted]";
+        continue;
+      }
+      out[key] = sanitizeForAudit(val, depth + 1);
+    }
+    return out;
+  }
+  return String(v);
+}
+
+function appendAudit(req, action, detail = {}) {
+  try {
+    const session = getSession(req);
+    const entry = {
+      ts_unix: nowUnix(),
+      ip: getClientIP(req) || "",
+      action: String(action || "").trim(),
+      session: session?.token ? maskToken(session.token) : "",
+      detail: sanitizeForAudit(detail),
+    };
+    const line = `${JSON.stringify(entry)}\n`;
+    fs.appendFile(AUDIT_LOG_PATH, line, { mode: 0o600 }).catch(() => {});
+  } catch {
+    // ignore
   }
 }
 
@@ -704,12 +748,14 @@ const server = http.createServer(async (req, res) => {
         const body = await readJsonBody(req);
         const password = String(body?.password || "");
         if (!safeEqual(password, adminPassword)) {
+          appendAudit(req, "auth.login_failed", { reason: "invalid_password" });
           return json(res, 401, { error: "invalid password" });
         }
         const token = randomBytes(24).toString("base64url");
         const now = nowUnix();
         sessions.set(token, { expiresAtUnix: now + SESSION_TTL_SEC });
         queueSessionsSave();
+        appendAudit(req, "auth.login_ok", { token: maskToken(token) });
         loginAttempts.delete(getClientIP(req) || "unknown");
         res.setHeader(
           "Set-Cookie",
@@ -729,6 +775,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/auth/logout" && req.method === "POST") {
       const session = getSession(req);
       if (session?.token) {
+        appendAudit(req, "auth.logout", { token: maskToken(session.token) });
         sessions.delete(session.token);
         queueSessionsSave();
       }
@@ -759,6 +806,11 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readJsonBody(req);
         const settings = await savePanelSettings(body);
+        appendAudit(req, "panel.settings_save", {
+          brand_name: settings?.brand_name || "",
+          has_curseforge_api_key: !!String(settings?.curseforge_api_key || "").trim(),
+          defaults: settings?.defaults || {},
+        });
         return json(res, 200, { settings });
       } catch (e) {
         return json(res, 400, { error: String(e?.message || e) });
@@ -931,6 +983,13 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readJsonBody(req);
         const profile = await createFrpProfile(body);
+        appendAudit(req, "frp.create_profile", {
+          id: profile?.id || "",
+          name: profile?.name || "",
+          server_addr: profile?.server_addr || "",
+          server_port: profile?.server_port || 0,
+          has_token: !!(profile?.token && String(profile.token).trim()),
+        });
         return json(res, 200, {
           profile: {
             id: profile.id,
@@ -954,6 +1013,7 @@ const server = http.createServer(async (req, res) => {
       if (!p) return json(res, 404, { error: "not found" });
       const token = String(p.token || "");
       if (!token) return json(res, 404, { error: "no token set" });
+      appendAudit(req, "frp.reveal_token", { id });
       return json(res, 200, { id, token });
     }
     const mFrpProbe = url.pathname.match(/^\/api\/frp\/profiles\/([^/]+)\/probe$/);
@@ -977,6 +1037,7 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(mFrp[1]);
       const ok = await deleteFrpProfile(id);
       if (!ok) return json(res, 404, { error: "not found" });
+      appendAudit(req, "frp.delete_profile", { id });
       return json(res, 200, { deleted: true });
     }
 
@@ -1003,6 +1064,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readJsonBody(req);
         const node = await createNode(body);
+        appendAudit(req, "nodes.create", { id: node?.id || "" });
         return json(res, 200, { node });
       } catch (e) {
         return json(res, 400, { error: String(e?.message || e) });
@@ -1020,6 +1082,7 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(mNode[1]);
       const ok = await deleteNode(id);
       if (!ok) return json(res, 404, { error: "not found" });
+      appendAudit(req, "nodes.delete", { id });
       return json(res, 200, { deleted: true });
     }
 
@@ -1048,12 +1111,28 @@ const server = http.createServer(async (req, res) => {
         if (!name || typeof name !== "string") {
           return json(res, 400, { error: "name is required" });
         }
-        const result = await sendCommand(
-          daemonId,
-          { name, args },
-          { timeoutMs: Number(body?.timeoutMs || 30_000) }
-        );
-        return json(res, 200, { result });
+        const timeoutMs = Number(body?.timeoutMs || 30_000);
+        try {
+          const result = await sendCommand(daemonId, { name, args }, { timeoutMs });
+          appendAudit(req, "daemon.command", {
+            daemon_id: daemonId,
+            name,
+            args,
+            timeout_ms: timeoutMs,
+            ok: !!result?.ok,
+            error: String(result?.error || ""),
+          });
+          return json(res, 200, { result });
+        } catch (e) {
+          appendAudit(req, "daemon.command_failed", {
+            daemon_id: daemonId,
+            name,
+            args,
+            timeout_ms: timeoutMs,
+            error: String(e?.message || e),
+          });
+          throw e;
+        }
       }
     }
 

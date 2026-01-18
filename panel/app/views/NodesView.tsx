@@ -169,6 +169,7 @@ export default function NodesView() {
                         type="button"
                         className="iconBtn iconOnly"
                         title="Copy token"
+                        aria-label="Copy token"
                         onClick={async () => {
                           const ok = await confirmDialog(`Reveal and copy token for node ${n.id}?`, {
                             title: "Reveal Token",

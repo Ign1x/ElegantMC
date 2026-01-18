@@ -10,6 +10,8 @@ export default function Icon({ name, size = 14 }: { name: IconName; size?: numbe
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg",
     className: "ico",
+    "aria-hidden": true,
+    focusable: false,
   } as const;
 
   switch (name) {

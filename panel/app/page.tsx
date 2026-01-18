@@ -4519,6 +4519,7 @@ export default function HomePage() {
               type="button"
               className="iconBtn iconOnly sidebarToggle"
               title="Menu"
+              aria-label="Menu"
               onClick={() => setSidebarOpen((v) => !v)}
             >
               <Icon name="menu" />
@@ -5157,6 +5158,7 @@ export default function HomePage() {
                         type="button"
                         className="iconBtn iconOnly"
                         title="Refresh jar list"
+                        aria-label="Refresh jar list"
                         onClick={() => refreshJarCandidates()}
                         disabled={!selectedDaemon?.connected || !instanceId.trim()}
                       >
@@ -5753,6 +5755,7 @@ export default function HomePage() {
 	                      type="button"
 	                      className="iconBtn iconOnly"
 	                      title="Copy token"
+	                      aria-label="Copy token"
 	                      onClick={async () => {
 	                        await copyText(createdNode.token);
 	                        setNodesStatus("Copied");

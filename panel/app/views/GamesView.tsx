@@ -431,6 +431,7 @@ export default function GamesView() {
                   type="button"
                   className="iconBtn iconOnly"
                   title="Refresh games list"
+                  aria-label="Refresh games list"
                   onClick={refreshServerDirs}
                   disabled={!selectedDaemon?.connected}
                 >
@@ -764,7 +765,7 @@ export default function GamesView() {
                 {backupZips.slice(0, 10).map((p: string) => (
                   <div key={p} className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                     <code style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{p}</code>
-                    <button type="button" className="iconBtn iconOnly" title="Copy path" onClick={() => copyText(p)}>
+                    <button type="button" className="iconBtn iconOnly" title="Copy path" aria-label="Copy path" onClick={() => copyText(p)}>
                       <Icon name="copy" />
                     </button>
                   </div>
@@ -891,14 +892,20 @@ export default function GamesView() {
           >
             <div style={{ height: logVirtual.topPad }} />
             <pre style={{ margin: 0 }}>
-              {logVirtual.visible.map((l, idx) => (
-                <span key={`${logVirtual.start + idx}`} className={`logLine ${highlightLogs ? l.level : ""}`}>
-                  <button type="button" className="logLineCopyBtn" title="Copy line" onClick={() => copyText(l.text)}>
-                    <Icon name="copy" />
-                  </button>
-                  <span className="logLineText">{l.text}</span>
-                </span>
-              ))}
+                  {logVirtual.visible.map((l, idx) => (
+                    <span key={`${logVirtual.start + idx}`} className={`logLine ${highlightLogs ? l.level : ""}`}>
+                      <button
+                        type="button"
+                        className="logLineCopyBtn"
+                        title="Copy line"
+                        aria-label="Copy line"
+                        onClick={() => copyText(l.text)}
+                      >
+                        <Icon name="copy" />
+                      </button>
+                      <span className="logLineText">{l.text}</span>
+                    </span>
+                  ))}
             </pre>
             <div style={{ height: logVirtual.bottomPad }} />
           </div>

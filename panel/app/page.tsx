@@ -629,6 +629,15 @@ export default function HomePage() {
   const [modpackProvidersStatus, setModpackProvidersStatus] = useState<string>("");
   const [logView, setLogView] = useState<"all" | "mc" | "install" | "frp">("all");
 
+  useEffect(() => {
+    try {
+      const k = String((installForm as any)?.kind || "").trim();
+      if (k) localStorage.setItem("elegantmc_install_kind", k);
+    } catch {
+      // ignore
+    }
+  }, [(installForm as any)?.kind]);
+
   // Server list (directories under servers/)
   const [serverDirs, setServerDirs] = useState<string[]>([]);
   const [serverDirsStatus, setServerDirsStatus] = useState<string>("");
@@ -2875,6 +2884,12 @@ export default function HomePage() {
 	    const jarNameOnly = normalizeJarName(jarPath);
 	    const jarRel = normalizeJarPath(suggested, jarPath);
 	    const defaults = panelSettings?.defaults || {};
+	    let preferredKind = "";
+	    try {
+	      preferredKind = String(localStorage.getItem("elegantmc_install_kind") || "").trim();
+	    } catch {
+	      preferredKind = "";
+	    }
 	    const defaultVersion = String(defaults.version || "1.20.1");
 	    const defaultXms = String(defaults.xms || xms);
 	    const defaultXmx = String(defaults.xmx || xmx);
@@ -2887,30 +2902,30 @@ export default function HomePage() {
 	      Number.isFinite(defaultFrpRemoteRaw) && defaultFrpRemoteRaw >= 0 && defaultFrpRemoteRaw <= 65535 ? defaultFrpRemoteRaw : frpRemotePort;
 	    const profileId =
 	      profiles.find((p) => p.id === frpProfileId)?.id || profiles[0]?.id || "";
-	    setInstallForm((prev) => ({
-	      instanceId: suggested,
-	      kind:
-	        prev?.kind === "paper" ||
-	        prev?.kind === "zip" ||
-	        prev?.kind === "zip_url" ||
-	        prev?.kind === "modrinth" ||
-	        prev?.kind === "curseforge"
-	          ? prev.kind
-	          : "vanilla",
-	      version: String(prev?.version || defaultVersion),
-	      paperBuild: Number.isFinite(Number(prev?.paperBuild)) ? Number(prev?.paperBuild) : 0,
-	      xms: defaultXms,
-	      xmx: defaultXmx,
-	      gamePort: defaultGamePort,
-	      jarName: prev?.kind === "zip" || prev?.kind === "zip_url" || prev?.kind === "modrinth" || prev?.kind === "curseforge" ? jarRel : jarNameOnly,
-	      javaPath,
-	      acceptEula: prev?.acceptEula ?? defaultAcceptEula,
-	      enableFrp: defaultEnableFrp,
-	      frpProfileId: profileId,
-	      frpRemotePort: defaultFrpRemotePort,
-	      remoteUrl: "",
-	      remoteFileName: "",
-	    }));
+	    setInstallForm((prev) => {
+	      const isKind = (k: any) =>
+	        k === "paper" || k === "zip" || k === "zip_url" || k === "modrinth" || k === "curseforge" || k === "vanilla";
+	      const chosenKind = isKind(preferredKind) ? preferredKind : isKind(prev?.kind) ? prev.kind : "vanilla";
+	      const relJar =
+	        chosenKind === "zip" || chosenKind === "zip_url" || chosenKind === "modrinth" || chosenKind === "curseforge" ? jarRel : jarNameOnly;
+	      return {
+	        instanceId: suggested,
+	        kind: chosenKind,
+	        version: String(prev?.version || defaultVersion),
+	        paperBuild: Number.isFinite(Number(prev?.paperBuild)) ? Number(prev?.paperBuild) : 0,
+	        xms: defaultXms,
+	        xmx: defaultXmx,
+	        gamePort: defaultGamePort,
+	        jarName: relJar,
+	        javaPath,
+	        acceptEula: prev?.acceptEula ?? defaultAcceptEula,
+	        enableFrp: defaultEnableFrp,
+	        frpProfileId: profileId,
+	        frpRemotePort: defaultFrpRemotePort,
+	        remoteUrl: "",
+	        remoteFileName: "",
+	      };
+	    });
 	    setInstallZipFile(null);
 	    setInstallZipInputKey((k) => k + 1);
 	    setInstallStartUnix(0);

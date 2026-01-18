@@ -2469,6 +2469,7 @@ export default function HomePage() {
       const out = await callOkCommand("mc_backup", { instance_id: inst, stop: true }, 10 * 60_000);
       const path = String(out?.path || "").trim();
       setServerOpStatus(path ? `Backup created: ${path}` : "Backup created");
+      await refreshBackupZips(inst);
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
     } finally {
@@ -2497,6 +2498,12 @@ export default function HomePage() {
     }
   }
 
+  async function refreshBackupZips(instanceOverride?: string) {
+    const inst = String(instanceOverride ?? instanceId).trim();
+    if (!inst) return;
+    await refreshRestoreCandidates(inst);
+  }
+
   async function openRestoreModal() {
     if (!selectedDaemon?.connected) {
       setServerOpStatus("daemon offline");
@@ -2511,7 +2518,7 @@ export default function HomePage() {
     setRestoreZipPath("");
     setRestoreStatus("");
     setRestoreOpen(true);
-    await refreshRestoreCandidates(inst);
+    await refreshBackupZips(inst);
   }
 
   async function restoreFromBackup() {
@@ -2696,6 +2703,9 @@ export default function HomePage() {
     deleteServer,
     backupServer,
     openRestoreModal,
+    backupZips: restoreCandidates,
+    backupZipsStatus: restoreStatus,
+    refreshBackupZips,
     frpOpStatus,
     serverOpStatus,
     gameActionBusy,
@@ -3690,7 +3700,7 @@ export default function HomePage() {
 
                 <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center" }}>
                   <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
-                    <button type="button" onClick={() => refreshRestoreCandidates(instanceId.trim())} disabled={gameActionBusy}>
+                    <button type="button" onClick={() => refreshBackupZips(instanceId.trim())} disabled={gameActionBusy}>
                       Refresh
                     </button>
                     {gameActionBusy ? <span className="badge">working…</span> : null}

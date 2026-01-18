@@ -21,6 +21,9 @@ export default function GamesView() {
     deleteServer,
     backupServer,
     openRestoreModal,
+    backupZips,
+    backupZipsStatus,
+    refreshBackupZips,
     frpOpStatus,
     serverOpStatus,
     gameActionBusy,
@@ -93,6 +96,14 @@ export default function GamesView() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [logText, autoScroll]);
+
+  useEffect(() => {
+    if (!selectedDaemon?.connected) return;
+    const inst = instanceId.trim();
+    if (!inst) return;
+    refreshBackupZips(inst);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instanceId, selectedDaemon?.connected]);
 
   return (
     <div className="stack">
@@ -256,6 +267,76 @@ export default function GamesView() {
         <div className="hint">
           Minecraft：多人游戏 → 添加服务器 → 地址填 <code>{instanceId.trim() ? socketText : "IP:Port"}</code>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="toolbar">
+          <div className="toolbarLeft" style={{ alignItems: "center" }}>
+            <div>
+              <h2>Backups</h2>
+              <div className="hint">
+                {instanceId.trim() ? (
+                  <>
+                    folder: <code>servers/_backups/{instanceId.trim()}/</code>
+                    {typeof backupZipsStatus === "string" && backupZipsStatus ? ` · ${backupZipsStatus}` : ""}
+                  </>
+                ) : (
+                  "Select a game to view backups"
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="toolbarRight">
+            <button
+              type="button"
+              className="iconBtn"
+              onClick={() => refreshBackupZips(instanceId.trim())}
+              disabled={!selectedDaemon?.connected || !instanceId.trim()}
+            >
+              <Icon name="refresh" />
+              Refresh
+            </button>
+            <button
+              type="button"
+              className="iconBtn"
+              onClick={() => {
+                const inst = instanceId.trim();
+                if (!inst) return;
+                setFsPath(`_backups/${inst}`);
+                setTab("files");
+              }}
+              disabled={!selectedDaemon?.connected || !instanceId.trim()}
+            >
+              Open folder
+            </button>
+          </div>
+        </div>
+
+        {instanceId.trim() ? (
+          Array.isArray(backupZips) && backupZips.length ? (
+            <>
+              <div className="hint">
+                showing {Math.min(10, backupZips.length)} / {backupZips.length}
+              </div>
+              <div className="stack" style={{ gap: 8 }}>
+                {backupZips.slice(0, 10).map((p: string) => (
+                  <div key={p} className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <code style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{p}</code>
+                    <button type="button" className="iconBtn iconOnly" title="Copy path" onClick={() => copyText(p)}>
+                      <Icon name="copy" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="hint">
+              No backups yet. Use <code>More → Backup</code> to create one.
+            </div>
+          )
+        ) : (
+          <div className="hint">Select a game to see backups.</div>
+        )}
       </div>
 
       <div className="card">

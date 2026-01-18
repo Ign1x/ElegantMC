@@ -348,6 +348,24 @@ function maskToken(token?: string) {
   return `${"*".repeat(Math.min(12, t.length - 4))}${t.slice(-4)}`;
 }
 
+function sanitizeForToast(value: any): any {
+  if (value == null) return value;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map((v) => sanitizeForToast(v));
+  if (typeof value !== "object") return String(value);
+
+  const out: any = {};
+  for (const [k, v] of Object.entries(value)) {
+    const key = String(k || "").toLowerCase();
+    if (key.includes("token") || key.includes("password") || key.includes("secret") || key.includes("api_key") || key.includes("apikey")) {
+      out[k] = typeof v === "string" ? maskToken(v) : "(redacted)";
+      continue;
+    }
+    out[k] = sanitizeForToast(v);
+  }
+  return out;
+}
+
 function yamlQuote(v: string) {
   const s = String(v ?? "");
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -499,7 +517,7 @@ export default function HomePage() {
   const [copyValue, setCopyValue] = useState<string>("");
 
   // Toasts
-  const [toasts, setToasts] = useState<{ id: string; kind: "info" | "ok" | "error"; message: string }[]>([]);
+  const [toasts, setToasts] = useState<{ id: string; kind: "info" | "ok" | "error"; message: string; detail?: string }[]>([]);
   const toastSeq = useRef<number>(0);
 
   // Logs
@@ -984,20 +1002,58 @@ export default function HomePage() {
   }
 
   async function callCommand(name: string, args: any, timeoutMs = 60_000) {
-    if (!selected) throw new Error("no daemon selected");
-    const res = await apiFetch(`/api/daemons/${encodeURIComponent(selected)}/command`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, args, timeoutMs }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json?.error || "request failed");
+    const daemonId = String(selected || "").trim();
+    if (!daemonId) {
+      pushToast("No daemon selected", "error", 7000, `command=${name}`);
+      throw new Error("no daemon selected");
+    }
+
+    let res: Response;
+    let json: any = null;
+    try {
+      res = await apiFetch(`/api/daemons/${encodeURIComponent(daemonId)}/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, args, timeoutMs }),
+      });
+      json = await res.json().catch(() => null);
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      pushToast(
+        `Command ${name} failed`,
+        "error",
+        9000,
+        JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, error: msg }, null, 2)
+      );
+      throw e;
+    }
+
+    if (!res.ok) {
+      const msg = String(json?.error || "request failed");
+      pushToast(
+        `Command ${name} failed: ${msg}`,
+        "error",
+        9000,
+        JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, status: res.status, error: msg }, null, 2)
+      );
+      throw new Error(msg);
+    }
+
     return json.result;
   }
 
   async function callOkCommand(name: string, args: any, timeoutMs = 60_000) {
     const result = await callCommand(name, args, timeoutMs);
-    if (!result?.ok) throw new Error(result?.error || "command failed");
+    if (!result?.ok) {
+      const msg = String(result?.error || "command failed");
+      pushToast(
+        `Command ${name} failed: ${msg}`,
+        "error",
+        9000,
+        JSON.stringify({ daemon: String(selected || "").trim(), name, args: sanitizeForToast(args), timeoutMs, error: msg }, null, 2)
+      );
+      throw new Error(msg);
+    }
     return result?.output || {};
   }
 
@@ -1159,11 +1215,12 @@ export default function HomePage() {
     openCopyModal(t);
   }
 
-  function pushToast(message: string, kind: "info" | "ok" | "error" = "info", ttlMs = 2200) {
+  function pushToast(message: string, kind: "info" | "ok" | "error" = "info", ttlMs = 2200, detail?: string) {
     const msg = String(message || "").trim();
     if (!msg) return;
     const id = `${Date.now()}-${toastSeq.current++}`;
-    setToasts((prev) => [...prev, { id, kind, message: msg }].slice(-6));
+    const d = String(detail || "").trim();
+    setToasts((prev) => [...prev, { id, kind, message: msg, ...(d ? { detail: d } : {}) }].slice(-6));
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, Math.max(800, Math.min(20_000, ttlMs)));
@@ -2963,9 +3020,15 @@ export default function HomePage() {
 	      {toasts.length ? (
 	        <div className="toastWrap" aria-live="polite" aria-relevant="additions">
 	          {toasts.map((t) => (
-	            <div key={t.id} className={`toast ${t.kind}`}>
+	            <button
+	              key={t.id}
+	              type="button"
+	              className={`toast ${t.kind} ${t.detail ? "clickable" : ""}`}
+	              title={t.detail ? "Click to copy details" : undefined}
+	              onClick={() => (t.detail ? openCopyModal(t.detail) : null)}
+	            >
 	              {t.message}
-	            </div>
+	            </button>
 	          ))}
 	        </div>
 	      ) : null}

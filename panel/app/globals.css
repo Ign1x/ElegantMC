@@ -960,10 +960,20 @@ pre {
   box-shadow: var(--shadow2);
   backdrop-filter: blur(10px);
   font-size: 12px;
+  text-align: left;
 }
 
 :root[data-theme="light"] .toast {
   background: rgba(255, 255, 255, 0.92);
+}
+
+.toast.clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.toast.clickable:hover {
+  border-color: var(--border);
 }
 
 .toast.ok {

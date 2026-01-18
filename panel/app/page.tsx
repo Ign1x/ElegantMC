@@ -496,6 +496,7 @@ export default function HomePage() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [sidebarFooterCollapsed, setSidebarFooterCollapsed] = useState<boolean>(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
+  const themePrefsReadyRef = useRef<boolean>(false);
   const [enableAdvanced, setEnableAdvanced] = useState<boolean>(false);
   const [panelInfo, setPanelInfo] = useState<{ id: string; version: string; revision: string; buildDate: string } | null>(null);
   const [panelSettings, setPanelSettings] = useState<any | null>(null);
@@ -915,6 +916,20 @@ export default function HomePage() {
     }
   }, [themeMode]);
 
+  useEffect(() => {
+    if (authed !== true) return;
+    if (!themePrefsReadyRef.current) return;
+    const mode: ThemeMode = themeMode === "dark" || themeMode === "light" || themeMode === "contrast" ? themeMode : "auto";
+    const t = window.setTimeout(() => {
+      apiFetch("/api/ui/prefs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme_mode: mode }),
+      }).catch(() => {});
+    }, 260);
+    return () => window.clearTimeout(t);
+  }, [authed, themeMode]);
+
   // Persist mobile sidebar open state (per session).
   useEffect(() => {
     try {
@@ -1221,6 +1236,22 @@ export default function HomePage() {
     const res = await fetch(url, nextInit);
     if (res.status === 401) setAuthed(false);
     return res;
+  }
+
+  async function refreshUiPrefs() {
+    try {
+      const res = await apiFetch("/api/ui/prefs", { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) return;
+      const mode = String(json?.prefs?.theme_mode || "").trim();
+      if (mode === "dark" || mode === "light" || mode === "contrast" || mode === "auto") {
+        setThemeMode(mode as ThemeMode);
+      }
+    } catch {
+      // ignore
+    } finally {
+      themePrefsReadyRef.current = true;
+    }
   }
 
   async function refreshModpackProviders() {
@@ -2028,6 +2059,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (authed !== true) return;
+    refreshUiPrefs();
     refreshProfiles();
     refreshPanelSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps

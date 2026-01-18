@@ -227,7 +227,48 @@ const sessions = new Map(); // token -> { expiresAtUnix }
 const SESSIONS_PATH = path.join(PANEL_DATA_DIR, "sessions.json");
 let sessionsWriteChain = Promise.resolve();
 
+const UI_PREFS_PATH = path.join(PANEL_DATA_DIR, "ui_prefs.json");
+let uiPrefs = { theme_mode: "auto" };
+let uiPrefsWriteChain = Promise.resolve();
+
 const AUDIT_LOG_PATH = path.join(PANEL_DATA_DIR, "audit.log");
+
+function normalizeThemeMode(v) {
+  const m = String(v || "").trim().toLowerCase();
+  if (m === "dark" || m === "light" || m === "contrast" || m === "auto") return m;
+  return "auto";
+}
+
+function serializeUiPrefs() {
+  return { updated_at_unix: nowUnix(), theme_mode: normalizeThemeMode(uiPrefs?.theme_mode || "auto") };
+}
+
+function queueUiPrefsSave() {
+  uiPrefsWriteChain = uiPrefsWriteChain
+    .then(async () => {
+      const payload = JSON.stringify(serializeUiPrefs(), null, 2);
+      await writeFileAtomic(UI_PREFS_PATH, payload);
+    })
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] ui_prefs save failed:", e?.message || e);
+    });
+  return uiPrefsWriteChain;
+}
+
+async function loadUiPrefsFromDisk() {
+  try {
+    const raw = await fs.readFile(UI_PREFS_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    uiPrefs = { theme_mode: normalizeThemeMode(parsed?.theme_mode || "auto") };
+  } catch (e) {
+    if (e?.code !== "ENOENT") {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] failed to load ui_prefs:", e?.message || e);
+    }
+    uiPrefs = { theme_mode: "auto" };
+  }
+}
 
 async function writeFileAtomic(filePath, contents) {
   const dir = path.dirname(filePath);
@@ -447,6 +488,7 @@ const nextHandle = nextApp.getRequestHandler();
 await nextApp.prepare();
 await ensureReady();
 await loadSessionsFromDisk();
+await loadUiPrefsFromDisk();
 
 // Periodic GC for expired sessions and rate-limit buckets.
 setInterval(() => {
@@ -909,6 +951,22 @@ const server = http.createServer(async (req, res) => {
         url.pathname === "/api/docs" ||
         url.pathname.startsWith("/api/auth/");
       if (!open && !requireAdmin(req, res)) return;
+    }
+
+    if (url.pathname === "/api/ui/prefs" && req.method === "GET") {
+      return json(res, 200, { prefs: serializeUiPrefs() });
+    }
+    if (url.pathname === "/api/ui/prefs" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const themeMode = normalizeThemeMode(body?.theme_mode || body?.theme || "auto");
+        uiPrefs = { ...uiPrefs, theme_mode: themeMode };
+        queueUiPrefsSave();
+        appendAudit(req, "ui_prefs.save", { theme_mode: themeMode });
+        return json(res, 200, { prefs: serializeUiPrefs() });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
     }
 
     if (url.pathname === "/api/changelog" && req.method === "GET") {

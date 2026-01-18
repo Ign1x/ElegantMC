@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
 import Icon from "../ui/Icon";
+import Select from "../ui/Select";
 
 export default function NodesView() {
   const {
@@ -24,6 +25,8 @@ export default function NodesView() {
   } = useAppCtx();
 
   const [query, setQuery] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
+  const [sortBy, setSortBy] = useState<"online" | "last" | "cpu" | "mem" | "id">("online");
 
   const viewNodes = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -31,12 +34,30 @@ export default function NodesView() {
     list.sort((a: any, b: any) => {
       const ac = a?.connected ? 1 : 0;
       const bc = b?.connected ? 1 : 0;
-      if (ac !== bc) return bc - ac;
+
+      const aLast = Number(a?.lastSeenUnix || 0);
+      const bLast = Number(b?.lastSeenUnix || 0);
+      const aCpu = typeof a?.heartbeat?.cpu?.usage_percent === "number" ? a.heartbeat.cpu.usage_percent : -1;
+      const bCpu = typeof b?.heartbeat?.cpu?.usage_percent === "number" ? b.heartbeat.cpu.usage_percent : -1;
+      const aMem = a?.heartbeat?.mem?.total_bytes ? pct(a.heartbeat.mem.used_bytes, a.heartbeat.mem.total_bytes) : -1;
+      const bMem = b?.heartbeat?.mem?.total_bytes ? pct(b.heartbeat.mem.used_bytes, b.heartbeat.mem.total_bytes) : -1;
+
+      if (sortBy === "online") {
+        if (ac !== bc) return bc - ac;
+        return String(a?.id || "").localeCompare(String(b?.id || ""));
+      }
+      if (sortBy === "last") return bLast - aLast;
+      if (sortBy === "cpu") return bCpu - aCpu;
+      if (sortBy === "mem") return bMem - aMem;
       return String(a?.id || "").localeCompare(String(b?.id || ""));
     });
-    if (!q) return list;
-    return list.filter((n: any) => String(n?.id || "").toLowerCase().includes(q));
-  }, [nodes, query]);
+
+    const filtered =
+      statusFilter === "online" ? list.filter((n: any) => !!n?.connected) : statusFilter === "offline" ? list.filter((n: any) => !n?.connected) : list;
+
+    if (!q) return filtered;
+    return filtered.filter((n: any) => String(n?.id || "").toLowerCase().includes(q));
+  }, [nodes, query, pct, sortBy, statusFilter]);
 
   return (
     <div className="stack">
@@ -49,6 +70,28 @@ export default function NodesView() {
             </div>
           </div>
           <div className="toolbarRight">
+            <Select
+              value={statusFilter}
+              onChange={(v) => setStatusFilter(v as any)}
+              options={[
+                { value: "all", label: "All" },
+                { value: "online", label: "Online" },
+                { value: "offline", label: "Offline" },
+              ]}
+              style={{ width: 140 }}
+            />
+            <Select
+              value={sortBy}
+              onChange={(v) => setSortBy(v as any)}
+              options={[
+                { value: "online", label: "Online first" },
+                { value: "last", label: "Last seen" },
+                { value: "cpu", label: "CPU%" },
+                { value: "mem", label: "MEM%" },
+                { value: "id", label: "ID" },
+              ]}
+              style={{ width: 160 }}
+            />
             <input
               value={query}
               onChange={(e: any) => setQuery(e.target.value)}

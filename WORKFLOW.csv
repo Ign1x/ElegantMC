@@ -14,7 +14,7 @@ WF-20260118-12,P2,panel-ui,done,Persist UI state,"Selected tab/daemon/game reset
 WF-20260118-13,P2,panel-ui,done,Better error surfacing,"Errors often disappear in status text and are easy to miss","All failed operations show a toast with Copy details",ux(panel): better errors
 WF-20260118-14,P2,panel-ui,done,Responsive sidebar,"Sidebar is always visible and cramped on small screens","Add collapsible sidebar + overlay mode for narrow widths",ui(panel): responsive sidebar
 WF-20260118-15,P3,panel-ui,done,Keyboard shortcuts,"Frequent actions require mouse clicks","Add shortcuts: Ctrl+K command palette, Esc closes modals, / focuses search",ux(panel): shortcuts
-WF-20260118-16,P2,nodes,todo,Nodes overview improvements,"Nodes list lacks quick health glance and sorting options","Add sorting, filters, and clearer online/offline + last seen",ux(nodes): overview polish
+WF-20260118-16,P2,nodes,done,Nodes overview improvements,"Nodes list lacks quick health glance and sorting options","Add sorting, filters, and clearer online/offline + last seen",ux(nodes): overview polish
 WF-20260118-17,P2,nodes,todo,Copy deploy snippet,"Deploying daemon requires manual compose editing","Provide one-click copy docker-compose snippet per node",ux(nodes): deploy copy
 WF-20260118-18,P2,files,todo,Binary file handling,"Editing binary files as text is confusing and can corrupt data","Detect binary and show download-only view",fix(files): binary detect
 WF-20260118-19,P2,files,todo,Create new file,"Cannot create new file from Files UI","Add Create file action with safe path validation",feat(files): create file

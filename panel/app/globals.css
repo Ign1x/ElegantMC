@@ -351,6 +351,14 @@ button.navItem .badge {
   background: var(--surface);
 }
 
+.sidebarOverlay {
+  display: none;
+}
+
+.sidebarToggle {
+  display: none;
+}
+
 .main {
   display: flex;
   flex-direction: column;
@@ -1019,9 +1027,40 @@ tr:hover td {
     grid-template-columns: 1fr;
     padding: 14px;
   }
+  .sidebarOverlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    z-index: 30;
+  }
+
+  .sidebarOverlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sidebarToggle {
+    display: inline-flex;
+  }
+
   .sidebar {
-    position: static;
-    height: auto;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(320px, calc(100vw - 60px));
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    transform: translateX(-110%);
+    transition: transform 0.18s ease;
+    z-index: 40;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
   }
   .toolbar {
     flex-direction: column;

@@ -479,6 +479,7 @@ function upsertProp(text: string, key: string, value: string) {
 
 export default function HomePage() {
   const [tab, setTab] = useState<Tab>("games");
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
   const [enableAdvanced, setEnableAdvanced] = useState<boolean>(false);
   const [panelInfo, setPanelInfo] = useState<{ id: string; version: string; revision: string; buildDate: string } | null>(null);
@@ -884,6 +885,11 @@ export default function HomePage() {
           setAddFrpOpen(false);
           return;
         }
+        if (sidebarOpen) {
+          e.preventDefault();
+          setSidebarOpen(false);
+          return;
+        }
       }
       if (e.key === "Enter" && confirmOpen && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         const tag = String((e.target as any)?.tagName || "").toUpperCase();
@@ -895,7 +901,7 @@ export default function HomePage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [confirmOpen, promptOpen, copyOpen, installOpen, installRunning, settingsOpen, nodeDetailsOpen, addNodeOpen, addFrpOpen]);
+  }, [confirmOpen, promptOpen, copyOpen, installOpen, installRunning, settingsOpen, nodeDetailsOpen, addNodeOpen, addFrpOpen, sidebarOpen]);
 
   // Panel auth (cookie-based)
   useEffect(() => {
@@ -3034,7 +3040,8 @@ export default function HomePage() {
 	      ) : null}
 
       <div className="appShell">
-	      <aside className="sidebar">
+        <div className={`sidebarOverlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
+	      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebarHeader">
           <img
             className="logo"
@@ -3055,7 +3062,10 @@ export default function HomePage() {
               key={t.id}
               type="button"
               className={`navItem ${tab === t.id ? "active" : ""}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id);
+                setSidebarOpen(false);
+              }}
             >
               <span>{t.label}</span>
               {t.id === "games" && instanceStatus?.running ? <span className="badge ok">running</span> : null}
@@ -3092,12 +3102,22 @@ export default function HomePage() {
 
       <div className="main">
         <div className="topbar">
-          <div className="topbarTitle">
-            <div className="pageTitle">{activeTab.label}</div>
-            <div className="pageSubtitle">
-              daemon: <code>{selectedDaemon?.id || "-"}</code> ·{" "}
-              {selectedDaemon?.connected ? <span>online</span> : <span>offline</span>} · last:{" "}
-              {fmtUnix(selectedDaemon?.lastSeenUnix)}
+          <div className="row" style={{ alignItems: "center", gap: 10, minWidth: 0 }}>
+            <button
+              type="button"
+              className="iconBtn iconOnly sidebarToggle"
+              title="Menu"
+              onClick={() => setSidebarOpen((v) => !v)}
+            >
+              <Icon name="menu" />
+            </button>
+            <div className="topbarTitle">
+              <div className="pageTitle">{activeTab.label}</div>
+              <div className="pageSubtitle">
+                daemon: <code>{selectedDaemon?.id || "-"}</code> ·{" "}
+                {selectedDaemon?.connected ? <span>online</span> : <span>offline</span>} · last:{" "}
+                {fmtUnix(selectedDaemon?.lastSeenUnix)}
+              </div>
             </div>
           </div>
 

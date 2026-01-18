@@ -12,7 +12,7 @@ WF-20260118-10,P1,games,done,Restore from backup,"Daemon has mc_restore but UI h
 WF-20260118-11,P2,games,done,List backups,"Backups are hidden under servers/_backups and hard to find","Games UI shows available backups for current instance and can open in Files tab",ux(games): backups list
 WF-20260118-12,P2,panel-ui,done,Persist UI state,"Selected tab/daemon/game resets on refresh","Persist tab/daemon/game/theme in localStorage and restore on load",ux(panel): persist state
 WF-20260118-13,P2,panel-ui,done,Better error surfacing,"Errors often disappear in status text and are easy to miss","All failed operations show a toast with Copy details",ux(panel): better errors
-WF-20260118-14,P2,panel-ui,todo,Responsive sidebar,"Sidebar is always visible and cramped on small screens","Add collapsible sidebar + overlay mode for narrow widths",ui(panel): responsive sidebar
+WF-20260118-14,P2,panel-ui,done,Responsive sidebar,"Sidebar is always visible and cramped on small screens","Add collapsible sidebar + overlay mode for narrow widths",ui(panel): responsive sidebar
 WF-20260118-15,P3,panel-ui,todo,Keyboard shortcuts,"Frequent actions require mouse clicks","Add shortcuts: Ctrl+K command palette, Esc closes modals, / focuses search",ux(panel): shortcuts
 WF-20260118-16,P2,nodes,todo,Nodes overview improvements,"Nodes list lacks quick health glance and sorting options","Add sorting, filters, and clearer online/offline + last seen",ux(nodes): overview polish
 WF-20260118-17,P2,nodes,todo,Copy deploy snippet,"Deploying daemon requires manual compose editing","Provide one-click copy docker-compose snippet per node",ux(nodes): deploy copy

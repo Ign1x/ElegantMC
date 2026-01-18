@@ -1,6 +1,6 @@
 "use client";
 
-export type IconName = "plus" | "refresh" | "copy" | "download" | "trash" | "settings" | "search";
+export type IconName = "plus" | "refresh" | "copy" | "download" | "trash" | "settings" | "search" | "menu";
 
 export default function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
   const common = {
@@ -149,6 +149,12 @@ export default function Icon({ name, size = 14 }: { name: IconName; size?: numbe
             strokeLinecap="round"
             strokeLinejoin="round"
           />
+        </svg>
+      );
+    case "menu":
+      return (
+        <svg {...common}>
+          <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
       );
     default:

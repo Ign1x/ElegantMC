@@ -254,7 +254,7 @@ func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOption
 					return selErr
 				}
 			}
-			if detectedMajor && javaRuntime != nil && selectedMajor > 0 && selectedMajor != requiredMajor {
+			if detectedMajor && javaRuntime != nil && selectedMajor > 0 && selectedMajor < requiredMajor {
 				if logSink != nil {
 					logSink(inst.ID, "stdout", fmt.Sprintf("[elegantmc] downloading Temurin JRE %d (auto)", requiredMajor))
 				}

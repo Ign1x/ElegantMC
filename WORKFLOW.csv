@@ -175,7 +175,7 @@ WF-20260118-173,P2,daemon,todo,Report instance exit reason,"When a server stops,
 WF-20260118-174,P2,games,todo,Show last stop/crash info,Users need quick visibility into last stop/crash to debug,Games UI displays last stop/crash time and exit reason when available,ux(games): last exit info
 WF-20260118-175,P3,files,done,Copy path from breadcrumbs,Copying long paths is annoying and error-prone,Files breadcrumbs include a copy-path action that copies the current path,ux(files): copy path
 WF-20260118-176,P3,files,done,Unsaved changes guard,Switching files or navigating away can silently discard edits,Files editor warns on unsaved changes when switching file/path/tab,fix(files): unsaved guard
-WF-20260118-177,P3,files,todo,Persist file view state,Refreshing the panel loses current folder and opened file context,Files view persists current path and selected file per daemon/instance,ux(files): persist files state
+WF-20260118-177,P3,files,done,Persist file view state,Refreshing the panel loses current folder and opened file context,Files view persists current path and selected file per daemon/instance,ux(files): persist files state
 WF-20260118-178,P2,files,todo,Multi-select bulk actions,Managing many files requires repetitive clicks,Files view supports multi-select and bulk delete/move/download actions,feat(files): bulk actions
 WF-20260118-179,P3,files,todo,Image preview,Binary files like PNG/JPG require download to inspect,Files view previews common images inline and still allows download,feat(files): image preview
 WF-20260118-180,P3,modpacks,todo,Show modpack metadata,"After installing a pack, users can't see which loader/version it used",Games UI shows modpack name/version/loader when instance came from a pack,ux(modpacks): show metadata

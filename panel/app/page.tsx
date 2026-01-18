@@ -1952,6 +1952,49 @@ export default function HomePage() {
     if (!fsSelectedFile) setFsSelectedFileMode("none");
   }, [fsSelectedFile]);
 
+  // Persist Files view state per daemon + instance.
+  useEffect(() => {
+    const daemonId = String(selected || "").trim();
+    if (!daemonId) return;
+    const inst = String(instanceId || "").trim() || "_";
+    try {
+      localStorage.setItem(
+        `elegantmc_files_state_v1:${daemonId}:${inst}`,
+        JSON.stringify({
+          path: String(fsPath || ""),
+          file: String(fsSelectedFile || ""),
+          updated_at_unix: Math.floor(Date.now() / 1000),
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }, [selected, instanceId, fsPath, fsSelectedFile]);
+
+  useEffect(() => {
+    const daemonId = String(selected || "").trim();
+    if (!daemonId) return;
+    const inst = String(instanceId || "").trim() || "_";
+    try {
+      const raw = localStorage.getItem(`elegantmc_files_state_v1:${daemonId}:${inst}`) || "";
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const path = String(parsed?.path || "");
+      const file = String(parsed?.file || "");
+      if (file) {
+        if (tab === "files" && selectedDaemon?.connected) {
+          const p = openFileByPath(file);
+          if (p && typeof (p as any).catch === "function") (p as any).catch(() => null);
+        }
+        return;
+      }
+      if (path && path !== fsPath) setFsPath(path);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, instanceId, tab, selectedDaemon?.connected]);
+
   // Files listing
   useEffect(() => {
     if (authed !== true) return;

@@ -21,6 +21,7 @@ export default function FilesView() {
     setFsPath,
     openEntry,
     openFileByPath,
+    setServerJarFromFile,
     saveFile,
     uploadInputKey,
     uploadFile,
@@ -256,6 +257,14 @@ export default function FilesView() {
               file: <code>{fsSelectedFile || "-"}</code>
             </span>
             {fsSelectedFile && fsSelectedFileMode !== "text" ? <span className="badge">download-only</span> : null}
+            {fsSelectedFile &&
+            fsSelectedFile.toLowerCase().endsWith(".jar") &&
+            inst &&
+            (fsSelectedFile === inst || fsSelectedFile.startsWith(`${inst}/`)) ? (
+              <button type="button" onClick={() => setServerJarFromFile(fsSelectedFile)}>
+                Set as server jar
+              </button>
+            ) : null}
             <button type="button" onClick={saveFile} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
               Save
             </button>

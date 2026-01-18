@@ -2275,6 +2275,42 @@ export default function HomePage() {
     }
   }
 
+  async function setServerJarFromFile(filePath: string) {
+    const inst = instanceId.trim();
+    if (!inst) {
+      setFsStatus("Select a game first");
+      return;
+    }
+    if (!selectedDaemon?.connected) {
+      setFsStatus("daemon offline");
+      return;
+    }
+    const p = String(filePath || "")
+      .replace(/\\+/g, "/")
+      .replace(/\/+/g, "/")
+      .replace(/^\/+/, "")
+      .replace(/\/+$/, "");
+    if (!p || !p.toLowerCase().endsWith(".jar")) {
+      setFsStatus("Not a .jar file");
+      return;
+    }
+    if (p !== inst && !p.startsWith(`${inst}/`)) {
+      setFsStatus(`Jar must be under servers/${inst}/`);
+      return;
+    }
+    const jarRel = normalizeJarPath(inst, p);
+    setFsStatus(`Setting server jar: ${jarRel} ...`);
+    try {
+      await writeInstanceConfig(inst, { jar_path: jarRel });
+      setJarPath(jarRel);
+      setFsStatus("Server jar updated");
+      pushToast(`Server jar: ${jarRel}`, "ok");
+      setTimeout(() => setFsStatus(""), 900);
+    } catch (e: any) {
+      setFsStatus(String(e?.message || e));
+    }
+  }
+
   async function saveFile() {
     if (!fsSelectedFile) {
       setFsStatus("No file selected");
@@ -4124,6 +4160,7 @@ export default function HomePage() {
     setFsFileText,
     openEntry,
     openFileByPath,
+    setServerJarFromFile,
     saveFile,
     uploadInputKey,
     uploadFile,

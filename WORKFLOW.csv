@@ -188,4 +188,4 @@ WF-20260118-186,P3,ci,todo,Typecheck panel in CI,Type errors can slip through wi
 WF-20260118-187,P3,perf,todo,Dynamic log viewport height,Logs virtualization uses a hard-coded 640px height and can mis-virtualize,Logs virtualization uses the actual viewport height for accurate rendering,perf(logs): dynamic height
 WF-20260118-188,P3,docs,todo,Keyboard shortcuts cheat sheet,Shortcuts exist but are undiscoverable,Add a small in-app cheat sheet modal listing shortcuts,docs(panel): shortcuts cheat sheet
 WF-20260118-189,P3,panel-ui,todo,Settings search,Panel settings are growing and hard to find,Panel/Advanced settings views support quick search across fields,ux(panel): settings search
-WF-20260118-190,P3,reliability,todo,Offline banner,"When disconnected, the UI can look broken without explanation",Show a clear offline banner and last-updated timestamp when disconnected,ux(panel): offline banner
+WF-20260118-190,P3,reliability,done,Offline banner,"When disconnected, the UI can look broken without explanation",Show a clear offline banner and last-updated timestamp when disconnected,ux(panel): offline banner

@@ -4589,6 +4589,12 @@ export default function HomePage() {
 	          </div>
 	        </div>
 
+        {authed === true && selectedDaemon && !selectedDaemon.connected ? (
+          <div className="offlineBanner">
+            <b>Daemon offline.</b> last seen: <code>{fmtUnix(selectedDaemon.lastSeenUnix)}</code>. Actions are disabled until it reconnects.
+          </div>
+        ) : null}
+
         <div className="content">
           {error ? (
             <div className="card danger">

@@ -52,6 +52,8 @@ export default function GamesView() {
   const [logQuery, setLogQuery] = useState<string>("");
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [highlightLogs, setHighlightLogs] = useState<boolean>(true);
+  const [logPaused, setLogPaused] = useState<boolean>(false);
+  const [pausedLogs, setPausedLogs] = useState<any[] | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
 
   const socketText = useMemo(() => {
@@ -62,10 +64,20 @@ export default function GamesView() {
     return `${ip}:${Math.round(Number(gamePort || 25565))}`;
   }, [frpStatus, localHost, gamePort]);
 
+  useEffect(() => {
+    if (!logPaused) {
+      setPausedLogs(null);
+      return;
+    }
+    setPausedLogs(Array.isArray(logs) ? logs.slice() : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logPaused]);
+
   const filteredLogs = useMemo(() => {
     const inst = instanceId.trim();
     const q = logQuery.trim().toLowerCase();
-    const list = (logs || []).filter((l: any) => {
+    const source = logPaused && pausedLogs ? pausedLogs : logs;
+    const list = (source || []).filter((l: any) => {
       if (logView === "frp") return l.source === "frp" && (!l.instance || l.instance === inst);
       if (logView === "mc") return l.source === "mc" && l.instance === inst;
       if (logView === "install") return l.source === "install" && l.instance === inst;
@@ -74,7 +86,7 @@ export default function GamesView() {
     });
     if (!q) return list;
     return list.filter((l: any) => String(l?.line || "").toLowerCase().includes(q));
-  }, [logs, logView, instanceId, logQuery]);
+  }, [logs, logView, instanceId, logQuery, logPaused, pausedLogs]);
 
   const logText = useMemo(() => {
     return filteredLogs.length
@@ -381,6 +393,10 @@ export default function GamesView() {
             <label className="checkRow" style={{ userSelect: "none" }}>
               <input type="checkbox" checked={highlightLogs} onChange={(e) => setHighlightLogs(e.target.checked)} /> highlight
             </label>
+            <button type="button" className="iconBtn" onClick={() => setLogPaused((v) => !v)}>
+              {logPaused ? "Resume" : "Pause"}
+            </button>
+            {logPaused ? <span className="badge">paused</span> : null}
             <button
               type="button"
               className="iconBtn"

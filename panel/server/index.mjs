@@ -105,6 +105,43 @@ function maskToken(token) {
   return `${stars}${t.slice(-4)}`;
 }
 
+function extractLatestChangelogSection(md) {
+  const raw = String(md || "").replace(/\r\n/g, "\n");
+  const lines = raw.split("\n");
+  const start = lines.findIndex((l) => l.startsWith("## "));
+  if (start < 0) return raw.trim();
+  let end = -1;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (lines[i].startsWith("## ")) {
+      end = i;
+      break;
+    }
+  }
+  const slice = lines.slice(start, end < 0 ? lines.length : end).join("\n").trim();
+  return slice || raw.trim();
+}
+
+async function readChangelogText() {
+  const candidates = [
+    // Prefer bundling inside panel/ (included in the image/build context).
+    path.join(process.cwd(), "CHANGELOG.md"),
+    // Dev fallback when running from repo root.
+    path.join(process.cwd(), "..", "CHANGELOG.md"),
+  ];
+  let lastErr = null;
+  for (const fp of candidates) {
+    try {
+      const text = await fs.readFile(fp, "utf8");
+      return { fp, text };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  const err = new Error("CHANGELOG.md not found");
+  err.cause = lastErr;
+  throw err;
+}
+
 const host = process.env.ELEGANTMC_PANEL_HOST || "0.0.0.0";
 const port = Number(process.env.ELEGANTMC_PANEL_PORT || "3000");
 
@@ -828,8 +865,26 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname.startsWith("/api/")) {
       res.setHeader("Cache-Control", "no-store");
-      const open = url.pathname === "/api/mc/versions" || url.pathname === "/api/config" || url.pathname.startsWith("/api/auth/");
+      const open =
+        url.pathname === "/api/mc/versions" ||
+        url.pathname === "/api/config" ||
+        url.pathname === "/api/changelog" ||
+        url.pathname.startsWith("/api/auth/");
       if (!open && !requireAdmin(req, res)) return;
+    }
+
+    if (url.pathname === "/api/changelog" && req.method === "GET") {
+      try {
+        const out = await readChangelogText();
+        const latest = extractLatestChangelogSection(out.text);
+        return json(res, 200, {
+          path: path.relative(process.cwd(), out.fp),
+          latest,
+          full: String(out.text || "").trim(),
+        });
+      } catch (e) {
+        return json(res, 404, { error: String(e?.message || e) });
+      }
     }
 
     if (url.pathname === "/api/panel/settings" && req.method === "GET") {

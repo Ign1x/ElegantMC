@@ -93,7 +93,7 @@ WF-20260118-91,P3,panel-ui,todo,Sync theme across devices,"Theme preference is l
 WF-20260118-92,P2,i18n,done,Language selector,"Users cannot switch UI language explicitly","Add language dropdown (Chinese/English) with persistence",feat(i18n): language switch
 WF-20260118-93,P2,i18n,todo,Translate remaining UI strings,"UI still mixes English/Chinese across many screens","All user-facing strings are moved into i18n and have zh/en translations",ux(i18n): complete strings
 WF-20260118-94,P3,i18n,todo,Number/date formatting,"Dates/sizes are formatted inconsistently across locales","Use locale-aware formatting for dates, times, and file sizes",ux(i18n): locale formatting
-WF-20260118-95,P3,panel-ui,todo,In-app changelog,"Users cannot easily see what changed between versions","Add a 'What's new' dialog that reads CHANGELOG.md and shows latest entries",feat(panel): changelog dialog
+WF-20260118-95,P3,panel-ui,done,In-app changelog,"Users cannot easily see what changed between versions","Add a 'What's new' dialog that reads CHANGELOG.md and shows latest entries",feat(panel): changelog dialog
 WF-20260118-96,P3,docs,todo,In-app help links,"Troubleshooting knowledge is only in README","Add contextual help links/tooltips to relevant docs sections",docs(panel): in-app help
 WF-20260118-97,P2,daemon,todo,Diagnostic bundle command,"Debugging remote issues is difficult without collecting logs/configs","Daemon can generate a diagnostics zip with sanitized config and recent logs",feat(daemon): diagnostics bundle
 WF-20260118-98,P2,panel-ui,todo,Export diagnostics from Panel,"Users need an easy way to share diagnostics without SSH","Panel adds a button to request and download the daemon diagnostics bundle",feat(panel): export diagnostics

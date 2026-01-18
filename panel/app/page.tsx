@@ -546,6 +546,9 @@ export default function HomePage() {
   const [cmdPaletteIdx, setCmdPaletteIdx] = useState<number>(0);
   const cmdPaletteInputRef = useRef<HTMLInputElement | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState<boolean>(false);
+  const [changelogOpen, setChangelogOpen] = useState<boolean>(false);
+  const [changelogStatus, setChangelogStatus] = useState<string>("");
+  const [changelogText, setChangelogText] = useState<string>("");
 
   // Logs
   const [logs, setLogs] = useState<any[]>([]);
@@ -1111,6 +1114,11 @@ export default function HomePage() {
           setShortcutsOpen(false);
           return;
         }
+        if (changelogOpen) {
+          e.preventDefault();
+          setChangelogOpen(false);
+          return;
+        }
         if (cmdPaletteOpen) {
           e.preventDefault();
           setCmdPaletteOpen(false);
@@ -1161,6 +1169,7 @@ export default function HomePage() {
     promptOpen,
     copyOpen,
     shortcutsOpen,
+    changelogOpen,
     cmdPaletteOpen,
     installOpen,
     installRunning,
@@ -1598,6 +1607,22 @@ export default function HomePage() {
   function openCopyModal(text: string) {
     setCopyValue(String(text || ""));
     setCopyOpen(true);
+  }
+
+  async function openChangelogModal() {
+    setChangelogOpen(true);
+    setChangelogStatus("");
+    if (changelogText) return;
+    setChangelogStatus("Loading...");
+    try {
+      const res = await apiFetch("/api/changelog", { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "failed");
+      setChangelogText(String(json?.latest || json?.full || "").trim());
+      setChangelogStatus("");
+    } catch (e: any) {
+      setChangelogStatus(String(e?.message || e));
+    }
   }
 
   async function copyText(text: string) {
@@ -4714,6 +4739,23 @@ export default function HomePage() {
 	        </div>
 	      ) : null}
 
+	      {changelogOpen ? (
+	        <div className="modalOverlay" onClick={() => setChangelogOpen(false)}>
+	          <div className="modal" style={{ width: "min(820px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+	            <div className="modalHeader">
+	              <div>
+	                <div style={{ fontWeight: 800 }}>What's new</div>
+	                {changelogStatus ? <div className="hint">{changelogStatus}</div> : <div className="hint">Latest changes</div>}
+	              </div>
+	              <button type="button" onClick={() => setChangelogOpen(false)}>
+	                Close
+	              </button>
+	            </div>
+	            {changelogText ? <pre>{changelogText}</pre> : <div className="hint">{changelogStatus || "No changelog loaded."}</div>}
+	          </div>
+	        </div>
+	      ) : null}
+
 	      {toasts.length ? (
 	        <div className="toastWrap" aria-live="polite" aria-relevant="additions" onMouseEnter={pauseToasts} onMouseLeave={resumeToasts}>
 	          {toasts.map((t) => (
@@ -4780,6 +4822,9 @@ export default function HomePage() {
 	            <div className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
 	              <button type="button" className="linkBtn" onClick={() => setShortcutsOpen(true)}>
 	                Shortcuts
+	              </button>
+	              <button type="button" className="linkBtn" onClick={openChangelogModal}>
+	                What's new
 	              </button>
 	              <button type="button" className="linkBtn" onClick={() => setSidebarFooterCollapsed((v) => !v)}>
 	                {sidebarFooterCollapsed ? "Show" : "Hide"}

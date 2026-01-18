@@ -590,6 +590,21 @@ export default function GamesView() {
           </div>
         </div>
 
+        {!gamesLoading && !serverDirs.length ? (
+          <div className="emptyState" style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 800 }}>No games installed yet.</div>
+            <div className="hint" style={{ marginTop: 6 }}>
+              Install a Vanilla/Paper server or a modpack to get started.
+            </div>
+            <div className="btnGroup" style={{ marginTop: 10, justifyContent: "center" }}>
+              <button type="button" className="primary iconBtn" onClick={openInstallModal} disabled={!selectedDaemon?.connected || gameActionBusy}>
+                <Icon name="plus" />
+                Install
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {frpOpStatus || serverOpStatus ? (
           <div className="hint" style={{ marginTop: 8 }}>
             {frpOpStatus ? <span style={{ marginRight: 10 }}>FRP: {frpOpStatus}</span> : null}

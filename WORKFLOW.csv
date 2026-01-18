@@ -160,7 +160,7 @@ WF-20260118-158,P3,logs,done,Wrap logs toggle,Long log lines cause horizontal sc
 WF-20260118-159,P3,logs,done,Log level filters,Users want to quickly focus on errors/warnings in noisy logs,Logs view can filter to All/Warn/Error and shows active filter,ux(logs): level filters
 WF-20260118-160,P3,logs,done,Timestamp format toggle,Timestamps are hard to correlate across sources and timezones,Logs view can switch between local time and relative (e.g. +12s) timestamps,ux(logs): time format toggle
 WF-20260118-161,P3,logs,done,Search highlight,Searching logs finds matches but does not visually highlight them,Log search highlights matched substrings with a subtle mark style,ux(logs): search highlight
-WF-20260118-162,P3,panel-ui,todo,Games empty state CTA,"When no instances exist, the page feels blank and users don't know what to do",Games page shows an empty-state card with an Install call-to-action,ux(games): empty state
+WF-20260118-162,P3,panel-ui,done,Games empty state CTA,"When no instances exist, the page feels blank and users don't know what to do",Games page shows an empty-state card with an Install call-to-action,ux(games): empty state
 WF-20260118-163,P3,panel-ui,todo,Nodes empty state CTA,Fresh installs show an empty Nodes page with little guidance,Nodes page shows an empty-state card with Add Node / Deploy CTA,ux(nodes): empty state
 WF-20260118-164,P3,panel-ui,todo,Files empty state guidance,Files page is confusing when no daemon/game is selected,Files page shows a clear hint to select a node and game first,ux(files): empty state
 WF-20260118-165,P3,panel-ui,todo,Global busy indicator,"Async operations feel silent, making the UI seem unresponsive",Topbar shows a subtle spinner when any operation is in-flight,ux(panel): global busy indicator

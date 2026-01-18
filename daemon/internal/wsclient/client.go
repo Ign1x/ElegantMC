@@ -2,10 +2,12 @@ package wsclient
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +19,17 @@ import (
 	"elegantmc/daemon/internal/protocol"
 	"nhooyr.io/websocket"
 )
+
+func jitter(max time.Duration) time.Duration {
+	if max <= 0 {
+		return 0
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		return 0
+	}
+	return time.Duration(n.Int64())
+}
 
 type CommandExecutor interface {
 	BindSender(send func(msg protocol.Message))
@@ -99,14 +112,17 @@ func (c *Client) Run(ctx context.Context) error {
 			return nil
 		}
 		c.lastErr.Set(err)
+
+		delay := backoff
+		delay += jitter(backoff / 3)
 		if c.cfg.Log != nil {
-			c.cfg.Log.Printf("ws disconnected: %v", err)
+			c.cfg.Log.Printf("ws disconnected: %v (reconnect in %s)", err, delay)
 		}
 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(backoff):
+		case <-time.After(delay):
 		}
 
 		backoff *= 2

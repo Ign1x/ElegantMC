@@ -20,6 +20,7 @@ export default function NodesView() {
     setSelected,
     setTab,
     openAddNodeModal,
+    openAddNodeAndDeploy,
     openDeployDaemonModal,
     makeDeployComposeYml,
     confirmDialog,
@@ -295,7 +296,26 @@ export default function NodesView() {
           </div>
         ) : (
           <div className="emptyState">
-            {nodes.length ? "No results." : "暂无节点。点击右上角 Add 创建一个，然后在 Daemon 端使用对应 token 连接。"}
+            {nodes.length ? (
+              "No results."
+            ) : (
+              <>
+                <div style={{ fontWeight: 800 }}>暂无节点</div>
+                <div className="hint" style={{ marginTop: 6 }}>
+                  点击 Add 创建一个节点（生成 token），然后点 Deploy 生成 docker compose 一键部署。
+                </div>
+                <div className="btnGroup" style={{ justifyContent: "center", marginTop: 10 }}>
+                  <button type="button" className="primary iconBtn" onClick={openAddNodeModal}>
+                    <Icon name="plus" />
+                    Add
+                  </button>
+                  <button type="button" className="iconBtn" onClick={openAddNodeAndDeploy}>
+                    <Icon name="download" />
+                    Deploy
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -662,6 +662,7 @@ export default function HomePage() {
   const [createdNode, setCreatedNode] = useState<{ id: string; token: string } | null>(null);
   const [newNodeId, setNewNodeId] = useState<string>("");
   const [newNodeToken, setNewNodeToken] = useState<string>("");
+  const [deployAfterCreate, setDeployAfterCreate] = useState<boolean>(false);
   const [deployOpen, setDeployOpen] = useState<boolean>(false);
   const [deployNodeId, setDeployNodeId] = useState<string>("");
   const [deployToken, setDeployToken] = useState<string>("");
@@ -1297,6 +1298,16 @@ export default function HomePage() {
     setNewNodeId("");
     setNewNodeToken("");
     setNodesStatus("");
+    setDeployAfterCreate(false);
+    setAddNodeOpen(true);
+  }
+
+  function openAddNodeAndDeploy() {
+    setCreatedNode(null);
+    setNewNodeId("");
+    setNewNodeToken("");
+    setNodesStatus("");
+    setDeployAfterCreate(true);
     setAddNodeOpen(true);
   }
 
@@ -4122,6 +4133,7 @@ export default function HomePage() {
     setNodesStatus,
     openNodeDetails,
     openAddNodeModal,
+    openAddNodeAndDeploy,
     openDeployDaemonModal,
 
     // Games
@@ -5775,6 +5787,11 @@ export default function HomePage() {
                     const res2 = await apiFetch("/api/nodes", { cache: "no-store" });
                     const json2 = await res2.json();
                     if (res2.ok) setNodes(json2.nodes || []);
+                    if (deployAfterCreate && String(node?.id || "").trim() && String(node?.token || "").trim()) {
+                      setDeployAfterCreate(false);
+                      setAddNodeOpen(false);
+                      openDeployDaemonModal(String(node.id), String(node.token));
+                    }
                   } catch (e: any) {
                     setNodesStatus(String(e?.message || e));
                   }

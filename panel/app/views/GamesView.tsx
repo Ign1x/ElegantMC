@@ -72,6 +72,17 @@ export default function GamesView() {
     return `${ip}:${Math.round(Number(gamePort || 25565))}`;
   }, [frpStatus, localHost, gamePort]);
 
+  const instanceProxies = useMemo(() => {
+    const inst = String(instanceId || "").trim();
+    const list = Array.isArray(selectedDaemon?.heartbeat?.frp_proxies) ? selectedDaemon.heartbeat.frp_proxies : [];
+    if (!inst || !list.length) return [];
+    const prefix = `${inst}-`;
+    return list.filter((p: any) => {
+      const name = String(p?.proxy_name || "").trim();
+      return name === inst || name.startsWith(prefix);
+    });
+  }, [selectedDaemon, instanceId]);
+
   const lastBackup = useMemo(() => {
     const list = Array.isArray(backupZips) ? backupZips : [];
     if (!list.length) return { unix: null as number | null, file: "" };
@@ -361,6 +372,28 @@ export default function GamesView() {
         <div className="hint">
           Minecraft：多人游戏 → 添加服务器 → 地址填 <code>{instanceId.trim() ? socketText : "IP:Port"}</code>
         </div>
+        {instanceId.trim() && (enableFrp || frpStatus?.running) ? (
+          instanceProxies.length ? (
+            <div style={{ marginTop: 10 }}>
+              <div className="hint">FRP proxies for this instance:</div>
+              <div className="stack" style={{ gap: 8, marginTop: 6 }}>
+                {instanceProxies.map((p: any) => (
+                  <div key={`${p.proxy_name}-${p.remote_addr}-${p.remote_port}`} className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <span className={`badge ${p.running ? "ok" : ""}`}>{String(p.proxy_name || "-")}</span>
+                    <code>
+                      {p.remote_addr}:{p.remote_port}
+                    </code>
+                    <span className="hint">started: {fmtUnix(p.started_unix)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="hint" style={{ marginTop: 8 }}>
+              FRP proxies: -
+            </div>
+          )
+        ) : null}
       </div>
 
       <div className="card">

@@ -149,7 +149,7 @@ WF-20260118-147,P2,daemon,todo,Port reservation support,"Multiple instances star
 WF-20260118-148,P2,ux,todo,Unified Danger Zone,"Destructive actions are scattered and easy to misclick","All destructive actions are grouped under a 'Danger Zone' with strong confirmations",ux(panel): danger zone
 WF-20260118-149,P2,ux,todo,Undo delete snackbar,"Even with confirmations, users sometimes delete by mistake","After delete, show undo snackbar for a short period (when trash enabled)",ux(panel): undo delete
 WF-20260118-150,P2,panel-server,todo,Version update banner,"Users don't know when panel/daemon updates are available","Show banner if a newer release is available (manual check configurable)",feat(panel): update banner
-WF-20260118-151,P2,ci,todo,Go unit tests in CI,"Daemon behavior changes can regress without coverage","Ensure CI runs go test for daemon packages and fails on test failures",ci(daemon): go test
+WF-20260118-151,P2,ci,done,Go unit tests in CI,"Daemon behavior changes can regress without coverage","Ensure CI runs go test for daemon packages and fails on test failures",ci(daemon): go test
 WF-20260118-152,P3,ci,todo,Panel linting,"Code style regressions slip in over time","Add a lightweight lint script (eslint) and run in CI",ci(panel): lint
 WF-20260118-153,P3,perf,todo,Reduce panel bundle size,"Initial load can be slow on low-end devices","Code-split heavy views and avoid large dependencies on initial route",perf(panel): bundle size
 WF-20260118-154,P3,perf,todo,Virtualize file list,"Large directories can make the Files view slow","Virtualize file list rendering and keep scroll stable",perf(files): virtualize list

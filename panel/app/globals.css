@@ -760,6 +760,19 @@ select:focus {
   box-shadow: 0 0 0 4px var(--ring);
 }
 
+button:focus-visible,
+.uiSelectButton:focus-visible {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.65);
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+button.linkBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--ring);
+  border-radius: 10px;
+}
+
 button {
   padding: 6px 9px;
   font-size: 12px;

@@ -30,6 +30,7 @@ export default function FilesView() {
     joinRelPath,
     parentRelPath,
     fmtBytes,
+    fmtUnix,
     refreshFsNow,
     mkdirFsHere,
     createFileHere,
@@ -149,6 +150,7 @@ export default function FilesView() {
                 <th>Name</th>
                 <th>Type</th>
                 <th>Size</th>
+                <th>Modified</th>
                 <th />
               </tr>
             </thead>
@@ -162,6 +164,7 @@ export default function FilesView() {
                   </td>
                   <td>{e.isDir ? "dir" : "file"}</td>
                   <td>{e.isDir ? "-" : fmtBytes(Number(e.size || 0))}</td>
+                  <td>{fmtUnix(Number(e.mtime_unix || 0))}</td>
                   <td style={{ textAlign: "right" }}>
                     <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
                       <button type="button" onClick={() => renameFsEntry(e)}>

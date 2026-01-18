@@ -40,7 +40,7 @@ WF-20260118-38,P2,frp,done,FRP proxy list,"Multiple proxies per instance are har
 WF-20260118-39,P2,scheduler,todo,Scheduler UI,"Daemon supports schedule.json but Panel has no UI","Add simple scheduler view to edit schedule.json and trigger tasks",feat(panel): scheduler ui
 WF-20260118-40,P2,daemon,done,fs_copy command,"UI cannot implement rename/clone without file copy support","Add fs_copy for files/dirs inside sandbox (safe, no overwrite)",feat(daemon): fs_copy
 WF-20260118-41,P2,daemon,done,fs_stat command,"File UI lacks mtime and type details","Add fs_stat returning size, mtime, mode, isDir",feat(daemon): fs_stat
-WF-20260118-42,P2,daemon,todo,fs_list include mtime,"File list cannot show last modified","Extend fs_list entries with mtime_unix",feat(daemon): fs_list mtime
+WF-20260118-42,P2,daemon,done,fs_list include mtime,"File list cannot show last modified","Extend fs_list entries with mtime_unix",feat(daemon): fs_list mtime
 WF-20260118-43,P1,daemon,todo,MC jar detection command,"Panel needs reliable jar selection for zip installs","Add mc_detect_jar to scan instance dir and return best jar path",feat(daemon): mc_detect_jar
 WF-20260118-44,P2,daemon,todo,Heartbeat java details,"Users cannot see what Java is actually used per instance","Include selected java path/major and required major in heartbeat instances",feat(daemon): java in heartbeat
 WF-20260118-45,P2,daemon,todo,Java cache management,"Auto-downloaded JREs can accumulate with no cleanup","Add command to list/remove cached Java runtimes",feat(daemon): java cache

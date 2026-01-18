@@ -647,10 +647,15 @@ func (e *Executor) fsList(cmd protocol.Command) protocol.CommandResult {
 	out := make([]map[string]any, 0, len(entries))
 	for _, ent := range entries {
 		info, _ := ent.Info()
+		var mtimeUnix int64
+		if info != nil {
+			mtimeUnix = info.ModTime().Unix()
+		}
 		out = append(out, map[string]any{
-			"name":  ent.Name(),
-			"isDir": ent.IsDir(),
-			"size":  func() int64 { if info != nil { return info.Size() }; return 0 }(),
+			"name":       ent.Name(),
+			"isDir":      ent.IsDir(),
+			"size":       func() int64 { if info != nil { return info.Size() }; return 0 }(),
+			"mtime_unix": mtimeUnix,
 		})
 	}
 	return ok(map[string]any{"path": path, "entries": out})

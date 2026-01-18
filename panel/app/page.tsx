@@ -556,6 +556,8 @@ export default function HomePage() {
   // Server controls
   const [instanceId, setInstanceId] = useState<string>("");
   const [jarPath, setJarPath] = useState<string>("server.jar");
+  const [jarCandidates, setJarCandidates] = useState<string[]>([]);
+  const [jarCandidatesStatus, setJarCandidatesStatus] = useState<string>("");
   const [javaPath, setJavaPath] = useState<string>("");
   const [gamePort, setGamePort] = useState<number>(25565);
   const [xms, setXms] = useState<string>("1G");
@@ -1178,6 +1180,28 @@ export default function HomePage() {
     }
   }
 
+  async function refreshJarCandidates(instOverride?: string) {
+    const inst = String(instOverride ?? instanceId).trim();
+    if (!inst || !selectedDaemon?.connected) {
+      setJarCandidates([]);
+      setJarCandidatesStatus(inst ? "daemon offline" : "");
+      return;
+    }
+    setJarCandidatesStatus("Scanning jars...");
+    try {
+      const out = await callOkCommand("fs_list", { path: inst }, 30_000);
+      const jars = (out.entries || [])
+        .filter((e: any) => !e?.isDir && e?.name && String(e.name).toLowerCase().endsWith(".jar"))
+        .map((e: any) => String(e.name))
+        .sort((a: string, b: string) => a.localeCompare(b));
+      setJarCandidates(jars);
+      setJarCandidatesStatus(jars.length ? "" : "No .jar files found");
+    } catch (e: any) {
+      setJarCandidates([]);
+      setJarCandidatesStatus(String(e?.message || e));
+    }
+  }
+
   async function applyServerPort(instance: string, port: number) {
     const p = Math.round(Number(port || 0));
     if (!Number.isFinite(p) || p < 1 || p > 65535) throw new Error("port invalid (1-65535)");
@@ -1485,6 +1509,12 @@ export default function HomePage() {
     setXmx("2G");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    refreshJarCandidates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsOpen, selected, instanceId]);
 
   // Nodes polling (only when needed)
   useEffect(() => {
@@ -4125,6 +4155,30 @@ export default function HomePage() {
                     ) : (
                       <div className="hint">相对路径（在 servers/&lt;instance&gt;/ 下），例如 server.jar</div>
                     )}
+                  </div>
+                  <div className="field">
+                    <label>Pick a jar</label>
+                    <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Select
+                          value=""
+                          onChange={(v) => setJarPath(v)}
+                          disabled={!jarCandidates.length}
+                          placeholder={jarCandidates.length ? "Select jar…" : jarCandidatesStatus || "No jars"}
+                          options={jarCandidates.map((j) => ({ value: j, label: j }))}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="iconBtn iconOnly"
+                        title="Refresh jar list"
+                        onClick={() => refreshJarCandidates()}
+                        disabled={!selectedDaemon?.connected || !instanceId.trim()}
+                      >
+                        <Icon name="refresh" />
+                      </button>
+                    </div>
+                    <div className="hint">扫描 servers/&lt;instance&gt;/ 顶层的 .jar（不递归子目录）</div>
                   </div>
                   <div className="field">
                     <label>Java (optional)</label>

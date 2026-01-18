@@ -79,7 +79,7 @@ WF-20260118-77,P3,logs,todo,Scroll-to-bottom indicator,"Users lose track when ne
 WF-20260118-78,P2,logs,todo,Smart auto-follow,"Auto-scroll behavior feels jumpy and unpredictable","Auto-follow only when near bottom; scrolling up auto-pauses and can resume",ux(logs): smart follow
 WF-20260118-79,P3,logs,todo,Regex log filter,"Simple substring search is not enough for power users","Logs filter supports optional regex mode with safe limits and error display",feat(logs): regex filter
 WF-20260118-80,P3,logs,done,Clear log viewport,"Long sessions get noisy and hard to reason about","Add a 'Clear view' action that resets the client-side log buffer",ux(logs): clear view
-WF-20260118-81,P2,panel-ui,todo,Consistent modal styling,"Dialogs look inconsistent across views","All modals share consistent padding, radius, and header actions",ui(panel): modal consistency
+WF-20260118-81,P2,panel-ui,done,Consistent modal styling,"Dialogs look inconsistent across views","All modals share consistent padding, radius, and header actions",ui(panel): modal consistency
 WF-20260118-82,P3,panel-ui,todo,Skeleton loaders,"Loading states flash text and feel rough","Add skeleton placeholders for lists and cards while data loads",ui(panel): skeleton loaders
 WF-20260118-83,P3,panel-ui,todo,Toast improvements,"Toasts can overlap and vanish too fast for errors","Toast stack has max count, pause-on-hover, and 'Copy details' for errors",ux(panel): toast improvements
 WF-20260118-84,P2,panel-ui,done,UI error boundary,"A single render error can break the entire panel view","Add a top-level error boundary with a reset option and debug details",fix(panel): error boundary

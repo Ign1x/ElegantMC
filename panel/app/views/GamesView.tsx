@@ -37,7 +37,11 @@ export default function GamesView() {
     consoleLine,
     setConsoleLine,
     sendConsoleLine,
+    setFsPath,
   } = useAppCtx();
+
+  const running = !!instanceStatus?.running;
+  const canControl = !!selectedDaemon?.connected && !!instanceId.trim();
 
   const [logQuery, setLogQuery] = useState<string>("");
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
@@ -103,53 +107,60 @@ export default function GamesView() {
                 placeholder="No games installed"
                 options={serverDirs.map((id: string) => ({ value: id, label: id }))}
               />
-              <div className="hint">
-                installed: {serverDirs.length}
-                {serverDirsStatus ? ` · ${serverDirsStatus}` : ""}
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <div className="hint">
+                  installed: {serverDirs.length}
+                  {serverDirsStatus ? ` · ${serverDirsStatus}` : ""}
+                </div>
+                <button
+                  type="button"
+                  className="iconBtn iconOnly"
+                  title="Refresh games list"
+                  onClick={refreshServerDirs}
+                  disabled={!selectedDaemon?.connected}
+                >
+                  <Icon name="refresh" />
+                </button>
               </div>
             </div>
           </div>
 
           <div className="toolbarRight">
             <div className="btnGroup">
-              <button
-                type="button"
-                className="iconBtn iconOnly"
-                title="Refresh games list"
-                onClick={refreshServerDirs}
-                disabled={!selectedDaemon?.connected}
-              >
-                <Icon name="refresh" />
-              </button>
               <button type="button" className="iconBtn" onClick={openInstallModal} disabled={!selectedDaemon?.connected}>
                 <Icon name="plus" />
                 Install
               </button>
+            </div>
+
+            <div className="btnGroup">
               <button
-                type="button"
-                className="iconBtn iconOnly"
-                title="Settings"
-                onClick={openSettingsModal}
-                disabled={!selectedDaemon?.connected || !instanceId.trim()}
+                className={running ? "" : "primary"}
+                onClick={() => (running ? stopServer() : startServer())}
+                disabled={!canControl}
               >
-                <Icon name="settings" />
+                {running ? "Stop" : "Start"}
               </button>
-            </div>
-            <div className="btnGroup">
-              <button className="primary" onClick={() => startServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                Start
-              </button>
-              <button onClick={() => stopServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                Stop
-              </button>
-              <button onClick={() => restartServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                Restart
-              </button>
-            </div>
-            <div className="btnGroup">
-              <button className="dangerBtn" onClick={() => deleteServer()} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
-                Delete
-              </button>
+              <Select
+                value=""
+                onChange={(v) => {
+                  if (v === "restart") restartServer();
+                  else if (v === "settings") openSettingsModal();
+                  else if (v === "files") {
+                    setFsPath(instanceId.trim());
+                    setTab("files");
+                  } else if (v === "delete") deleteServer();
+                }}
+                disabled={!selectedDaemon?.connected}
+                placeholder="More"
+                options={[
+                  { value: "restart", label: "Restart", disabled: !canControl },
+                  { value: "settings", label: "Settings", disabled: !canControl },
+                  { value: "files", label: "Files", disabled: !canControl },
+                  { value: "delete", label: "Delete", disabled: !canControl },
+                ]}
+                style={{ width: 150 }}
+              />
             </div>
           </div>
         </div>

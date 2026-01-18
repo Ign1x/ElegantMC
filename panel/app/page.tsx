@@ -494,6 +494,7 @@ function upsertProp(text: string, key: string, value: string) {
 export default function HomePage() {
   const [tab, setTab] = useState<Tab>("games");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [sidebarFooterCollapsed, setSidebarFooterCollapsed] = useState<boolean>(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
   const [enableAdvanced, setEnableAdvanced] = useState<boolean>(false);
   const [panelInfo, setPanelInfo] = useState<{ id: string; version: string; revision: string; buildDate: string } | null>(null);
@@ -902,6 +903,25 @@ export default function HomePage() {
       // ignore
     }
   }, [sidebarOpen]);
+
+  // Sidebar footer collapse
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("elegantmc_sidebar_footer_collapsed") || "0";
+      setSidebarFooterCollapsed(raw === "1");
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("elegantmc_sidebar_footer_collapsed", sidebarFooterCollapsed ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [sidebarFooterCollapsed]);
 
   // Hash deep links: #tab=games&daemon=...&instance=...
   useEffect(() => {
@@ -4576,33 +4596,43 @@ export default function HomePage() {
         </nav>
 
 	        <div className="sidebarFooter">
-	          <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
-	            <span className="muted">Language</span>
-	            <div style={{ width: 170 }}>
-	              <Select
-	                value={locale}
-	                onChange={(v) => setLocale(normalizeLocale(v))}
-	                options={[
-	                  { value: "zh", label: "中文" },
-	                  { value: "en", label: "English" },
-	                ]}
-	              />
-	            </div>
+	          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+	            <span className="muted">Preferences</span>
+	            <button type="button" className="linkBtn" onClick={() => setSidebarFooterCollapsed((v) => !v)}>
+	              {sidebarFooterCollapsed ? "Show" : "Hide"}
+	            </button>
 	          </div>
-	          <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
-	            <span className="muted">Theme</span>
-	            <div style={{ width: 170 }}>
-	              <Select
-	                value={themeMode}
-	                onChange={(v) => setThemeMode(v as ThemeMode)}
-	                options={[
-	                  { value: "auto", label: "Auto (System)" },
-	                  { value: "light", label: "Light" },
-	                  { value: "dark", label: "Dark" },
-	                ]}
-	              />
-	            </div>
-	          </div>
+	          {!sidebarFooterCollapsed ? (
+	            <>
+	              <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
+	                <span className="muted">Language</span>
+	                <div style={{ width: 170 }}>
+	                  <Select
+	                    value={locale}
+	                    onChange={(v) => setLocale(normalizeLocale(v))}
+	                    options={[
+	                      { value: "zh", label: "中文" },
+	                      { value: "en", label: "English" },
+	                    ]}
+	                  />
+	                </div>
+	              </div>
+	              <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
+	                <span className="muted">Theme</span>
+	                <div style={{ width: 170 }}>
+	                  <Select
+	                    value={themeMode}
+	                    onChange={(v) => setThemeMode(v as ThemeMode)}
+	                    options={[
+	                      { value: "auto", label: "Auto (System)" },
+	                      { value: "light", label: "Light" },
+	                      { value: "dark", label: "Dark" },
+	                    ]}
+	                  />
+	                </div>
+	              </div>
+	            </>
+	          ) : null}
 	          <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
 	            <span className={`badge ${authed === true ? "ok" : ""}`}>{authed === true ? "admin" : "locked"}</span>
 	            {authed === true ? (

@@ -2828,6 +2828,86 @@ export default function HomePage() {
     }
   }
 
+  async function renameInstance() {
+    if (gameActionBusy) return;
+    if (!selectedDaemon?.connected) {
+      setServerOpStatus("daemon offline");
+      return;
+    }
+    const from = instanceId.trim();
+    if (!from) {
+      setServerOpStatus("instance_id 不能为空");
+      return;
+    }
+
+    const next = await promptDialog({
+      title: "Rename Instance",
+      message: `Rename ${from} → ?\n\nThis will move its folder under servers/ and may require restarting.`,
+      defaultValue: from,
+      placeholder: "new-instance-id",
+      okLabel: "Continue",
+      cancelLabel: "Cancel",
+    });
+    if (next == null) return;
+    const to = String(next || "").trim();
+    const err = validateInstanceIDUI(to);
+    if (err) {
+      setServerOpStatus(err);
+      return;
+    }
+    if (to === from) {
+      setServerOpStatus("No changes");
+      setTimeout(() => setServerOpStatus(""), 700);
+      return;
+    }
+
+    const ok = await confirmDialog(`Rename instance ${from} → ${to}?`, {
+      title: "Rename Instance",
+      confirmLabel: "Rename",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setGameActionBusy(true);
+    setServerOpStatus(`Renaming ${from} -> ${to} ...`);
+    try {
+      try {
+        await callOkCommand("frp_stop", { instance_id: from }, 30_000);
+      } catch {
+        // ignore
+      }
+      try {
+        await callOkCommand("mc_stop", { instance_id: from }, 30_000);
+      } catch {
+        // ignore
+      }
+
+      await callOkCommand("fs_move", { from, to }, 60_000);
+      try {
+        await callOkCommand("fs_move", { from: joinRelPath("_backups", from), to: joinRelPath("_backups", to) }, 60_000);
+      } catch {
+        // ignore
+      }
+
+      if (fsPath === from || fsPath.startsWith(`${from}/`)) setFsPath(`${to}${fsPath.slice(from.length)}`);
+      if (fsPath === joinRelPath("_backups", from) || fsPath.startsWith(`${joinRelPath("_backups", from)}/`)) {
+        const prefix = joinRelPath("_backups", from);
+        setFsPath(`${joinRelPath("_backups", to)}${fsPath.slice(prefix.length)}`);
+      }
+      if (fsSelectedFile === from || fsSelectedFile.startsWith(`${from}/`)) setFsSelectedFile(`${to}${fsSelectedFile.slice(from.length)}`);
+
+      await refreshServerDirs();
+      setInstanceId(to);
+      setServerOpStatus("Renamed");
+      setTimeout(() => setServerOpStatus(""), 900);
+    } catch (e: any) {
+      setServerOpStatus(String(e?.message || e));
+    } finally {
+      setGameActionBusy(false);
+    }
+  }
+
   async function backupServer(instanceOverride?: string) {
     if (gameActionBusy) return;
     setGameActionBusy(true);
@@ -3252,6 +3332,7 @@ export default function HomePage() {
     backupServer,
     openRestoreModal,
     openServerPropertiesEditor,
+    renameInstance,
     backupZips: restoreCandidates,
     backupZipsStatus: restoreStatus,
     refreshBackupZips,

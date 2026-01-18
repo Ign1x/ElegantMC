@@ -183,7 +183,7 @@ WF-20260118-181,P3,modpacks,todo,Persist pack manifest,Update/repair needs pack 
 WF-20260118-182,P3,panel-ui,done,Install modal remembers last provider,Users frequently install from the same source and must reselect it,Install modal defaults to the last-used provider and remembers it,ux(modpacks): remember provider
 WF-20260118-183,P3,security,done,Add CSP headers,Panel is served with minimal security headers,Panel server sends a reasonable Content-Security-Policy for the UI,security(panel): csp
 WF-20260118-184,P3,security,done,Harden default HTTP headers,Missing security headers can increase risk (clickjacking/sniffing),"Panel server sets X-Frame-Options/frame-ancestors, X-Content-Type-Options, and Referrer-Policy",security(panel): harden headers
-WF-20260118-185,P3,ci,todo,Gofmt check in CI,Formatting drift makes reviews noisy,CI fails if gofmt would change any Go files,ci: gofmt check
+WF-20260118-185,P3,ci,done,Gofmt check in CI,Formatting drift makes reviews noisy,CI fails if gofmt would change any Go files,ci: gofmt check
 WF-20260118-186,P3,ci,done,Typecheck panel in CI,Type errors can slip through without a typecheck job,CI runs panel typecheck (tsc --noEmit) and fails on errors,ci(panel): typecheck
 WF-20260118-187,P3,perf,done,Dynamic log viewport height,Logs virtualization uses a hard-coded 640px height and can mis-virtualize,Logs virtualization uses the actual viewport height for accurate rendering,perf(logs): dynamic height
 WF-20260118-188,P3,docs,todo,Keyboard shortcuts cheat sheet,Shortcuts exist but are undiscoverable,Add a small in-app cheat sheet modal listing shortcuts,docs(panel): shortcuts cheat sheet

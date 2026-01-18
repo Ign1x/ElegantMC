@@ -47,6 +47,14 @@ jobs:
           go-version: "1.22"
           cache: true
           cache-dependency-path: daemon/go.sum
+      - name: Gofmt
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "gofmt required for:"
+            echo "$files"
+            exit 1
+          fi
       - name: Vet
         run: go vet ./...
       - name: Test

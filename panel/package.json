@@ -6,6 +6,7 @@
     "dev": "NODE_ENV=development node server/index.mjs",
     "start": "NODE_ENV=production node server/index.mjs",
     "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs",
     "build": "next build"
   },
   "dependencies": {

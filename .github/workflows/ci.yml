@@ -30,6 +30,10 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
+      - name: Smoke
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run smoke
 
   daemon_test:
     runs-on: ubuntu-latest

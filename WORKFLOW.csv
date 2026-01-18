@@ -6,3 +6,53 @@ WF-20260118-04,P1,modpacks,done,CurseForge without env var setup,"CurseForge req
 WF-20260118-05,P1,ux,done,Simplify awkward flows,"Overall workflow feels weird; too much low-value info in UI","Install flow clearer; sidebar footer simplified; sensible defaults and messages",ux(panel): streamline workflow
 WF-20260118-06,P0,panel-ui,done,Select dropdown clipped,"Custom Select menu is clipped by containers with overflow hidden (sidebar/topbar), causing theme/daemon dropdown unusable","Theme/daemon dropdown menus fully visible and selectable everywhere",fix(ui): portal select menu
 WF-20260118-07,P1,panel-ui,done,Games toolbar UX,"Games page action buttons feel messy and hard to scan","Games toolbar has clear primary action + compact secondary actions",ux(games): simplify actions
+WF-20260118-08,P0,games,todo,Lock actions while busy,"Users can spam Start/Stop/Restart/Delete causing duplicate daemon commands and weird state","Game actions are disabled while requests are in flight; UI indicates busy",ux(games): lock actions
+WF-20260118-09,P1,games,todo,Backup button,"Daemon has mc_backup but UI has no one-click backup","Games UI can create a backup and show the generated path",feat(games): backup action
+WF-20260118-10,P1,games,todo,Restore from backup,"Daemon has mc_restore but UI has no restore workflow","Games UI can restore from a selected backup with strong confirmation",feat(games): restore action
+WF-20260118-11,P2,games,todo,List backups,"Backups are hidden under servers/_backups and hard to find","Games UI shows available backups for current instance and can open in Files tab",ux(games): backups list
+WF-20260118-12,P2,panel-ui,todo,Persist UI state,"Selected tab/daemon/game resets on refresh","Persist tab/daemon/game/theme in localStorage and restore on load",ux(panel): persist state
+WF-20260118-13,P2,panel-ui,todo,Better error surfacing,"Errors often disappear in status text and are easy to miss","All failed operations show a toast with Copy details",ux(panel): better errors
+WF-20260118-14,P2,panel-ui,todo,Responsive sidebar,"Sidebar is always visible and cramped on small screens","Add collapsible sidebar + overlay mode for narrow widths",ui(panel): responsive sidebar
+WF-20260118-15,P3,panel-ui,todo,Keyboard shortcuts,"Frequent actions require mouse clicks","Add shortcuts: Ctrl+K command palette, Esc closes modals, / focuses search",ux(panel): shortcuts
+WF-20260118-16,P2,nodes,todo,Nodes overview improvements,"Nodes list lacks quick health glance and sorting options","Add sorting, filters, and clearer online/offline + last seen",ux(nodes): overview polish
+WF-20260118-17,P2,nodes,todo,Copy deploy snippet,"Deploying daemon requires manual compose editing","Provide one-click copy docker-compose snippet per node",ux(nodes): deploy copy
+WF-20260118-18,P2,files,todo,Binary file handling,"Editing binary files as text is confusing and can corrupt data","Detect binary and show download-only view",fix(files): binary detect
+WF-20260118-19,P2,files,todo,Create new file,"Cannot create new file from Files UI","Add Create file action with safe path validation",feat(files): create file
+WF-20260118-20,P2,files,todo,File search,"Finding a file in large directories is painful","Add client-side filter/search for current directory listing",ux(files): search filter
+WF-20260118-21,P2,files,todo,Quick open common files,"Common server files require manual navigation","Add shortcuts: server.properties, eula.txt, logs/latest.log, .elegantmc.json",ux(files): quick open
+WF-20260118-22,P2,logs,todo,Log highlighting,"Logs are hard to scan for errors/warnings","Highlight ERROR/WARN/Exception lines and allow toggle",ux(logs): highlight
+WF-20260118-23,P2,logs,todo,Log pause,"Live logs auto-scroll makes reading hard","Add pause/resume streaming view per tab",ux(logs): pause
+WF-20260118-24,P2,games,todo,Jar picker,"Jar path is manual and error-prone","Settings can browse and pick a .jar under instance directory",ux(games): jar picker
+WF-20260118-25,P2,games,todo,Server.properties editor,"Port and other settings require manual file editing","Add basic server.properties editor with safe keys",feat(games): properties editor
+WF-20260118-26,P2,games,todo,Instance rename,"Renaming instance id is not supported","Add rename workflow (move folder + update configs + FRP proxy name)",feat(games): rename instance
+WF-20260118-27,P2,games,todo,Instance clone,"Copying servers requires manual filesystem work","Add clone workflow using backup/restore or fs_copy",feat(games): clone instance
+WF-20260118-28,P2,games,todo,Instance disk usage,"No per-instance size info","Show instance folder size and last backup time",ux(games): usage info
+WF-20260118-29,P1,modpacks,todo,Upload mrpack,"Upload flow only accepts .zip and is confusing for .mrpack files","Allow uploading .mrpack and treat it like Modrinth mrpack install",feat(modpacks): upload mrpack
+WF-20260118-30,P1,modpacks,todo,Better zip jar detection,"Zip installs often fail because jar_path is wrong after extraction","After unzip, auto-detect server jar (including subdirs) or prompt selection",fix(modpacks): detect jar
+WF-20260118-31,P2,modpacks,todo,Parallel mrpack downloads,"Mrpack files download sequentially and can be slow","Download mrpack files with limited concurrency and progress",perf(modpacks): parallel downloads
+WF-20260118-32,P2,modpacks,todo,Show mrpack metadata,"User cannot see loader/minecraft version before install","Display minecraft version + loader + file count before install",ux(modpacks): show metadata
+WF-20260118-33,P1,modpacks,todo,Quilt mrpack support,"Quilt-based mrpacks cannot be installed","Support quilt-loader dependency and install quilt server jar",feat(modpacks): quilt mrpack
+WF-20260118-34,P1,modpacks,todo,Forge/NeoForge server packs,"Many modpacks require Forge/NeoForge and currently fail","Support server pack zip workflow and clear guidance",feat(modpacks): forge server packs
+WF-20260118-35,P2,modpacks,todo,CurseForge direct URL helper,"CurseForge links are not straightforward for users","Add helper UI to accept CurseForge page URL and guide to direct download",ux(modpacks): curseforge url helper
+WF-20260118-36,P2,frp,todo,FRP status clarity,"FRP state is confusing when disabled/misconfigured","Show explicit FRP desired vs actual status and next steps",ux(frp): status clarity
+WF-20260118-37,P2,frp,todo,FRP test button,"Users cannot test FRP profile before using","Add Test connection button and show latency/errors",feat(frp): test profile
+WF-20260118-38,P2,frp,todo,FRP proxy list,"Multiple proxies per instance are hard to view","Show per-instance proxy details (name, remote addr, port)",ux(frp): proxy list
+WF-20260118-39,P2,scheduler,todo,Scheduler UI,"Daemon supports schedule.json but Panel has no UI","Add simple scheduler view to edit schedule.json and trigger tasks",feat(panel): scheduler ui
+WF-20260118-40,P2,daemon,todo,fs_copy command,"UI cannot implement rename/clone without file copy support","Add fs_copy for files/dirs inside sandbox (safe, no overwrite)",feat(daemon): fs_copy
+WF-20260118-41,P2,daemon,todo,fs_stat command,"File UI lacks mtime and type details","Add fs_stat returning size, mtime, mode, isDir",feat(daemon): fs_stat
+WF-20260118-42,P2,daemon,todo,fs_list include mtime,"File list cannot show last modified","Extend fs_list entries with mtime_unix",feat(daemon): fs_list mtime
+WF-20260118-43,P1,daemon,todo,MC jar detection command,"Panel needs reliable jar selection for zip installs","Add mc_detect_jar to scan instance dir and return best jar path",feat(daemon): mc_detect_jar
+WF-20260118-44,P2,daemon,todo,Heartbeat java details,"Users cannot see what Java is actually used per instance","Include selected java path/major and required major in heartbeat instances",feat(daemon): java in heartbeat
+WF-20260118-45,P2,daemon,todo,Java cache management,"Auto-downloaded JREs can accumulate with no cleanup","Add command to list/remove cached Java runtimes",feat(daemon): java cache
+WF-20260118-46,P2,daemon,todo,Improved port check diagnostics,"Port check failure message is too generic","Return host/port and helpful hints (docker mapping, server-ip)",fix(daemon): port diagnostics
+WF-20260118-47,P2,panel-server,todo,Persist sessions,"Admin session is memory-only and lost on restart","Persist sessions to disk with TTL and cleanup",feat(panel-server): persist sessions
+WF-20260118-48,P3,security,todo,Audit log,"No audit trail for destructive/admin actions","Write admin action audit log to panel data dir",feat(security): audit log
+WF-20260118-49,P3,security,todo,Command allowlist,"Advanced command runner can do risky operations","Add server-side allowlist/denylist for advanced commands",sec(panel): command policy
+WF-20260118-50,P3,docs,todo,Update docs for mrpack,"Docs do not explain mrpack limitations","Document Fabric-only mrpack support and URL install mode",docs: mrpack guide
+WF-20260118-51,P3,docs,todo,Update docs for backups,"Backup/restore features are not documented","Add README section for backup/restore and backup location",docs: backups guide
+WF-20260118-52,P2,ci,todo,Panel lint in CI,"Panel build can pass but hide type issues","Add typecheck step for Panel in CI",ci(panel): typecheck
+WF-20260118-53,P2,ci,todo,Frontend smoke tests,"No automated UI regression checks","Add minimal Playwright smoke test for login + theme",ci(panel): smoke tests
+WF-20260118-54,P3,perf,todo,Reduce log re-render cost,"Logs re-render can be heavy with many lines","Virtualize log rendering and memoize formatting",perf(logs): virtualize
+WF-20260118-55,P3,perf,todo,Debounce search inputs,"Search inputs trigger expensive filtering on each keystroke","Debounce log and file search inputs",perf(ui): debounce
+WF-20260118-56,P3,ux,todo,Internationalization baseline,"UI mixes English/Chinese inconsistently","Create i18n dictionary and move strings behind it",ux(i18n): baseline
+WF-20260118-57,P3,ux,todo,Consistent copywriting,"Labels and hints are inconsistent across tabs","Standardize wording, capitalization, and hint style",ux(panel): copy polish

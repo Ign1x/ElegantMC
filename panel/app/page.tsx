@@ -4228,6 +4228,19 @@ export default function HomePage() {
 
 	        <div className="sidebarFooter">
 	          <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
+	            <span className="muted">Language</span>
+	            <div style={{ width: 170 }}>
+	              <Select
+	                value={locale}
+	                onChange={(v) => setLocale(normalizeLocale(v))}
+	                options={[
+	                  { value: "zh", label: "中文" },
+	                  { value: "en", label: "English" },
+	                ]}
+	              />
+	            </div>
+	          </div>
+	          <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
 	            <span className="muted">Theme</span>
 	            <div style={{ width: 170 }}>
 	              <Select

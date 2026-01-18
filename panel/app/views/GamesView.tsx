@@ -532,6 +532,20 @@ export default function GamesView() {
           </div>
 
           <div className="kv">
+            <div className="k">Network</div>
+            <div className="v">
+              {instanceId.trim() ? (
+                <span className="badge">{`${localHost || "127.0.0.1"}:${Math.round(Number(gamePort || 25565))}`}</span>
+              ) : (
+                <span className="muted">-</span>
+              )}
+            </div>
+            <div className="hint">
+              Hints: leave <code>server-ip</code> empty · Docker default published range <code>25565-25600</code>
+            </div>
+          </div>
+
+          <div className="kv">
             <div className="k">Last heartbeat</div>
             <div className="v">{fmtUnix(selectedDaemon?.heartbeat?.server_time_unix)}</div>
           </div>

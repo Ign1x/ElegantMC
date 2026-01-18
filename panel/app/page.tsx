@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppCtxProvider } from "./appCtx";
 import { createT, normalizeLocale, type Locale } from "./i18n";
 import Icon from "./ui/Icon";
+import ErrorBoundary from "./ui/ErrorBoundary";
 import Select from "./ui/Select";
 import AdvancedView from "./views/AdvancedView";
 import FilesView from "./views/FilesView";
@@ -3954,6 +3955,7 @@ export default function HomePage() {
 	  };
 
   return (
+    <ErrorBoundary>
     <AppCtxProvider value={appCtxValue}>
       {authed !== true ? (
         <div className="modalOverlay">
@@ -5590,5 +5592,6 @@ export default function HomePage() {
       </div>
       </div>
     </AppCtxProvider>
+    </ErrorBoundary>
   );
 }

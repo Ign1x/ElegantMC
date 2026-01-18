@@ -115,7 +115,7 @@ WF-20260118-113,P3,files,todo,Diff viewer,"Comparing config changes is hard","Ad
 WF-20260118-114,P2,files,todo,Syntax highlighting,"Editing config files without highlighting causes mistakes","Editor supports highlighting for properties/json/yaml/log files",ui(files): syntax highlighting
 WF-20260118-115,P3,files,todo,JSON formatter and validator,"JSON edits can easily break formatting","Add format/validate buttons for JSON files with error markers",feat(files): json tools
 WF-20260118-116,P3,files,todo,YAML validator,"YAML indentation errors are common","Add YAML validation with clear error messages and line numbers",feat(files): yaml validate
-WF-20260118-117,P2,games,todo,Console command history,"Console input loses previous commands and slows admin workflows","Console input supports history (Up/Down) and persists per instance",ux(games): command history
+WF-20260118-117,P2,games,done,Console command history,"Console input loses previous commands and slows admin workflows","Console input supports history (Up/Down) and persists per instance",ux(games): command history
 WF-20260118-118,P3,games,todo,Common command shortcuts,"Admins repeatedly type the same commands","Provide quick buttons for stop, save-all, say, whitelist reload, and reload",ux(games): command shortcuts
 WF-20260118-119,P3,games,todo,Separate command output,"Command responses can get lost in noisy logs","Show command responses in a small dedicated panel with copy",ux(games): command output panel
 WF-20260118-120,P2,games,todo,Player list from usercache,"Admins want to see known players without opening files","Add a Players tab that reads usercache.json and shows names/uuids",feat(games): players list

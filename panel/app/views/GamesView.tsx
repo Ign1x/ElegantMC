@@ -72,6 +72,9 @@ export default function GamesView() {
   const [logScrollTop, setLogScrollTop] = useState<number>(0);
   const [logNearBottom, setLogNearBottom] = useState<boolean>(true);
 
+  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
+  const [cmdHistoryIdx, setCmdHistoryIdx] = useState<number>(0);
+
   const socketText = useMemo(() => {
     if (frpStatus?.running && frpStatus.remote_port) {
       return `${frpStatus.remote_addr}:${frpStatus.remote_port}`;
@@ -196,6 +199,48 @@ export default function GamesView() {
     refreshBackupZips(inst);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId, selectedDaemon?.connected]);
+
+  useEffect(() => {
+    const inst = instanceId.trim();
+    if (!inst) {
+      setCmdHistory([]);
+      setCmdHistoryIdx(0);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("elegantmc_console_history_v1");
+      const all = raw ? JSON.parse(raw) : {};
+      const list = Array.isArray(all?.[inst]) ? all[inst] : [];
+      const cleaned = list.map((s: any) => String(s || "").trim()).filter(Boolean).slice(-50);
+      setCmdHistory(cleaned);
+      setCmdHistoryIdx(cleaned.length);
+    } catch {
+      setCmdHistory([]);
+      setCmdHistoryIdx(0);
+    }
+  }, [instanceId]);
+
+  function persistCmdHistory(inst: string, list: string[]) {
+    try {
+      const raw = localStorage.getItem("elegantmc_console_history_v1");
+      const all = raw ? JSON.parse(raw) : {};
+      all[inst] = list.slice(-50);
+      localStorage.setItem("elegantmc_console_history_v1", JSON.stringify(all));
+    } catch {
+      // ignore
+    }
+  }
+
+  async function sendConsoleWithHistory() {
+    const inst = instanceId.trim();
+    const cmd = consoleLine.trim();
+    if (!inst || !cmd) return;
+    const next = [...cmdHistory.filter((c) => c !== cmd), cmd].slice(-50);
+    setCmdHistory(next);
+    setCmdHistoryIdx(next.length);
+    persistCmdHistory(inst, next);
+    await sendConsoleLine();
+  }
 
   return (
     <div className="stack">
@@ -656,8 +701,30 @@ export default function GamesView() {
             placeholder="Console command (e.g. say hi)"
             style={{ flex: 1, minWidth: 240 }}
             disabled={!selectedDaemon?.connected || !instanceId.trim()}
+            onKeyDown={(e: any) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                sendConsoleWithHistory();
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                if (!cmdHistory.length) return;
+                e.preventDefault();
+                const nextIdx = Math.max(0, cmdHistoryIdx - 1);
+                setCmdHistoryIdx(nextIdx);
+                setConsoleLine(cmdHistory[nextIdx] || "");
+                return;
+              }
+              if (e.key === "ArrowDown") {
+                if (!cmdHistory.length) return;
+                e.preventDefault();
+                const nextIdx = Math.min(cmdHistory.length, cmdHistoryIdx + 1);
+                setCmdHistoryIdx(nextIdx);
+                setConsoleLine(nextIdx >= cmdHistory.length ? "" : cmdHistory[nextIdx] || "");
+              }
+            }}
           />
-          <button onClick={sendConsoleLine} disabled={!consoleLine.trim() || !selectedDaemon?.connected || !instanceId.trim()}>
+          <button onClick={sendConsoleWithHistory} disabled={!consoleLine.trim() || !selectedDaemon?.connected || !instanceId.trim()}>
             Send
           </button>
         </div>

@@ -14,6 +14,8 @@ export default function GamesView() {
     refreshServerDirs,
     instanceId,
     setInstanceId,
+    instanceTagsById,
+    updateInstanceTags,
     selectedDaemon,
     openSettingsModal,
     openInstallModal,
@@ -74,6 +76,8 @@ export default function GamesView() {
 
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [cmdHistoryIdx, setCmdHistoryIdx] = useState<number>(0);
+  const [tagFilter, setTagFilter] = useState<string>("");
+  const [tagsDraft, setTagsDraft] = useState<string>("");
 
   const socketText = useMemo(() => {
     if (frpStatus?.running && frpStatus.remote_port) {
@@ -82,6 +86,50 @@ export default function GamesView() {
     const ip = localHost || "127.0.0.1";
     return `${ip}:${Math.round(Number(gamePort || 25565))}`;
   }, [frpStatus, localHost, gamePort]);
+
+  const currentTags = useMemo(() => {
+    const inst = String(instanceId || "").trim();
+    if (!inst) return [] as string[];
+    const list = (instanceTagsById && (instanceTagsById as any)[inst]) || [];
+    return Array.isArray(list) ? list.map((s: any) => String(s || "").trim()).filter(Boolean) : [];
+  }, [instanceId, instanceTagsById]);
+
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const id of serverDirs || []) {
+      const list = (instanceTagsById && (instanceTagsById as any)[id]) || [];
+      if (!Array.isArray(list)) continue;
+      for (const t of list) {
+        const s = String(t || "").trim();
+        if (s) set.add(s);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [serverDirs, instanceTagsById]);
+
+  const filteredServerDirs = useMemo(() => {
+    const q = String(tagFilter || "").trim().toLowerCase();
+    if (!q) return serverDirs;
+    return (serverDirs || []).filter((id: string) => {
+      const list = (instanceTagsById && (instanceTagsById as any)[id]) || [];
+      if (!Array.isArray(list)) return false;
+      return list.some((t: any) => String(t || "").trim().toLowerCase() === q);
+    });
+  }, [serverDirs, instanceTagsById, tagFilter]);
+
+  useEffect(() => {
+    setTagsDraft(currentTags.join(", "));
+  }, [instanceId, currentTags.join("|")]);
+
+  function saveTags() {
+    const inst = instanceId.trim();
+    if (!inst) return;
+    const tags = String(tagsDraft || "")
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    updateInstanceTags(inst, tags);
+  }
 
   const instanceProxies = useMemo(() => {
     const inst = String(instanceId || "").trim();
@@ -256,8 +304,24 @@ export default function GamesView() {
                 onChange={(v) => setInstanceId(v)}
                 disabled={!serverDirs.length}
                 placeholder="No games installed"
-                options={serverDirs.map((id: string) => ({ value: id, label: id }))}
+                options={filteredServerDirs.map((id: string) => {
+                  const tags = (instanceTagsById && (instanceTagsById as any)[id]) || [];
+                  const list = Array.isArray(tags) ? tags.map((s: any) => String(s || "").trim()).filter(Boolean) : [];
+                  const label = list.length ? `${id} · ${list.join(", ")}` : id;
+                  return { value: id, label };
+                })}
               />
+              <div className="row" style={{ marginTop: 8, justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <span className="hint">Tag filter</span>
+                <div style={{ width: 220 }}>
+                  <Select
+                    value={tagFilter}
+                    onChange={(v) => setTagFilter(v)}
+                    placeholder="All tags"
+                    options={[{ value: "", label: "All tags" }, ...availableTags.map((t) => ({ value: t, label: t }))]}
+                  />
+                </div>
+              </div>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <div className="hint">
                   installed: {serverDirs.length}
@@ -384,6 +448,27 @@ export default function GamesView() {
               major: <code>{Number(instanceStatus?.java_major || 0) || "-"}</code>
               {" · "}
               required: <code>{Number(instanceStatus?.required_java_major || 0) ? `>=${Number(instanceStatus.required_java_major)}` : "-"}</code>
+            </div>
+          </div>
+
+          <div className="kv">
+            <div className="k">Tags</div>
+            <div className="v">
+              {currentTags.length ? currentTags.map((t) => <span key={t} className="badge">{t}</span>) : <span className="muted">-</span>}
+            </div>
+            <div className="hint">
+              <div className="row" style={{ gap: 8 }}>
+                <input
+                  value={tagsDraft}
+                  onChange={(e: any) => setTagsDraft(e.target.value)}
+                  placeholder="e.g. survival, modpack"
+                  style={{ flex: 1, minWidth: 180 }}
+                  disabled={!instanceId.trim()}
+                />
+                <button type="button" onClick={saveTags} disabled={!selectedDaemon?.connected || !instanceId.trim()}>
+                  Save
+                </button>
+              </div>
             </div>
           </div>
 

@@ -629,6 +629,7 @@ export default function HomePage() {
   // Server list (directories under servers/)
   const [serverDirs, setServerDirs] = useState<string[]>([]);
   const [serverDirsStatus, setServerDirsStatus] = useState<string>("");
+  const [instanceTagsById, setInstanceTagsById] = useState<Record<string, string[]>>({});
 
   // Vanilla versions
   const [versions, setVersions] = useState<McVersion[]>([]);
@@ -911,6 +912,38 @@ export default function HomePage() {
       // ignore
     }
   }, [tab, selected, instanceId]);
+
+  // Instance tags (per daemon, stored in localStorage)
+  useEffect(() => {
+    if (!selected) {
+      setInstanceTagsById({});
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`elegantmc_instance_tags_v1:${selected}`);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const out: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(parsed || {})) {
+        const inst = String(k || "").trim();
+        if (!inst) continue;
+        const tags = Array.isArray(v) ? v : [];
+        const cleaned = tags.map((s: any) => String(s || "").trim()).filter(Boolean).slice(0, 12);
+        if (cleaned.length) out[inst] = cleaned;
+      }
+      setInstanceTagsById(out);
+    } catch {
+      setInstanceTagsById({});
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    try {
+      localStorage.setItem(`elegantmc_instance_tags_v1:${selected}`, JSON.stringify(instanceTagsById || {}));
+    } catch {
+      // ignore
+    }
+  }, [selected, instanceTagsById]);
 
   useEffect(() => {
     const name = String(panelSettings?.brand_name || "").trim();
@@ -1295,6 +1328,35 @@ export default function HomePage() {
       setServerDirs([]);
       setServerDirsStatus(String(e?.message || e));
     }
+  }
+
+  function normalizeTags(tags: string[]) {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of tags) {
+      let t = String(raw || "").trim();
+      if (!t) continue;
+      if (t.length > 24) t = t.slice(0, 24);
+      const k = t.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(t);
+      if (out.length >= 12) break;
+    }
+    return out;
+  }
+
+  function updateInstanceTags(instance: string, tags: string[]) {
+    const inst = String(instance || "").trim();
+    if (!inst) return;
+    const nextTags = normalizeTags(Array.isArray(tags) ? tags : []);
+    setInstanceTagsById((prev) => {
+      const cur = prev || {};
+      const next = { ...cur };
+      if (!nextTags.length) delete next[inst];
+      else next[inst] = nextTags;
+      return next;
+    });
   }
 
   async function refreshJarCandidates(instOverride?: string) {
@@ -3856,6 +3918,8 @@ export default function HomePage() {
     serverDirs,
     serverDirsStatus,
     refreshServerDirs,
+    instanceTagsById,
+    updateInstanceTags,
     instanceId,
 	    setInstanceId,
 	    openSettingsModal,

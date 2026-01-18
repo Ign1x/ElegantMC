@@ -7,6 +7,32 @@ import Select from "../ui/Select";
 
 type RenderLogLine = { text: string; level: "" | "warn" | "error" };
 
+function highlightText(text: string, qLower: string) {
+  const q = String(qLower || "").trim().toLowerCase();
+  if (!q) return text;
+  const t = String(text || "");
+  const lower = t.toLowerCase();
+  const parts: any[] = [];
+  let i = 0;
+  let hits = 0;
+  const maxHits = 32;
+  while (i < t.length && hits < maxHits) {
+    const at = lower.indexOf(q, i);
+    if (at < 0) break;
+    if (at > i) parts.push(t.slice(i, at));
+    parts.push(
+      <mark key={`m-${hits}`} className="logMark">
+        {t.slice(at, at + q.length)}
+      </mark>
+    );
+    hits += 1;
+    i = at + q.length;
+  }
+  if (!parts.length) return text;
+  if (i < t.length) parts.push(t.slice(i));
+  return parts;
+}
+
 export default function GamesView() {
   const {
     serverDirs,
@@ -971,7 +997,7 @@ export default function GamesView() {
                     <Icon name="copy" />
                   </button>
                   <span className="logLineText" style={{ whiteSpace: wrapLogs ? "pre-wrap" : "pre", wordBreak: wrapLogs ? "break-word" : "normal" }}>
-                    {l.text}
+                    {logFilter.mode === "text" && logFilter.q ? highlightText(l.text, logFilter.q) : l.text}
                   </span>
                 </span>
               ))}

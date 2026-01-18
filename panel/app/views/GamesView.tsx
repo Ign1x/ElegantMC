@@ -59,6 +59,7 @@ export default function GamesView() {
   const running = !!instanceStatus?.running;
   const canControl = !!selectedDaemon?.connected && !!instanceId.trim() && !gameActionBusy;
 
+  const [logQueryRaw, setLogQueryRaw] = useState<string>("");
   const [logQuery, setLogQuery] = useState<string>("");
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [highlightLogs, setHighlightLogs] = useState<boolean>(true);
@@ -104,6 +105,11 @@ export default function GamesView() {
     setPausedLogs(Array.isArray(logs) ? logs.slice() : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logPaused]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setLogQuery(logQueryRaw), 180);
+    return () => window.clearTimeout(t);
+  }, [logQueryRaw]);
 
   const filteredLogs = useMemo(() => {
     const inst = instanceId.trim();
@@ -530,8 +536,8 @@ export default function GamesView() {
           </div>
           <div className="toolbarRight">
             <input
-              value={logQuery}
-              onChange={(e: any) => setLogQuery(e.target.value)}
+              value={logQueryRaw}
+              onChange={(e: any) => setLogQueryRaw(e.target.value)}
               placeholder="Search logs…"
               style={{ width: 220 }}
             />

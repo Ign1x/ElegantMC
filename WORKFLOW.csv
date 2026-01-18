@@ -53,6 +53,6 @@ WF-20260118-51,P3,docs,done,Update docs for backups,"Backup/restore features are
 WF-20260118-52,P2,ci,done,Panel lint in CI,"Panel build can pass but hide type issues","Add typecheck step for Panel in CI",ci(panel): typecheck
 WF-20260118-53,P2,ci,done,Frontend smoke tests,"No automated UI regression checks","Add minimal Playwright smoke test for login + theme",ci(panel): smoke tests
 WF-20260118-54,P3,perf,done,Reduce log re-render cost,"Logs re-render can be heavy with many lines","Virtualize log rendering and memoize formatting",perf(logs): virtualize
-WF-20260118-55,P3,perf,todo,Debounce search inputs,"Search inputs trigger expensive filtering on each keystroke","Debounce log and file search inputs",perf(ui): debounce
+WF-20260118-55,P3,perf,done,Debounce search inputs,"Search inputs trigger expensive filtering on each keystroke","Debounce log and file search inputs",perf(ui): debounce
 WF-20260118-56,P3,ux,todo,Internationalization baseline,"UI mixes English/Chinese inconsistently","Create i18n dictionary and move strings behind it",ux(i18n): baseline
 WF-20260118-57,P3,ux,todo,Consistent copywriting,"Labels and hints are inconsistent across tabs","Standardize wording, capitalization, and hint style",ux(panel): copy polish

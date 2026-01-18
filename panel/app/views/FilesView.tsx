@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
 import Icon from "../ui/Icon";
 import Select from "../ui/Select";
@@ -39,7 +39,13 @@ export default function FilesView() {
     deleteFsEntry,
   } = useAppCtx();
 
+  const [queryRaw, setQueryRaw] = useState<string>("");
   const [query, setQuery] = useState<string>("");
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setQuery(queryRaw), 160);
+    return () => window.clearTimeout(t);
+  }, [queryRaw]);
 
   const viewEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -95,7 +101,7 @@ export default function FilesView() {
               ]}
             />
           </div>
-          <input value={query} onChange={(e: any) => setQuery(e.target.value)} placeholder="Search entries…" style={{ width: 220 }} />
+	          <input value={queryRaw} onChange={(e: any) => setQueryRaw(e.target.value)} placeholder="Search entries…" style={{ width: 220 }} />
           <button type="button" onClick={() => refreshFsNow()} disabled={!selected}>
             Refresh
           </button>

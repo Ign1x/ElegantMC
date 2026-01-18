@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useAppCtx } from "../appCtx";
 import Icon from "../ui/Icon";
 
@@ -19,6 +20,8 @@ export default function FrpView() {
     apiFetch,
     confirmDialog,
   } = useAppCtx();
+
+  const [testingId, setTestingId] = useState<string>("");
 
   return (
     <div className="stack">
@@ -117,6 +120,32 @@ export default function FrpView() {
                         }}
                       >
                         Use
+                      </button>
+                      <button
+                        type="button"
+                        className="iconBtn"
+                        onClick={async () => {
+                          try {
+                            setTestingId(p.id);
+                            setProfilesStatus(`Testing ${p.name} ...`);
+                            const res = await apiFetch(`/api/frp/profiles/${encodeURIComponent(p.id)}/probe`, {
+                              method: "POST",
+                              cache: "no-store",
+                            });
+                            const json = await res.json().catch(() => null);
+                            if (!res.ok) throw new Error(json?.error || "failed");
+                            await refreshProfiles();
+                          } catch (e: any) {
+                            setProfilesStatus(String(e?.message || e));
+                          } finally {
+                            setTestingId("");
+                          }
+                        }}
+                        disabled={testingId === p.id}
+                        title="Test reachability from Panel to FRP server"
+                      >
+                        <Icon name="refresh" />
+                        Test
                       </button>
                     </div>
                     <button type="button" className="dangerBtn iconBtn" onClick={() => removeFrpProfile(p.id)}>

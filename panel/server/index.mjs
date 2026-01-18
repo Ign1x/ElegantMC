@@ -874,6 +874,22 @@ const server = http.createServer(async (req, res) => {
       if (!token) return json(res, 404, { error: "no token set" });
       return json(res, 200, { id, token });
     }
+    const mFrpProbe = url.pathname.match(/^\/api\/frp\/profiles\/([^/]+)\/probe$/);
+    if (mFrpProbe && req.method === "POST") {
+      const id = decodeURIComponent(mFrpProbe[1]);
+      const profiles = await listFrpProfiles();
+      const p = profiles.find((x) => x && x.id === id);
+      if (!p) return json(res, 404, { error: "not found" });
+
+      const host = String(p.server_addr || "").trim();
+      const port = Number(p.server_port || 0);
+      if (!host || !Number.isFinite(port) || port < 1 || port > 65535) return json(res, 400, { error: "invalid host/port" });
+
+      const now = Math.floor(Date.now() / 1000);
+      const status = await probeTcp(host, port, 1200);
+      frpStatusCache.set(id, { checkedAtUnix: now, online: status.online, latencyMs: status.latencyMs, error: status.error || "" });
+      return json(res, 200, { id, status: frpStatusCache.get(id) });
+    }
     const mFrp = url.pathname.match(/^\/api\/frp\/profiles\/([^/]+)$/);
     if (mFrp && req.method === "DELETE") {
       const id = decodeURIComponent(mFrp[1]);

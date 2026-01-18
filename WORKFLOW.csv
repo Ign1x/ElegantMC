@@ -35,7 +35,7 @@ WF-20260118-33,P1,modpacks,done,Quilt mrpack support,"Quilt-based mrpacks cannot
 WF-20260118-34,P1,modpacks,done,Forge/NeoForge server packs,"Many modpacks require Forge/NeoForge and currently fail","Support server pack zip workflow and clear guidance",feat(modpacks): forge server packs
 WF-20260118-35,P2,modpacks,done,CurseForge direct URL helper,"CurseForge links are not straightforward for users","Add helper UI to accept CurseForge page URL and guide to direct download",ux(modpacks): curseforge url helper
 WF-20260118-36,P2,frp,todo,FRP status clarity,"FRP state is confusing when disabled/misconfigured","Show explicit FRP desired vs actual status and next steps",ux(frp): status clarity
-WF-20260118-37,P2,frp,todo,FRP test button,"Users cannot test FRP profile before using","Add Test connection button and show latency/errors",feat(frp): test profile
+WF-20260118-37,P2,frp,done,FRP test button,"Users cannot test FRP profile before using","Add Test connection button and show latency/errors",feat(frp): test profile
 WF-20260118-38,P2,frp,todo,FRP proxy list,"Multiple proxies per instance are hard to view","Show per-instance proxy details (name, remote addr, port)",ux(frp): proxy list
 WF-20260118-39,P2,scheduler,todo,Scheduler UI,"Daemon supports schedule.json but Panel has no UI","Add simple scheduler view to edit schedule.json and trigger tasks",feat(panel): scheduler ui
 WF-20260118-40,P2,daemon,todo,fs_copy command,"UI cannot implement rename/clone without file copy support","Add fs_copy for files/dirs inside sandbox (safe, no overwrite)",feat(daemon): fs_copy

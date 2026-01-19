@@ -2,10 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
+import Select from "../ui/Select";
 
 export default function PanelView() {
-  const { t, panelSettings, panelSettingsStatus, refreshPanelSettings, savePanelSettings, selectedDaemon, loadSchedule, saveScheduleJson, runScheduleTask, confirmDialog, fmtUnix } =
-    useAppCtx();
+  const {
+    t,
+    panelSettings,
+    panelSettingsStatus,
+    refreshPanelSettings,
+    savePanelSettings,
+    selectedDaemon,
+    loadSchedule,
+    saveScheduleJson,
+    runScheduleTask,
+    confirmDialog,
+    fmtUnix,
+    serverDirs,
+  } = useAppCtx();
 
   const [draft, setDraft] = useState<any>(panelSettings || null);
   const [settingsQuery, setSettingsQuery] = useState<string>("");
@@ -14,9 +27,19 @@ export default function PanelView() {
   const [schedulePath, setSchedulePath] = useState<string>("");
   const [scheduleBusy, setScheduleBusy] = useState<boolean>(false);
 
+  const [backupPresetInstanceId, setBackupPresetInstanceId] = useState<string>("");
+  const [backupPresetEveryHours, setBackupPresetEveryHours] = useState<number>(24);
+  const [backupPresetKeepLast, setBackupPresetKeepLast] = useState<number>(7);
+  const [backupPresetStopServer, setBackupPresetStopServer] = useState<boolean>(true);
+
   useEffect(() => {
     setDraft(panelSettings || null);
   }, [panelSettings]);
+
+  useEffect(() => {
+    if (backupPresetInstanceId.trim()) return;
+    if (Array.isArray(serverDirs) && serverDirs.length) setBackupPresetInstanceId(String(serverDirs[0] || ""));
+  }, [backupPresetInstanceId, serverDirs]);
 
   const parsedSchedule = useMemo(() => {
     const raw = String(scheduleText || "").trim();
@@ -31,6 +54,58 @@ export default function PanelView() {
 
   const q = settingsQuery.trim().toLowerCase();
   const show = (...terms: string[]) => !q || terms.some((t) => String(t || "").toLowerCase().includes(q));
+
+  function uniqueTaskId(existingTasks: any[], base: string) {
+    const used = new Set((existingTasks || []).map((t) => String(t?.id || "").trim()).filter(Boolean));
+    const root = String(base || "task").trim() || "task";
+    if (!used.has(root)) return root;
+    for (let i = 2; i <= 500; i++) {
+      const id = `${root}-${i}`;
+      if (!used.has(id)) return id;
+    }
+    return `${root}-${Math.floor(Date.now() / 1000)}`;
+  }
+
+  function applyScheduleUpdate(nextSchedule: any) {
+    setScheduleText(JSON.stringify(nextSchedule ?? { tasks: [] }, null, 2) + "\n");
+  }
+
+  function addBackupPreset() {
+    if (!parsedSchedule.ok) return;
+    if (scheduleBusy) return;
+
+    const inst = String(backupPresetInstanceId || "").trim();
+    if (!inst) {
+      setScheduleStatus(t.tr("instance_id is required", "instance_id 不能为空"));
+      return;
+    }
+
+    const hoursRaw = Number(backupPresetEveryHours);
+    const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? hoursRaw : 24;
+    const everySec = Math.max(60, Math.round(hours * 3600));
+
+    const keepRaw = Math.round(Number(backupPresetKeepLast));
+    const keepLast = Number.isFinite(keepRaw) && keepRaw >= 0 ? Math.min(keepRaw, 1000) : 0;
+
+    const prev = (parsedSchedule as any).schedule;
+    const next: any = typeof prev === "object" && prev ? { ...prev } : { tasks: [] };
+    const tasks = Array.isArray(next.tasks) ? [...next.tasks] : [];
+    const id = uniqueTaskId(tasks, `backup-${inst}`);
+
+    const task: any = {
+      id,
+      type: "backup",
+      instance_id: inst,
+      every_sec: everySec,
+      ...(keepLast > 0 ? { keep_last: keepLast } : {}),
+      ...(backupPresetStopServer ? {} : { stop: false }),
+    };
+    tasks.push(task);
+    next.tasks = tasks;
+    applyScheduleUpdate(next);
+    setScheduleStatus(t.tr("Added backup task. Remember to Save.", "已添加备份任务。记得保存。"));
+    window.setTimeout(() => setScheduleStatus(""), 1200);
+  }
 
   async function fetchSchedule() {
     const out = await loadSchedule();
@@ -275,6 +350,65 @@ export default function PanelView() {
             {t.tr("JSON parse error", "JSON 解析错误")}: {parsedSchedule.error}
           </div>
         ) : null}
+
+        <div className="cardSub" style={{ marginTop: 10 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontWeight: 700 }}>{t.tr("Backup Preset", "备份预设")}</div>
+            <button type="button" onClick={addBackupPreset} disabled={!selectedDaemon?.connected || scheduleBusy || !parsedSchedule.ok}>
+              {t.tr("Add backup task", "添加备份任务")}
+            </button>
+          </div>
+          <div className="grid2" style={{ marginTop: 10, alignItems: "end" }}>
+            <div className="field">
+              <label>{t.tr("Instance", "实例")}</label>
+              {Array.isArray(serverDirs) && serverDirs.length ? (
+                <Select
+                  value={backupPresetInstanceId}
+                  onChange={(v: string) => setBackupPresetInstanceId(v)}
+                  options={serverDirs.map((s: any) => ({ value: String(s || ""), label: String(s || "") }))}
+                  placeholder={t.tr("Select instance…", "选择实例…")}
+                />
+              ) : (
+                <input
+                  value={backupPresetInstanceId}
+                  onChange={(e) => setBackupPresetInstanceId(e.target.value)}
+                  placeholder={t.tr("instance_id (e.g. server1)", "instance_id（例如 server1）")}
+                />
+              )}
+            </div>
+            <div className="field">
+              <label>{t.tr("Every (hours)", "间隔（小时）")}</label>
+              <input
+                type="number"
+                min={1}
+                max={24 * 365}
+                step={1}
+                value={backupPresetEveryHours}
+                onChange={(e) => setBackupPresetEveryHours(Math.max(1, Math.round(Number(e.target.value))))}
+              />
+              <div className="hint">{t.tr("Uses every_sec internally.", "内部使用 every_sec。")}</div>
+            </div>
+            <div className="field">
+              <label>{t.tr("Keep last (0 = no prune)", "保留数量（0 = 不清理）")}</label>
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                step={1}
+                value={backupPresetKeepLast}
+                onChange={(e) => setBackupPresetKeepLast(Math.max(0, Math.round(Number(e.target.value))))}
+              />
+            </div>
+            <div className="field">
+              <label>{t.tr("Options", "选项")}</label>
+              <label className="checkRow">
+                <input type="checkbox" checked={backupPresetStopServer} onChange={(e) => setBackupPresetStopServer(e.target.checked)} />
+                {t.tr("Stop server before backup (recommended)", "备份前停止服务器（推荐）")}
+              </label>
+              <div className="hint">{t.tr("Tip: Save updates schedule.json on the daemon.", "提示：点击 Save 才会写入 daemon 的 schedule.json。")}</div>
+            </div>
+          </div>
+        </div>
 
         <textarea
           value={scheduleText}

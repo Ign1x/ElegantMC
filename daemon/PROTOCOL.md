@@ -142,6 +142,52 @@ Daemon 主动连接 Panel 的 WebSocket：
 
 - output: `{ "templates": [ ... ] }`
 
+### `schedule_get`
+
+读取 Scheduler 的 `schedule.json`（默认 `base_dir/schedule.json`）：
+
+- output: `{ "path": "...", "exists": true|false, "schedule": { "tasks": [ ... ] } }`
+
+### `schedule_set`
+
+写入 Scheduler 的 `schedule.json`：
+
+- args: `{ "json": "<raw json text>" }`
+- 校验：
+  - 最多 200 个 tasks
+  - `type` 支持：`restart` / `stop` / `backup` / `announce` / `prune_logs`
+  - `announce` 需要 `message`（单行，最多 400 字符）
+  - `prune_logs` 需要 `keep_last >= 1`
+
+常用字段（`tasks[]`）：
+
+- `id`: string（必填，唯一）
+- `enabled`: bool（可选，false 表示禁用）
+- `type`: string（必填）
+- `instance_id`: string（必填）
+- `every_sec`: int（可选；周期任务）
+- `at_unix`: int（可选；一次性任务）
+- `keep_last`: int（可选；`backup` 的备份保留 / `prune_logs` 的日志保留）
+- `stop`: bool（可选；`backup` 是否备份前停止，默认 true）
+- `message`: string（可选；`announce` 的消息内容）
+
+### `schedule_run_task`
+
+立即运行一个任务（不等待下一次 tick）：
+
+- args: `{ "task_id": "backup-server1" }`
+- output: `{ "task_id": "...", "ran": true, "error": "" }`
+
+### `diagnostics_bundle`
+
+生成诊断包 zip（默认写入 `servers/_diagnostics/`），用于收集排障信息（已对敏感环境变量做脱敏）：
+
+- args（可选）:
+  - `instance_id`: string（只收集某一个实例的配置/日志）
+  - `max_log_bytes`: int（每个 `latest.log` 最多保留尾部字节数，默认 200KB，最大 5MB）
+  - `zip_path`: string（自定义 zip 相对路径，需在 `servers/` 下且以 `.zip` 结尾）
+- output: `{ "zip_path": "_diagnostics/diagnostics-<daemon>-<ts>.zip", "files": 123, "created_at_unix": 1730000000 }`
+
 ### `mc_backup`
 
 将 `servers/<instance_id>/` 目录打包为 zip（写入 `servers/_backups/<instance_id>/`）：

@@ -120,6 +120,7 @@ export default function GamesView() {
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "stopped">("all");
   const [tagFilter, setTagFilter] = useState<string>("");
   const [tagsDraft, setTagsDraft] = useState<string>("");
+  const [compactActions, setCompactActions] = useState<boolean>(false);
 
   const socketText = useMemo(() => {
     if (frpStatus?.running && frpStatus.remote_port) {
@@ -133,6 +134,19 @@ export default function GamesView() {
     const t = window.setTimeout(() => setGameQuery(gameQueryRaw), 150);
     return () => window.clearTimeout(t);
   }, [gameQueryRaw]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(max-width: 520px)");
+    const onChange = () => setCompactActions(!!mq.matches);
+    onChange();
+    if (typeof (mq as any).addEventListener === "function") (mq as any).addEventListener("change", onChange);
+    else (mq as any).addListener(onChange);
+    return () => {
+      if (typeof (mq as any).removeEventListener === "function") (mq as any).removeEventListener("change", onChange);
+      else (mq as any).removeListener(onChange);
+    };
+  }, []);
 
   const runningById = useMemo(() => {
     const list = Array.isArray((selectedDaemon as any)?.heartbeat?.instances) ? (selectedDaemon as any).heartbeat.instances : [];
@@ -294,7 +308,7 @@ export default function GamesView() {
             return 0;
           })()
         : 0;
-    const mapped = list.map((l: any) => {
+    const mapped: RenderLogLine[] = list.map((l: any) => {
       const tsUnix = Number(l.ts_unix || 0);
       let ts = "--:--:--";
       if (Number.isFinite(tsUnix) && tsUnix > 0) {
@@ -308,7 +322,8 @@ export default function GamesView() {
       const upper = String(text || "").toUpperCase();
       const isErr = /\b(ERROR|FATAL)\b/.test(upper) || upper.includes("EXCEPTION") || upper.includes("STACKTRACE");
       const isWarn = /\bWARN(ING)?\b/.test(upper);
-      return { text, level: isErr ? "error" : isWarn ? "warn" : "" };
+      const level: RenderLogLine["level"] = isErr ? "error" : isWarn ? "warn" : "";
+      return { text, level };
     });
     if (logLevelFilter === "warn") {
       const out = mapped.filter((l) => l.level === "warn");
@@ -554,15 +569,17 @@ export default function GamesView() {
             </div>
           </div>
 
-          <div className="toolbarRight">
-            <div className="btnGroup">
-              <button type="button" className="iconBtn" onClick={openInstallModal} disabled={!selectedDaemon?.connected || gameActionBusy}>
-                <Icon name="plus" />
-                {t.tr("Install", "安装")}
-              </button>
-            </div>
+          <div className={`toolbarRight gamesToolbarRight ${compactActions ? "compact" : ""}`}>
+            {!compactActions ? (
+              <div className="btnGroup">
+                <button type="button" className="iconBtn" onClick={openInstallModal} disabled={!selectedDaemon?.connected || gameActionBusy}>
+                  <Icon name="plus" />
+                  {t.tr("Install", "安装")}
+                </button>
+              </div>
+            ) : null}
 
-            <div className="btnGroup">
+            <div className="btnGroup gamesActionGroup">
               <button
                 className={running ? "" : "primary"}
                 onClick={() => (running ? stopServer() : startServer())}
@@ -573,7 +590,8 @@ export default function GamesView() {
               <Select
                 value=""
                 onChange={(v) => {
-                  if (v === "restart") restartServer();
+                  if (v === "install") openInstallModal();
+                  else if (v === "restart") restartServer();
                   else if (v === "backup") backupServer();
                   else if (v === "restore") openRestoreModal();
                   else if (v === "trash") openTrashModal();
@@ -589,6 +607,7 @@ export default function GamesView() {
                 }}
                 placeholder={t.tr("More", "更多")}
                 options={[
+                  ...(compactActions ? [{ value: "install", label: t.tr("Install…", "安装…"), disabled: !selectedDaemon?.connected || gameActionBusy }] : []),
                   { value: "restart", label: t.tr("Restart", "重启"), disabled: !canControl },
                   { value: "backup", label: t.tr("Backup", "备份"), disabled: !canControl },
                   { value: "restore", label: t.tr("Restore…", "恢复…"), disabled: !canControl },
@@ -601,7 +620,7 @@ export default function GamesView() {
                   { value: "files", label: t.tr("Files", "文件"), disabled: !canControl },
                   { value: "delete", label: t.tr("Delete", "删除"), disabled: !canControl },
                 ]}
-                style={{ width: 150 }}
+                style={compactActions ? { width: "100%" } : { width: 150 }}
                 disabled={!selectedDaemon?.connected || gameActionBusy}
               />
               {gameActionBusy ? <span className="badge">{t.tr("busy", "忙碌")}</span> : null}

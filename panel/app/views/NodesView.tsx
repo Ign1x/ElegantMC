@@ -23,6 +23,7 @@ export default function NodesView() {
     openAddNodeModal,
     openAddNodeAndDeploy,
     openDeployDaemonModal,
+    exportDiagnosticsBundle,
     makeDeployComposeYml,
     confirmDialog,
   } = useAppCtx();
@@ -252,6 +253,10 @@ export default function NodesView() {
                       >
                         <Icon name="download" />
                         {t.tr("Deploy", "部署")}
+                      </button>
+                      <button type="button" className="iconBtn" onClick={() => exportDiagnosticsBundle(n.id)} disabled={!n.connected}>
+                        <Icon name="download" />
+                        {t.tr("Diagnostics", "诊断包")}
                       </button>
                       <button
                         type="button"

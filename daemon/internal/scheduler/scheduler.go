@@ -42,15 +42,18 @@ type ScheduleFile struct {
 type Task struct {
 	ID         string `json:"id"`
 	Enabled    *bool  `json:"enabled,omitempty"`
-	Type       string `json:"type"` // "restart" | "backup"
+	Type       string `json:"type"` // "restart" | "stop" | "backup" | "announce" | "prune_logs"
 	InstanceID string `json:"instance_id"`
 
 	EverySec int64 `json:"every_sec,omitempty"` // if set, run periodically
 	AtUnix   int64 `json:"at_unix,omitempty"`   // if set, run once at/after time
 
 	// backup options
-	KeepLast int  `json:"keep_last,omitempty"`
+	KeepLast int   `json:"keep_last,omitempty"` // backup retention (backup) or log retention (prune_logs)
 	Stop     *bool `json:"stop,omitempty"` // default true
+
+	// announce options
+	Message string `json:"message,omitempty"`
 
 	LastRunUnix int64  `json:"last_run_unix,omitempty"`
 	LastError   string `json:"last_error,omitempty"`
@@ -172,6 +175,9 @@ func (m *Manager) runTask(ctx context.Context, t Task) error {
 	case "restart":
 		m.logf("scheduler: restart: instance=%s", t.InstanceID)
 		return m.restart(ctx, t.InstanceID)
+	case "stop":
+		m.logf("scheduler: stop: instance=%s", t.InstanceID)
+		return m.stop(ctx, t.InstanceID)
 	case "backup":
 		stop := true
 		if t.Stop != nil {
@@ -179,6 +185,12 @@ func (m *Manager) runTask(ctx context.Context, t Task) error {
 		}
 		m.logf("scheduler: backup: instance=%s", t.InstanceID)
 		return m.backup(ctx, t.InstanceID, t.KeepLast, stop)
+	case "announce":
+		m.logf("scheduler: announce: instance=%s", t.InstanceID)
+		return m.announce(ctx, t.InstanceID, t.Message)
+	case "prune_logs":
+		m.logf("scheduler: prune_logs: instance=%s", t.InstanceID)
+		return m.pruneLogs(ctx, t.InstanceID, t.KeepLast)
 	default:
 		return fmt.Errorf("unknown task type: %s", t.Type)
 	}
@@ -206,6 +218,13 @@ func (m *Manager) restart(ctx context.Context, instanceID string) error {
 		Xms:        strings.TrimSpace(cfg.Xms),
 		Xmx:        strings.TrimSpace(cfg.Xmx),
 	}, nil)
+}
+
+func (m *Manager) stop(ctx context.Context, instanceID string) error {
+	if m.deps.MC == nil {
+		return errors.New("daemon misconfigured: scheduler deps missing")
+	}
+	return m.deps.MC.Stop(ctx, instanceID)
 }
 
 func (m *Manager) backup(ctx context.Context, instanceID string, keepLast int, stop bool) error {
@@ -250,6 +269,75 @@ func (m *Manager) backup(ctx context.Context, instanceID string, keepLast int, s
 	if keepLast > 0 {
 		_ = pruneOldBackups(destAbs, keepLast)
 	}
+	return nil
+}
+
+func (m *Manager) announce(ctx context.Context, instanceID string, message string) error {
+	if m.deps.MC == nil {
+		return errors.New("daemon misconfigured: scheduler deps missing")
+	}
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return errors.New("message is required")
+	}
+	if strings.ContainsAny(msg, "\r\n") {
+		return errors.New("message must be single-line")
+	}
+	return m.deps.MC.SendConsole(ctx, instanceID, fmt.Sprintf("say %s", msg))
+}
+
+func (m *Manager) pruneLogs(ctx context.Context, instanceID string, keepLast int) error {
+	if m.deps.ServersFS == nil {
+		return errors.New("daemon misconfigured: scheduler deps missing")
+	}
+	if keepLast < 1 {
+		keepLast = 1
+	}
+
+	logsAbs, err := m.deps.ServersFS.Resolve(filepath.Join(instanceID, "logs"))
+	if err != nil {
+		return err
+	}
+	ents, err := os.ReadDir(logsAbs)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+
+	type item struct {
+		path string
+		ts   time.Time
+	}
+	var files []item
+	for _, ent := range ents {
+		if ent.IsDir() {
+			continue
+		}
+		info, err := ent.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, item{path: filepath.Join(logsAbs, ent.Name()), ts: info.ModTime()})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].ts.After(files[j].ts) })
+	if len(files) <= keepLast {
+		return nil
+	}
+
+	deleted := 0
+	for i := keepLast; i < len(files); i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if err := os.Remove(files[i].path); err == nil {
+			deleted++
+		}
+	}
+	m.logf("scheduler: prune_logs ok: instance=%s deleted=%d keep=%d", instanceID, deleted, keepLast)
 	return nil
 }
 

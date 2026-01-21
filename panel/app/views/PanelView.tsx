@@ -35,6 +35,9 @@ export default function PanelView() {
   const [backupPresetWeekday, setBackupPresetWeekday] = useState<number>(1); // Mon
   const [backupPresetKeepLast, setBackupPresetKeepLast] = useState<number>(7);
   const [backupPresetStopServer, setBackupPresetStopServer] = useState<boolean>(true);
+  const [templateKind, setTemplateKind] = useState<"backup" | "restart" | "stop" | "prune_logs" | "announce">("backup");
+  const [pruneLogsKeepLast, setPruneLogsKeepLast] = useState<number>(30);
+  const [announceMessage, setAnnounceMessage] = useState<string>("");
 
   useEffect(() => {
     setDraft(panelSettings || null);
@@ -136,7 +139,7 @@ export default function PanelView() {
     };
   }
 
-  function addBackupPreset() {
+  function addTemplateTask() {
     if (!parsedSchedule.ok) return;
     if (scheduleBusy) return;
 
@@ -148,27 +151,59 @@ export default function PanelView() {
 
     const scheduleSpec = buildCronLikeSchedule();
 
-    const keepRaw = Math.round(Number(backupPresetKeepLast));
-    const keepLast = Number.isFinite(keepRaw) && keepRaw >= 0 ? Math.min(keepRaw, 1000) : 0;
-
     const prev = (parsedSchedule as any).schedule;
     const next: any = typeof prev === "object" && prev ? { ...prev } : { tasks: [] };
     const tasks = Array.isArray(next.tasks) ? [...next.tasks] : [];
-    const id = uniqueTaskId(tasks, `backup-${inst}`);
+    const kind = templateKind;
+    let task: any = null;
 
-    const task: any = {
-      id,
-      type: "backup",
-      instance_id: inst,
-      every_sec: scheduleSpec.every_sec,
-      last_run_unix: scheduleSpec.last_run_unix,
-      ...(keepLast > 0 ? { keep_last: keepLast } : {}),
-      ...(backupPresetStopServer ? {} : { stop: false }),
-    };
+    if (kind === "backup") {
+      const keepRaw = Math.round(Number(backupPresetKeepLast));
+      const keepLast = Number.isFinite(keepRaw) && keepRaw >= 0 ? Math.min(keepRaw, 1000) : 0;
+      const id = uniqueTaskId(tasks, `backup-${inst}`);
+      task = {
+        id,
+        type: "backup",
+        instance_id: inst,
+        every_sec: scheduleSpec.every_sec,
+        last_run_unix: scheduleSpec.last_run_unix,
+        ...(keepLast > 0 ? { keep_last: keepLast } : {}),
+        ...(backupPresetStopServer ? {} : { stop: false }),
+      };
+    } else if (kind === "restart") {
+      const id = uniqueTaskId(tasks, `restart-${inst}`);
+      task = { id, type: "restart", instance_id: inst, every_sec: scheduleSpec.every_sec, last_run_unix: scheduleSpec.last_run_unix };
+    } else if (kind === "stop") {
+      const id = uniqueTaskId(tasks, `stop-${inst}`);
+      task = { id, type: "stop", instance_id: inst, every_sec: scheduleSpec.every_sec, last_run_unix: scheduleSpec.last_run_unix };
+    } else if (kind === "prune_logs") {
+      const keepRaw = Math.round(Number(pruneLogsKeepLast));
+      const keepLast = Number.isFinite(keepRaw) ? Math.max(1, Math.min(keepRaw, 1000)) : 30;
+      const id = uniqueTaskId(tasks, `prune-logs-${inst}`);
+      task = { id, type: "prune_logs", instance_id: inst, every_sec: scheduleSpec.every_sec, last_run_unix: scheduleSpec.last_run_unix, keep_last: keepLast };
+    } else if (kind === "announce") {
+      const msg = String(announceMessage || "").trim();
+      if (!msg) {
+        setScheduleStatus(t.tr("message is required", "message 不能为空"));
+        return;
+      }
+      if (msg.includes("\n") || msg.includes("\r")) {
+        setScheduleStatus(t.tr("message must be single-line", "message 不能换行"));
+        return;
+      }
+      if (msg.length > 400) {
+        setScheduleStatus(t.tr("message too long (max 400)", "message 太长（最多 400）"));
+        return;
+      }
+      const id = uniqueTaskId(tasks, `announce-${inst}`);
+      task = { id, type: "announce", instance_id: inst, every_sec: scheduleSpec.every_sec, last_run_unix: scheduleSpec.last_run_unix, message: msg };
+    }
+
+    if (!task) return;
     tasks.push(task);
     next.tasks = tasks;
     applyScheduleUpdate(next);
-    setScheduleStatus(t.tr("Added backup task. Remember to Save.", "已添加备份任务。记得保存。"));
+    setScheduleStatus(t.tr("Added task. Remember to Save.", "已添加任务。记得保存。"));
     window.setTimeout(() => setScheduleStatus(""), 1200);
   }
 
@@ -413,7 +448,7 @@ export default function PanelView() {
               {scheduleStatus ? (
                 <div className="hint">{scheduleStatus}</div>
               ) : (
-                <div className="hint">{t.tr("Edit daemon schedule.json (restart/backup tasks)", "编辑 daemon schedule.json（重启/备份任务）")}</div>
+                <div className="hint">{t.tr("Edit daemon schedule.json (scheduler tasks)", "编辑 daemon schedule.json（定时任务）")}</div>
               )}
               <div className="hint" style={{ marginTop: 6 }}>
                 {t.tr("daemon", "daemon")}: <code>{selectedDaemon?.id || "-"}</code> · {t.tr("file", "文件")}:{" "}
@@ -437,16 +472,33 @@ export default function PanelView() {
           </div>
         ) : null}
 
-	        <div className="cardSub" style={{ marginTop: 10 }}>
-	          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-	            <div style={{ fontWeight: 700 }}>{t.tr("Backup Preset", "备份预设")}</div>
-	            <button type="button" onClick={addBackupPreset} disabled={!selectedDaemon?.connected || scheduleBusy || !parsedSchedule.ok}>
-	              {t.tr("Add backup task", "添加备份任务")}
-	            </button>
-	          </div>
-	          <div className="grid2" style={{ marginTop: 10, alignItems: "end" }}>
-	            <div className="field">
-	              <label>{t.tr("Instance", "实例")}</label>
+        <div className="cardSub" style={{ marginTop: 10 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>{t.tr("Task Templates", "任务模板")}</div>
+              <div className="hint">{t.tr("Add common tasks without hand-editing JSON.", "无需手改 JSON，快速添加常用任务。")}</div>
+            </div>
+            <button type="button" onClick={addTemplateTask} disabled={!selectedDaemon?.connected || scheduleBusy || !parsedSchedule.ok}>
+              {t.tr("Add task", "添加任务")}
+            </button>
+          </div>
+          <div className="grid2" style={{ marginTop: 10, alignItems: "end" }}>
+            <div className="field">
+              <label>{t.tr("Template", "模板")}</label>
+              <Select
+                value={templateKind}
+                onChange={(v) => setTemplateKind((v as any) || "backup")}
+                options={[
+                  { value: "backup", label: t.tr("Backup", "备份") },
+                  { value: "restart", label: t.tr("Restart", "重启") },
+                  { value: "stop", label: t.tr("Stop", "停止") },
+                  { value: "prune_logs", label: t.tr("Prune logs", "清理日志") },
+                  { value: "announce", label: t.tr("Announce", "公告") },
+                ]}
+              />
+            </div>
+            <div className="field">
+              <label>{t.tr("Instance", "实例")}</label>
               {Array.isArray(serverDirs) && serverDirs.length ? (
                 <Select
                   value={backupPresetInstanceId}
@@ -460,113 +512,150 @@ export default function PanelView() {
                   onChange={(e) => setBackupPresetInstanceId(e.target.value)}
                   placeholder={t.tr("instance_id (e.g. server1)", "instance_id（例如 server1）")}
                 />
-	              )}
-	            </div>
-	            <div className="field">
-	              <label>{t.tr("Schedule", "时间")}</label>
-	              <Select
-	                value={backupPresetScheduleKind}
-	                onChange={(v) => setBackupPresetScheduleKind((v as any) || "daily")}
-	                options={[
-	                  { value: "daily", label: t.tr("Daily at…", "每天在…") },
-	                  { value: "weekly", label: t.tr("Weekly at…", "每周在…") },
-	                  { value: "interval", label: t.tr("Interval", "固定间隔") },
-	                ]}
-	              />
-	              {backupPresetScheduleKind === "interval" ? (
-	                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
-	                  <input
-	                    type="number"
-	                    min={1}
-	                    max={24 * 365}
-	                    step={1}
-	                    value={backupPresetEveryHours}
-	                    onChange={(e) => setBackupPresetEveryHours(Math.max(1, Math.round(Number(e.target.value))))}
-	                  />
-	                  <span className="muted">{t.tr("hours", "小时")}</span>
-	                </div>
-	              ) : backupPresetScheduleKind === "weekly" ? (
-	                <div style={{ marginTop: 8 }}>
-	                  <div className="row" style={{ alignItems: "center" }}>
-	                    <Select
-	                      value={String(backupPresetWeekday)}
-	                      onChange={(v) => setBackupPresetWeekday(Math.max(0, Math.min(6, Math.round(Number(v)))))}
-	                      options={[
-	                        { value: "1", label: t.tr("Mon", "周一") },
-	                        { value: "2", label: t.tr("Tue", "周二") },
-	                        { value: "3", label: t.tr("Wed", "周三") },
-	                        { value: "4", label: t.tr("Thu", "周四") },
-	                        { value: "5", label: t.tr("Fri", "周五") },
-	                        { value: "6", label: t.tr("Sat", "周六") },
-	                        { value: "0", label: t.tr("Sun", "周日") },
-	                      ]}
-	                    />
-	                    <input
-	                      type="number"
-	                      min={0}
-	                      max={23}
-	                      step={1}
-	                      value={backupPresetAtHour}
-	                      onChange={(e) => setBackupPresetAtHour(Math.max(0, Math.min(23, Math.round(Number(e.target.value)))))}
-	                      style={{ width: 86 }}
-	                    />
-	                    <span className="muted">:</span>
-	                    <input
-	                      type="number"
-	                      min={0}
-	                      max={59}
-	                      step={1}
-	                      value={backupPresetAtMinute}
-	                      onChange={(e) => setBackupPresetAtMinute(Math.max(0, Math.min(59, Math.round(Number(e.target.value)))))}
-	                      style={{ width: 86 }}
-	                    />
-	                  </div>
-	                </div>
-	              ) : (
-	                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
-	                  <input
-	                    type="number"
-	                    min={0}
-	                    max={23}
-	                    step={1}
-	                    value={backupPresetAtHour}
-	                    onChange={(e) => setBackupPresetAtHour(Math.max(0, Math.min(23, Math.round(Number(e.target.value)))))}
-	                  />
-	                  <span className="muted">:</span>
-	                  <input
-	                    type="number"
-	                    min={0}
-	                    max={59}
-	                    step={1}
-	                    value={backupPresetAtMinute}
-	                    onChange={(e) => setBackupPresetAtMinute(Math.max(0, Math.min(59, Math.round(Number(e.target.value)))))}
-	                  />
-	                </div>
-	              )}
-	              <div className="hint">
-	                {t.tr("Next run", "下次运行")}: <code>{fmtUnix(Number(backupSchedulePreview.next_run_unix || nowUnix))}</code> ·{" "}
-	                <span className="muted">
-	                  {t.tr("cron (ref)", "cron（参考）")}: <code>{String(backupSchedulePreview.cron || "-")}</code>
-	                </span>
-	              </div>
-	            </div>
-	            <div className="field">
-	              <label>{t.tr("Keep last (0 = no prune)", "保留数量（0 = 不清理）")}</label>
-	              <input
-	                type="number"
-                min={0}
-                max={1000}
-                step={1}
-                value={backupPresetKeepLast}
-                onChange={(e) => setBackupPresetKeepLast(Math.max(0, Math.round(Number(e.target.value))))}
-              />
+              )}
             </div>
+
             <div className="field">
-              <label>{t.tr("Options", "选项")}</label>
-              <label className="checkRow">
-                <input type="checkbox" checked={backupPresetStopServer} onChange={(e) => setBackupPresetStopServer(e.target.checked)} />
-                {t.tr("Stop server before backup (recommended)", "备份前停止服务器（推荐）")}
-              </label>
+              <label>{t.tr("Schedule", "时间")}</label>
+              <Select
+                value={backupPresetScheduleKind}
+                onChange={(v) => setBackupPresetScheduleKind((v as any) || "daily")}
+                options={[
+                  { value: "daily", label: t.tr("Daily at…", "每天在…") },
+                  { value: "weekly", label: t.tr("Weekly at…", "每周在…") },
+                  { value: "interval", label: t.tr("Interval", "固定间隔") },
+                ]}
+              />
+              {backupPresetScheduleKind === "interval" ? (
+                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={24 * 365}
+                    step={1}
+                    value={backupPresetEveryHours}
+                    onChange={(e) => setBackupPresetEveryHours(Math.max(1, Math.round(Number(e.target.value))))}
+                  />
+                  <span className="muted">{t.tr("hours", "小时")}</span>
+                </div>
+              ) : backupPresetScheduleKind === "weekly" ? (
+                <div style={{ marginTop: 8 }}>
+                  <div className="row" style={{ alignItems: "center" }}>
+                    <Select
+                      value={String(backupPresetWeekday)}
+                      onChange={(v) => setBackupPresetWeekday(Math.max(0, Math.min(6, Math.round(Number(v)))))}
+                      options={[
+                        { value: "1", label: t.tr("Mon", "周一") },
+                        { value: "2", label: t.tr("Tue", "周二") },
+                        { value: "3", label: t.tr("Wed", "周三") },
+                        { value: "4", label: t.tr("Thu", "周四") },
+                        { value: "5", label: t.tr("Fri", "周五") },
+                        { value: "6", label: t.tr("Sat", "周六") },
+                        { value: "0", label: t.tr("Sun", "周日") },
+                      ]}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={23}
+                      step={1}
+                      value={backupPresetAtHour}
+                      onChange={(e) => setBackupPresetAtHour(Math.max(0, Math.min(23, Math.round(Number(e.target.value)))))}
+                      style={{ width: 86 }}
+                    />
+                    <span className="muted">:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={59}
+                      step={1}
+                      value={backupPresetAtMinute}
+                      onChange={(e) => setBackupPresetAtMinute(Math.max(0, Math.min(59, Math.round(Number(e.target.value)))))}
+                      style={{ width: 86 }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    step={1}
+                    value={backupPresetAtHour}
+                    onChange={(e) => setBackupPresetAtHour(Math.max(0, Math.min(23, Math.round(Number(e.target.value)))))}
+                  />
+                  <span className="muted">:</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    step={1}
+                    value={backupPresetAtMinute}
+                    onChange={(e) => setBackupPresetAtMinute(Math.max(0, Math.min(59, Math.round(Number(e.target.value)))))}
+                  />
+                </div>
+              )}
+              <div className="hint">
+                {t.tr("Next run", "下次运行")}: <code>{fmtUnix(Number(backupSchedulePreview.next_run_unix || nowUnix))}</code> ·{" "}
+                <span className="muted">
+                  {t.tr("cron (ref)", "cron（参考）")}: <code>{String(backupSchedulePreview.cron || "-")}</code>
+                </span>
+              </div>
+            </div>
+
+            {templateKind === "backup" ? (
+              <>
+                <div className="field">
+                  <label>{t.tr("Keep last (0 = no prune)", "保留数量（0 = 不清理）")}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={backupPresetKeepLast}
+                    onChange={(e) => setBackupPresetKeepLast(Math.max(0, Math.round(Number(e.target.value))))}
+                  />
+                </div>
+                <div className="field">
+                  <label>{t.tr("Options", "选项")}</label>
+                  <label className="checkRow">
+                    <input type="checkbox" checked={backupPresetStopServer} onChange={(e) => setBackupPresetStopServer(e.target.checked)} />
+                    {t.tr("Stop server before backup (recommended)", "备份前停止服务器（推荐）")}
+                  </label>
+                </div>
+              </>
+            ) : null}
+
+            {templateKind === "prune_logs" ? (
+              <div className="field">
+                <label>{t.tr("Keep last logs", "保留日志数量")}</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  step={1}
+                  value={pruneLogsKeepLast}
+                  onChange={(e) => setPruneLogsKeepLast(Math.max(1, Math.round(Number(e.target.value))))}
+                />
+                <div className="hint">{t.tr("Keeps newest files in logs/ and deletes older ones.", "保留 logs/ 下最新的文件，删除更旧的。")}</div>
+              </div>
+            ) : null}
+
+            {templateKind === "announce" ? (
+              <div className="field" style={{ gridColumn: "1 / -1" }}>
+                <label>{t.tr("Message", "消息")}</label>
+                <input
+                  value={announceMessage}
+                  onChange={(e) => setAnnounceMessage(e.target.value)}
+                  maxLength={400}
+                  placeholder={t.tr("e.g. Server will restart in 5 minutes", "例如：服务器将在 5 分钟后重启")}
+                />
+                <div className="hint">{t.tr("Sends: say <message>", "将执行：say <消息>")}</div>
+              </div>
+            ) : null}
+
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
               <div className="hint">{t.tr("Tip: Save updates schedule.json on the daemon.", "提示：点击 Save 才会写入 daemon 的 schedule.json。")}</div>
             </div>
           </div>
@@ -576,7 +665,7 @@ export default function PanelView() {
           value={scheduleText}
           onChange={(e) => setScheduleText(e.target.value)}
           rows={14}
-          placeholder='{"tasks":[{"id":"daily-backup","type":"backup","instance_id":"server1","every_sec":86400,"keep_last":7}]}'
+          placeholder='{"tasks":[{"id":"daily-backup","type":"backup","instance_id":"server1","every_sec":86400,"keep_last":7},{"id":"daily-restart","type":"restart","instance_id":"server1","every_sec":86400}]}'
           style={{ width: "100%", marginTop: 10 }}
           disabled={!selectedDaemon?.connected}
         />
@@ -625,7 +714,7 @@ export default function PanelView() {
                             title: t.tr("Run Task", "运行任务"),
                             confirmLabel: t.tr("Run", "运行"),
                             cancelLabel: t.tr("Cancel", "取消"),
-                            danger: String(t.type || "").toLowerCase() === "restart",
+                            danger: ["restart", "stop", "prune_logs"].includes(String(t.type || "").toLowerCase()),
                           });
                           if (!ok) return;
                           setScheduleBusy(true);

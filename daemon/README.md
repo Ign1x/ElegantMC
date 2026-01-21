@@ -39,7 +39,7 @@ FRP：
 - `ELEGANTMC_FRPC_PATH`：`frpc` 可执行文件路径（默认：`base_dir/bin/frpc` 或 `frpc.exe`）
 - `ELEGANTMC_FRP_WORK_DIR`：FRP 工作目录（默认：`base_dir/frp`）
 
-Scheduler（重启/备份，可选）：
+Scheduler（定时任务，可选）：
 
 - `ELEGANTMC_SCHEDULE_ENABLED`：是否启用（默认 `1`）
 - `ELEGANTMC_SCHEDULE_FILE`：任务文件路径（默认：`base_dir/schedule.json`）
@@ -51,7 +51,10 @@ Scheduler（重启/备份，可选）：
 {
   "tasks": [
     { "id": "restart-server1", "type": "restart", "instance_id": "server1", "every_sec": 86400 },
-    { "id": "backup-server1", "type": "backup", "instance_id": "server1", "every_sec": 86400, "keep_last": 7 }
+    { "id": "backup-server1", "type": "backup", "instance_id": "server1", "every_sec": 86400, "keep_last": 7 },
+    { "id": "stop-server1", "type": "stop", "instance_id": "server1", "every_sec": 86400 },
+    { "id": "announce-server1", "type": "announce", "instance_id": "server1", "every_sec": 86400, "message": "Server will restart in 5 minutes" },
+    { "id": "prune-logs-server1", "type": "prune_logs", "instance_id": "server1", "every_sec": 86400, "keep_last": 30 }
   ]
 }
 ```
@@ -59,7 +62,10 @@ Scheduler（重启/备份，可选）：
 说明：
 
 - `restart` 会读取 `servers/<instance>/.elegantmc.json` 作为启动参数（jar/java/xms/xmx）
+- `stop` 会停止实例进程（若未运行则忽略）
 - `backup` 会输出 zip 到 `servers/_backups/<instance>/`
+- `announce` 会向实例控制台发送 `say <message>`
+- `prune_logs` 会清理 `servers/<instance>/logs/` 目录下更旧的文件（保留 `keep_last` 个）
 
 镜像/下载源（可选）：
 

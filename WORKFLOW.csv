@@ -72,7 +72,7 @@ WF-20260118-70,P1,daemon,done,Trash folder commands,"Panel needs safe delete/res
 WF-20260118-71,P2,daemon,done,Backup retention policy,"Backups can grow unbounded and waste disk","Daemon supports keeping last N backups per instance and pruning older backups",feat(daemon): backup retention
 WF-20260118-72,P2,scheduler,done,Schedule backups from UI,"Backups require manual clicks and are easy to forget","Scheduler UI includes a preset to run backups and optionally prune old backups",feat(scheduler): backup presets
 WF-20260118-73,P2,scheduler,done,Cron builder and validation,"Cron expressions are hard to write and easy to get wrong","Scheduler UI provides a cron builder and validates next run times",ux(scheduler): cron builder
-WF-20260118-74,P2,scheduler,todo,Scheduler task templates,"Common tasks require re-typing commands","Provide templates for restart, stop, backup, prune logs, and announce messages",ux(scheduler): templates
+WF-20260118-74,P2,scheduler,done,Scheduler task templates,"Common tasks require re-typing commands","Provide templates for restart, stop, backup, prune logs, and announce messages",ux(scheduler): templates
 WF-20260118-75,P2,logs,done,Download latest.log,"Users often need to share logs for debugging","Logs view includes a one-click download for latest.log (and gz where available)",feat(logs): download latest
 WF-20260118-76,P3,logs,done,Copy log line,"Copying a specific line is tedious","Each rendered log line has a copy button with visual feedback",ux(logs): copy line
 WF-20260118-77,P3,logs,done,Scroll-to-bottom indicator,"Users lose track when new logs arrive while scrolled up","Show a 'new logs' pill that jumps to bottom and resumes follow",ux(logs): new logs indicator
@@ -83,7 +83,7 @@ WF-20260118-81,P2,panel-ui,done,Consistent modal styling,"Dialogs look inconsist
 WF-20260118-82,P3,panel-ui,done,Skeleton loaders,"Loading states flash text and feel rough","Add skeleton placeholders for lists and cards while data loads",ui(panel): skeleton loaders
 WF-20260118-83,P3,panel-ui,done,Toast improvements,"Toasts can overlap and vanish too fast for errors","Toast stack has max count, pause-on-hover, and 'Copy details' for errors",ux(panel): toast improvements
 WF-20260118-84,P2,panel-ui,done,UI error boundary,"A single render error can break the entire panel view","Add a top-level error boundary with a reset option and debug details",fix(panel): error boundary
-WF-20260118-85,P2,panel-ui,todo,Mobile Games layout,"Games actions still feel cramped on small screens","Games view uses a responsive layout with an overflow menu on narrow widths",ux(games): mobile layout
+WF-20260118-85,P2,panel-ui,done,Mobile Games layout,"Games actions still feel cramped on small screens","Games view uses a responsive layout with an overflow menu on narrow widths",ux(games): mobile layout
 WF-20260118-86,P2,panel-ui,done,Select keyboard navigation,"Custom Select lacks good keyboard UX compared to native select","Select supports arrow navigation, typeahead, Enter select, and Esc close",ux(ui): select keyboard
 WF-20260118-87,P3,panel-ui,done,Accessible focus rings,"Focus indicators are inconsistent and sometimes invisible in dark mode","All interactive controls show clear focus ring with WCAG-friendly colors",a11y(panel): focus rings
 WF-20260118-88,P3,panel-ui,done,ARIA labels for icon buttons,"Icon-only buttons are not accessible","All icon buttons have aria-labels and tooltips",a11y(panel): aria labels
@@ -95,8 +95,8 @@ WF-20260118-93,P2,i18n,done,Translate remaining UI strings,"UI still mixes Engli
 WF-20260118-94,P3,i18n,done,Number/date formatting,"Dates/sizes are formatted inconsistently across locales","Use locale-aware formatting for dates, times, and file sizes",ux(i18n): locale formatting
 WF-20260118-95,P3,panel-ui,done,In-app changelog,"Users cannot easily see what changed between versions","Add a 'What's new' dialog that reads CHANGELOG.md and shows latest entries",feat(panel): changelog dialog
 WF-20260118-96,P3,docs,done,In-app help links,"Troubleshooting knowledge is only in README","Add contextual help links/tooltips to relevant docs sections",docs(panel): in-app help
-WF-20260118-97,P2,daemon,todo,Diagnostic bundle command,"Debugging remote issues is difficult without collecting logs/configs","Daemon can generate a diagnostics zip with sanitized config and recent logs",feat(daemon): diagnostics bundle
-WF-20260118-98,P2,panel-ui,todo,Export diagnostics from Panel,"Users need an easy way to share diagnostics without SSH","Panel adds a button to request and download the daemon diagnostics bundle",feat(panel): export diagnostics
+WF-20260118-97,P2,daemon,done,Diagnostic bundle command,"Debugging remote issues is difficult without collecting logs/configs","Daemon can generate a diagnostics zip with sanitized config and recent logs",feat(daemon): diagnostics bundle
+WF-20260118-98,P2,panel-ui,done,Export diagnostics from Panel,"Users need an easy way to share diagnostics without SSH","Panel adds a button to request and download the daemon diagnostics bundle",feat(panel): export diagnostics
 WF-20260118-99,P1,modpacks,done,Modrinth search install,"Installing modpacks requires pasting URLs manually","Add Modrinth search UI with version selection and one-click install",feat(modpacks): modrinth search
 WF-20260118-100,P2,modpacks,todo,Per-file install progress,"Large modpacks feel frozen during download","Install UI shows file count, current file, and overall progress bar",ux(modpacks): progress UI
 WF-20260118-101,P2,modpacks,todo,Forge/NeoForge mrpack support,"Some mrpacks target Forge/NeoForge and current install flow is Fabric/Quilt-focused","Installer detects loader type and offers correct server pack instructions or automation where possible",feat(modpacks): forge mrpack
@@ -113,7 +113,7 @@ WF-20260118-111,P1,files,done,Delete files and folders,"Cleaning up files requir
 WF-20260118-112,P2,files,done,Download folder as zip,"Downloading a directory tree is hard","Files view supports zipping and downloading a folder server-side",feat(files): download folder zip
 WF-20260118-113,P3,files,todo,Diff viewer,"Comparing config changes is hard","Add a simple diff viewer for two selected text files with syntax highlight",feat(files): diff viewer
 WF-20260118-114,P2,files,todo,Syntax highlighting,"Editing config files without highlighting causes mistakes","Editor supports highlighting for properties/json/yaml/log files",ui(files): syntax highlighting
-WF-20260118-115,P3,files,todo,JSON formatter and validator,"JSON edits can easily break formatting","Add format/validate buttons for JSON files with error markers",feat(files): json tools
+WF-20260118-115,P3,files,done,JSON formatter and validator,"JSON edits can easily break formatting","Add format/validate buttons for JSON files with error markers",feat(files): json tools
 WF-20260118-116,P3,files,todo,YAML validator,"YAML indentation errors are common","Add YAML validation with clear error messages and line numbers",feat(files): yaml validate
 WF-20260118-117,P2,games,done,Console command history,"Console input loses previous commands and slows admin workflows","Console input supports history (Up/Down) and persists per instance",ux(games): command history
 WF-20260118-118,P3,games,done,Common command shortcuts,"Admins repeatedly type the same commands","Provide quick buttons for stop, save-all, say, whitelist reload, and reload",ux(games): command shortcuts
@@ -147,7 +147,7 @@ WF-20260118-145,P2,games,todo,Memory presets and warnings,"Users pick Xmx/Xms va
 WF-20260118-146,P1,games,done,Pre-start port conflict check,"Start failures due to port conflicts are common","Before starting, UI/daemon checks port availability and shows a clear fix",fix(games): port conflict precheck
 WF-20260118-147,P2,daemon,todo,Port reservation support,"Multiple instances starting concurrently can race on ports","Daemon supports reserving ports for instance start to avoid races",feat(daemon): port reservation
 WF-20260118-148,P2,ux,todo,Unified Danger Zone,"Destructive actions are scattered and easy to misclick","All destructive actions are grouped under a 'Danger Zone' with strong confirmations",ux(panel): danger zone
-WF-20260118-149,P2,ux,todo,Undo delete snackbar,"Even with confirmations, users sometimes delete by mistake","After delete, show undo snackbar for a short period (when trash enabled)",ux(panel): undo delete
+WF-20260118-149,P2,ux,done,Undo delete snackbar,"Even with confirmations, users sometimes delete by mistake","After delete, show undo snackbar for a short period (when trash enabled)",ux(panel): undo delete
 WF-20260118-150,P2,panel-server,todo,Version update banner,"Users don't know when panel/daemon updates are available","Show banner if a newer release is available (manual check configurable)",feat(panel): update banner
 WF-20260118-151,P2,ci,done,Go unit tests in CI,"Daemon behavior changes can regress without coverage","Ensure CI runs go test for daemon packages and fails on test failures",ci(daemon): go test
 WF-20260118-152,P3,ci,todo,Panel linting,"Code style regressions slip in over time","Add a lightweight lint script (eslint) and run in CI",ci(panel): lint
@@ -177,7 +177,7 @@ WF-20260118-175,P3,files,done,Copy path from breadcrumbs,Copying long paths is a
 WF-20260118-176,P3,files,done,Unsaved changes guard,Switching files or navigating away can silently discard edits,Files editor warns on unsaved changes when switching file/path/tab,fix(files): unsaved guard
 WF-20260118-177,P3,files,done,Persist file view state,Refreshing the panel loses current folder and opened file context,Files view persists current path and selected file per daemon/instance,ux(files): persist files state
 WF-20260118-178,P2,files,todo,Multi-select bulk actions,Managing many files requires repetitive clicks,Files view supports multi-select and bulk delete/move/download actions,feat(files): bulk actions
-WF-20260118-179,P3,files,todo,Image preview,Binary files like PNG/JPG require download to inspect,Files view previews common images inline and still allows download,feat(files): image preview
+WF-20260118-179,P3,files,done,Image preview,Binary files like PNG/JPG require download to inspect,Files view previews common images inline and still allows download,feat(files): image preview
 WF-20260118-180,P3,modpacks,todo,Show modpack metadata,"After installing a pack, users can't see which loader/version it used",Games UI shows modpack name/version/loader when instance came from a pack,ux(modpacks): show metadata
 WF-20260118-181,P3,modpacks,todo,Persist pack manifest,Update/repair needs pack info but it gets lost after install,Installer saves a normalized pack manifest file into the instance folder,feat(modpacks): persist manifest
 WF-20260118-182,P3,panel-ui,done,Install modal remembers last provider,Users frequently install from the same source and must reselect it,Install modal defaults to the last-used provider and remembers it,ux(modpacks): remember provider

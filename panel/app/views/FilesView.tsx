@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppCtx } from "../appCtx";
 import Icon from "../ui/Icon";
 import Select from "../ui/Select";
@@ -19,6 +19,7 @@ export default function FilesView() {
     fsSelectedFileMode,
     fsFileText,
     setFsFileText,
+    fsPreviewUrl,
     setFsSelectedFile,
     setFsPath,
     openEntry,
@@ -52,11 +53,17 @@ export default function FilesView() {
   const [queryRaw, setQueryRaw] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [dragOver, setDragOver] = useState<boolean>(false);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const [jsonCheck, setJsonCheck] = useState<{ ok: boolean; message: string; line?: number; col?: number; pos?: number } | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => setQuery(queryRaw), 160);
     return () => window.clearTimeout(t);
   }, [queryRaw]);
+
+  useEffect(() => {
+    setJsonCheck(null);
+  }, [fsSelectedFile]);
 
   const viewEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -67,6 +74,57 @@ export default function FilesView() {
 
   const inst = String(instanceId || "").trim();
   const entriesLoading = fsStatus === "Loading..." && !fsEntries.length;
+
+  const isJson = !!fsSelectedFile && fsSelectedFileMode === "text" && fsSelectedFile.toLowerCase().endsWith(".json");
+
+  function jsonErrorLocation(text: string, err: any) {
+    const msg = String(err?.message || err);
+    const m = msg.match(/position\s+(\d+)/i);
+    if (!m) return { message: msg } as { message: string; pos?: number; line?: number; col?: number };
+    const pos = Math.max(0, Math.min(text.length, Math.floor(Number(m[1]))));
+    const upto = text.slice(0, pos);
+    const lines = upto.split("\n");
+    const line = lines.length;
+    const col = (lines[lines.length - 1]?.length ?? 0) + 1;
+    return { message: msg, pos, line, col };
+  }
+
+  function focusEditorAt(pos: number) {
+    const el = editorRef.current;
+    if (!el) return;
+    try {
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    } catch {
+      // ignore
+    }
+  }
+
+  function validateJsonNow() {
+    const text = String(fsFileText || "");
+    try {
+      JSON.parse(text);
+      setJsonCheck({ ok: true, message: t.tr("JSON valid", "JSON 有效") });
+    } catch (e: any) {
+      const loc = jsonErrorLocation(text, e);
+      setJsonCheck({ ok: false, message: loc.message, line: loc.line, col: loc.col, pos: loc.pos });
+      if (typeof loc.pos === "number") focusEditorAt(loc.pos);
+    }
+  }
+
+  function formatJsonNow() {
+    const text = String(fsFileText || "");
+    try {
+      const obj = JSON.parse(text);
+      const pretty = JSON.stringify(obj, null, 2) + "\n";
+      setFsFileText(pretty);
+      setJsonCheck({ ok: true, message: t.tr("Formatted JSON", "已格式化 JSON") });
+    } catch (e: any) {
+      const loc = jsonErrorLocation(text, e);
+      setJsonCheck({ ok: false, message: loc.message, line: loc.line, col: loc.col, pos: loc.pos });
+      if (typeof loc.pos === "number") focusEditorAt(loc.pos);
+    }
+  }
 
   if (!selected) {
     return (
@@ -317,7 +375,8 @@ export default function FilesView() {
               {t.tr("file", "文件")}: <code>{fsSelectedFile || "-"}</code>
             </span>
             {fsDirty ? <span className="badge">{t.tr("unsaved", "未保存")}</span> : null}
-            {fsSelectedFile && fsSelectedFileMode !== "text" ? <span className="badge">{t.tr("download-only", "仅下载")}</span> : null}
+            {fsSelectedFile && fsSelectedFileMode === "binary" ? <span className="badge">{t.tr("download-only", "仅下载")}</span> : null}
+            {fsSelectedFile && fsSelectedFileMode === "image" ? <span className="badge">{t.tr("preview", "预览")}</span> : null}
             {fsSelectedFile &&
             fsSelectedFile.toLowerCase().endsWith(".jar") &&
             inst &&
@@ -329,19 +388,61 @@ export default function FilesView() {
             <button type="button" onClick={saveFile} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
               {t.tr("Save", "保存")}
             </button>
+            {isJson ? (
+              <>
+                <button type="button" onClick={formatJsonNow} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
+                  {t.tr("Format JSON", "格式化 JSON")}
+                </button>
+                <button type="button" onClick={validateJsonNow} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
+                  {t.tr("Validate JSON", "校验 JSON")}
+                </button>
+              </>
+            ) : null}
           </div>
-          <textarea
-            value={fsFileText}
-            onChange={(e) => setFsFileText(e.target.value)}
-            rows={16}
-            placeholder={
-              fsSelectedFile && fsSelectedFileMode !== "text"
-                ? t.tr("Binary file (editing disabled). Use Download.", "二进制文件（禁止编辑）。请使用 Download 下载。")
-                : t.tr("Select a text file to edit (e.g. server.properties)", "选择一个文本文件进行编辑（例如 server.properties）")
-            }
-            style={{ width: "100%", marginTop: 8 }}
-            disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}
-          />
+          {fsSelectedFileMode === "image" && fsPreviewUrl ? (
+            <div style={{ marginTop: 8 }}>
+              <img
+                src={fsPreviewUrl}
+                alt={fsSelectedFile.split("/").pop() || "image"}
+                style={{ maxWidth: "100%", maxHeight: 520, borderRadius: 12, border: "1px solid var(--border)" }}
+              />
+            </div>
+          ) : (
+            <textarea
+              ref={editorRef}
+              value={fsFileText}
+              onChange={(e) => {
+                setFsFileText(e.target.value);
+                if (jsonCheck && !jsonCheck.ok) setJsonCheck(null);
+              }}
+              rows={16}
+              placeholder={
+                fsSelectedFile && fsSelectedFileMode !== "text"
+                  ? t.tr("Binary file (editing disabled). Use Download.", "二进制文件（禁止编辑）。请使用 Download 下载。")
+                  : t.tr("Select a text file to edit (e.g. server.properties)", "选择一个文本文件进行编辑（例如 server.properties）")
+              }
+              style={{ width: "100%", marginTop: 8 }}
+              disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}
+            />
+          )}
+          {isJson && jsonCheck && !jsonCheck.ok ? (
+            <div className="hint" style={{ color: "var(--danger)", marginTop: 6 }}>
+              {t.tr("JSON error", "JSON 错误")}: {jsonCheck.message}
+              {typeof jsonCheck.line === "number" && typeof jsonCheck.col === "number" ? (
+                <>
+                  {" "}
+                  (<code>
+                    {t.tr("line", "行")} {jsonCheck.line}, {t.tr("col", "列")} {jsonCheck.col}
+                  </code>
+                  )
+                </>
+              ) : null}
+            </div>
+          ) : isJson && jsonCheck && jsonCheck.ok ? (
+            <div className="hint" style={{ color: "var(--ok)", marginTop: 6 }}>
+              {jsonCheck.message}
+            </div>
+          ) : null}
           <div className="hint">{t.tr("Tip: binary/large files are download-only.", "提示：二进制/大文件为 download-only（可用 Download 下载）。")}</div>
         </div>
       </div>

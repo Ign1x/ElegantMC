@@ -363,6 +363,8 @@ func (e *Executor) Execute(ctx context.Context, cmd protocol.Command) protocol.C
 		return e.scheduleSet(cmd)
 	case "schedule_run_task":
 		return e.scheduleRunTask(ctx, cmd)
+	case "diagnostics_bundle":
+		return e.diagnosticsBundle(ctx, cmd)
 	case "fs_read":
 		return e.fsRead(cmd)
 	case "fs_write":

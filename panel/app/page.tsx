@@ -583,6 +583,17 @@ export default function HomePage() {
   const [toastsPaused, setToastsPaused] = useState<boolean>(false);
   const toastPauseStartRef = useRef<number | null>(null);
 
+  // Undo (trash)
+  const [undoTrash, setUndoTrash] = useState<{
+    daemonId: string;
+    trashId: string;
+    trashPath: string;
+    originalPath: string;
+    message: string;
+    expiresAtMs: number;
+  } | null>(null);
+  const [undoTrashBusy, setUndoTrashBusy] = useState<boolean>(false);
+
   // Command palette (Ctrl+K / /)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState<boolean>(false);
   const [cmdPaletteQuery, setCmdPaletteQuery] = useState<string>("");
@@ -605,9 +616,10 @@ export default function HomePage() {
   const [fsPath, setFsPath] = useState<string>("");
   const [fsEntries, setFsEntries] = useState<any[]>([]);
   const [fsSelectedFile, setFsSelectedFile] = useState<string>("");
-  const [fsSelectedFileMode, setFsSelectedFileMode] = useState<"none" | "text" | "binary">("none");
+  const [fsSelectedFileMode, setFsSelectedFileMode] = useState<"none" | "text" | "binary" | "image">("none");
   const [fsFileText, setFsFileText] = useState<string>("");
   const [fsFileTextSaved, setFsFileTextSaved] = useState<string>("");
+  const [fsPreviewUrl, setFsPreviewUrl] = useState<string>("");
   const [fsStatus, setFsStatus] = useState<string>("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadInputKey, setUploadInputKey] = useState<number>(0);
@@ -1496,6 +1508,161 @@ export default function HomePage() {
     return result?.output || {};
   }
 
+  async function callCommandForDaemon(daemonIdRaw: string, name: string, args: any, timeoutMs = 60_000) {
+    const daemonId = String(daemonIdRaw || "").trim();
+    if (!daemonId) throw new Error(t.tr("daemon_id is required", "daemon_id 不能为空"));
+
+    let res: Response;
+    let json: any = null;
+    try {
+      res = await apiFetch(`/api/daemons/${encodeURIComponent(daemonId)}/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, args, timeoutMs }),
+      });
+      json = await res.json().catch(() => null);
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      pushToast(
+        t.tr(`Command ${name} failed`, `命令 ${name} 执行失败`),
+        "error",
+        9000,
+        JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, error: msg }, null, 2)
+      );
+      throw e;
+    }
+
+    if (!res.ok) {
+      const msg = String(json?.error || t.tr("request failed", "请求失败"));
+      pushToast(
+        t.tr(`Command ${name} failed: ${msg}`, `命令 ${name} 执行失败：${msg}`),
+        "error",
+        9000,
+        JSON.stringify({ daemon: daemonId, name, args: sanitizeForToast(args), timeoutMs, status: res.status, error: msg }, null, 2)
+      );
+      throw new Error(msg);
+    }
+
+    return json.result;
+  }
+
+  async function callOkCommandForDaemon(daemonId: string, name: string, args: any, timeoutMs = 60_000) {
+    const result = await callCommandForDaemon(daemonId, name, args, timeoutMs);
+    if (!result?.ok) {
+      const msg = String(result?.error || t.tr("command failed", "命令执行失败"));
+      pushToast(
+        t.tr(`Command ${name} failed: ${msg}`, `命令 ${name} 执行失败：${msg}`),
+        "error",
+        9000,
+        JSON.stringify({ daemon: String(daemonId || "").trim(), name, args: sanitizeForToast(args), timeoutMs, error: msg }, null, 2)
+      );
+      throw new Error(msg);
+    }
+    return result?.output || {};
+  }
+
+  async function exportDiagnosticsBundle(nodeId: string) {
+    const daemonId = String(nodeId || "").trim();
+    if (!daemonId) return;
+    if (!daemons.find((d: any) => String(d?.id || "") === daemonId)?.connected) {
+      setNodesStatus(t.tr("daemon offline", "daemon 离线"));
+      return;
+    }
+
+    let zipPath = "";
+    let downloaded = false;
+    setNodesStatus(t.tr("Building diagnostics...", "生成诊断包中..."));
+    try {
+      const out = await callOkCommandForDaemon(daemonId, "diagnostics_bundle", {}, 2 * 60_000);
+      zipPath = String(out?.zip_path || "").trim();
+      if (!zipPath) throw new Error(t.tr("zip_path missing", "zip_path 缺失"));
+
+      const st = await callOkCommandForDaemon(daemonId, "fs_stat", { path: zipPath }, 10_000);
+      const size = Math.max(0, Number(st?.size || 0));
+      const max = 50 * 1024 * 1024;
+      if (size > max) {
+        throw new Error(
+          t.tr(
+            `Diagnostics zip too large to download in browser (${fmtBytes(size)} > ${fmtBytes(max)}). File: ${zipPath}`,
+            `诊断包过大，无法在浏览器中下载（${fmtBytes(size)} > ${fmtBytes(max)}）。文件：${zipPath}`
+          )
+        );
+      }
+
+      setNodesStatus(t.tr("Downloading...", "下载中..."));
+      const payload = await callOkCommandForDaemon(daemonId, "fs_read", { path: zipPath }, 5 * 60_000);
+      const bytes = b64DecodeBytes(String(payload?.b64 || ""));
+
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = zipPath.split("/").pop() || `diagnostics-${daemonId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      downloaded = true;
+      setNodesStatus(t.tr("Downloaded", "已下载"));
+      setTimeout(() => setNodesStatus(""), 900);
+      pushToast(t.tr(`Downloaded diagnostics: ${a.download}`, `已下载诊断包：${a.download}`), "ok");
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      setNodesStatus(msg);
+      if (zipPath) {
+        pushToast(
+          t.tr("Diagnostics bundle created (download failed)", "诊断包已生成（下载失败）"),
+          "error",
+          9000,
+          JSON.stringify({ daemon: daemonId, zip_path: zipPath, error: msg }, null, 2)
+        );
+      }
+    } finally {
+      if (zipPath && downloaded) {
+        try {
+          await callOkCommandForDaemon(daemonId, "fs_delete", { path: zipPath }, 60_000);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  async function undoLastTrash() {
+    const u = undoTrash;
+    if (!u || undoTrashBusy) return;
+    setUndoTrashBusy(true);
+    try {
+      const args: any = {};
+      if (u.trashId) args.trash_id = u.trashId;
+      if (u.trashPath) args.trash_path = u.trashPath;
+      await callOkCommandForDaemon(u.daemonId, "fs_trash_restore", args, 60_000);
+      pushToast(t.tr("Restored from trash", "已从回收站恢复"), "ok");
+      setUndoTrash(null);
+
+      if (String(selected || "").trim() === u.daemonId) {
+        try {
+          await refreshServerDirs();
+        } catch {
+          // ignore
+        }
+        try {
+          await refreshFsNow();
+        } catch {
+          // ignore
+        }
+        if (u.originalPath && !u.originalPath.includes("/")) {
+          setInstanceId(u.originalPath);
+        }
+      }
+    } catch (e: any) {
+      pushToast(t.tr("Undo failed", "撤销失败"), "error", 9000, String(e?.message || e));
+    } finally {
+      setUndoTrashBusy(false);
+    }
+  }
+
   async function openNodeDetails(id: string) {
     setNodeDetailsId(id);
     setNodeDetailsOpen(true);
@@ -1747,17 +1914,17 @@ export default function HomePage() {
   }
 
   async function copyText(text: string) {
-    const t = String(text || "");
-    if (!t) return;
+    const txt = String(text || "");
+    if (!txt) return;
     try {
-      await navigator.clipboard.writeText(t);
+      await navigator.clipboard.writeText(txt);
       setServerOpStatus(t.tr("Copied", "已复制"));
       pushToast(t.tr("Copied", "已复制"), "ok");
       return;
     } catch {
       // ignore
     }
-    openCopyModal(t);
+    openCopyModal(txt);
   }
 
   function pushToast(message: string, kind: "info" | "ok" | "error" = "info", ttlMs?: number, detail?: string) {
@@ -1778,13 +1945,30 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!toasts.length) return;
-    const t = window.setInterval(() => {
+    const timer = window.setInterval(() => {
       if (toastsPaused) return;
       const now = Date.now();
       setToasts((prev) => prev.filter((x) => x.expiresAtMs > now));
     }, 250);
-    return () => window.clearInterval(t);
+    return () => window.clearInterval(timer);
   }, [toasts.length, toastsPaused]);
+
+  useEffect(() => {
+    if (!undoTrash) return;
+    const ms = Math.max(0, Math.round(undoTrash.expiresAtMs - Date.now()));
+    if (ms <= 0) {
+      setUndoTrash(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setUndoTrash((cur) => (cur && cur.expiresAtMs === undoTrash.expiresAtMs ? null : cur)), ms);
+    return () => window.clearTimeout(timer);
+  }, [undoTrash]);
+
+  useEffect(() => {
+    return () => {
+      if (fsPreviewUrl) URL.revokeObjectURL(fsPreviewUrl);
+    };
+  }, [fsPreviewUrl]);
 
   function pauseToasts() {
     if (toastPauseStartRef.current != null) return;
@@ -1820,10 +2004,10 @@ export default function HomePage() {
       }
     }
     tick();
-    const t = setInterval(tick, 2000);
+    const timer = setInterval(tick, 2000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, [selected, authed]);
 
@@ -2470,15 +2654,28 @@ export default function HomePage() {
 
 	    const inTrash = target === "_trash" || target.startsWith("_trash/");
 	    setFsStatus(inTrash ? t.tr(`Deleting ${target} ...`, `删除中 ${target} ...`) : t.tr(`Moving to trash: ${target} ...`, `移入回收站：${target} ...`));
-	    try {
-	      if (inTrash) {
-	        await callOkCommand("fs_delete", { path: target }, 60_000);
-	      } else {
-	        await callOkCommand("fs_trash", { path: target }, 60_000);
-	      }
-      if (fsSelectedFile === target || fsSelectedFile.startsWith(`${target}/`)) {
-        setFsSelectedFile("");
-        setFsFileText("");
+		    try {
+		      if (inTrash) {
+		        await callOkCommand("fs_delete", { path: target }, 60_000);
+		      } else {
+		        const out = await callOkCommand("fs_trash", { path: target }, 60_000);
+		        const trashId = String(out?.trash_id || "").trim();
+		        const trashPath = String(out?.trash_path || "").trim();
+		        const daemonId = String(selected || "").trim();
+		        if (daemonId && (trashId || trashPath)) {
+		          setUndoTrash({
+		            daemonId,
+		            trashId,
+		            trashPath,
+		            originalPath: target,
+		            message: t.tr(`Moved to trash: ${target}`, `已移入回收站：${target}`),
+		            expiresAtMs: Date.now() + 9000,
+		          });
+		        }
+		      }
+	      if (fsSelectedFile === target || fsSelectedFile.startsWith(`${target}/`)) {
+	        setFsSelectedFile("");
+	        setFsFileText("");
       }
       await refreshFsNow();
       setFsStatus(inTrash ? t.tr("Deleted", "已删除") : t.tr("Moved to trash", "已移入回收站"));
@@ -2500,21 +2697,24 @@ export default function HomePage() {
       });
       if (!ok) return;
     }
-    if (entry?.isDir) {
-      setFsSelectedFile("");
-      setFsFileText("");
-      setFsFileTextSaved("");
-      setFsSelectedFileMode("none");
-      setFsPath(joinRelPath(fsPath, name));
-      return;
-    }
-    const size = Number(entry?.size || 0);
-    const lower = String(name).toLowerCase();
-    const filePath = joinRelPath(fsPath, name);
-    const likelyBinaryExt =
-      lower.endsWith(".jar") ||
-      lower.endsWith(".zip") ||
-      lower.endsWith(".png") ||
+	    if (entry?.isDir) {
+	      setFsSelectedFile("");
+	      setFsFileText("");
+	      setFsFileTextSaved("");
+	      setFsSelectedFileMode("none");
+	      setFsPreviewUrl("");
+	      setFsPath(joinRelPath(fsPath, name));
+	      return;
+	    }
+	    const size = Number(entry?.size || 0);
+	    const lower = String(name).toLowerCase();
+	    const filePath = joinRelPath(fsPath, name);
+	    const isImage =
+	      lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".gif") || lower.endsWith(".webp");
+	    const likelyBinaryExt =
+	      lower.endsWith(".jar") ||
+	      lower.endsWith(".zip") ||
+	      lower.endsWith(".png") ||
       lower.endsWith(".jpg") ||
       lower.endsWith(".jpeg") ||
       lower.endsWith(".gif") ||
@@ -2529,40 +2729,76 @@ export default function HomePage() {
       lower.endsWith(".class") ||
       lower.endsWith(".dll") ||
       lower.endsWith(".exe") ||
-      lower.endsWith(".so") ||
-      lower.endsWith(".dat") ||
-      lower.endsWith(".nbt");
+	      lower.endsWith(".so") ||
+	      lower.endsWith(".dat") ||
+	      lower.endsWith(".nbt");
 
-    if (size > 512 * 1024 || likelyBinaryExt) {
-      setFsSelectedFile(filePath);
-      setFsFileText("");
-      setFsFileTextSaved("");
-      setFsSelectedFileMode("binary");
-      setFsStatus(t.tr("Binary/large file: download-only", "二进制/大文件：仅支持下载"));
-      return;
-    }
-    setFsStatus(t.tr(`Reading ${filePath} ...`, `读取中 ${filePath} ...`));
-    try {
-      const payload = await callOkCommand("fs_read", { path: filePath });
-      const bytes = b64DecodeBytes(String(payload?.b64 || ""));
-      if (isProbablyBinary(bytes)) {
-        setFsSelectedFile(filePath);
-        setFsFileText("");
-        setFsFileTextSaved("");
-        setFsSelectedFileMode("binary");
-        setFsStatus(t.tr("Binary file: download-only", "二进制文件：仅支持下载"));
-        return;
-      }
-      const text = new TextDecoder().decode(bytes);
-      setFsSelectedFile(filePath);
-      setFsSelectedFileMode("text");
-      setFsFileText(text);
-      setFsFileTextSaved(text);
-      setFsStatus("");
-    } catch (e: any) {
-      setFsStatus(String(e?.message || e));
-    }
-  }
+	    if (isImage) {
+	      const max = 5 * 1024 * 1024;
+	      if (size > 0 && size <= max) {
+	        setFsSelectedFile(filePath);
+	        setFsFileText("");
+	        setFsFileTextSaved("");
+	        setFsSelectedFileMode("image");
+	        setFsPreviewUrl("");
+	        setFsStatus(t.tr(`Previewing ${filePath} ...`, `预览中 ${filePath} ...`));
+	        try {
+	          const payload = await callOkCommand("fs_read", { path: filePath }, 60_000);
+	          const bytes = b64DecodeBytes(String(payload?.b64 || ""));
+	          const mime =
+	            lower.endsWith(".png")
+	              ? "image/png"
+	              : lower.endsWith(".gif")
+	                ? "image/gif"
+	                : lower.endsWith(".webp")
+	                  ? "image/webp"
+	                  : "image/jpeg";
+	          const blob = new Blob([bytes], { type: mime });
+	          const url = URL.createObjectURL(blob);
+	          setFsPreviewUrl(url);
+	          setFsStatus("");
+	        } catch (e: any) {
+	          setFsSelectedFileMode("binary");
+	          setFsPreviewUrl("");
+	          setFsStatus(String(e?.message || e));
+	        }
+	        return;
+	      }
+	    }
+
+	    if (size > 512 * 1024 || likelyBinaryExt) {
+	      setFsSelectedFile(filePath);
+	      setFsFileText("");
+	      setFsFileTextSaved("");
+	      setFsSelectedFileMode("binary");
+	      setFsPreviewUrl("");
+	      setFsStatus(t.tr("Binary/large file: download-only", "二进制/大文件：仅支持下载"));
+	      return;
+	    }
+	    setFsStatus(t.tr(`Reading ${filePath} ...`, `读取中 ${filePath} ...`));
+	    try {
+	      const payload = await callOkCommand("fs_read", { path: filePath });
+	      const bytes = b64DecodeBytes(String(payload?.b64 || ""));
+	      if (isProbablyBinary(bytes)) {
+	        setFsSelectedFile(filePath);
+	        setFsFileText("");
+	        setFsFileTextSaved("");
+	        setFsSelectedFileMode("binary");
+	        setFsPreviewUrl("");
+	        setFsStatus(t.tr("Binary file: download-only", "二进制文件：仅支持下载"));
+	        return;
+	      }
+	      const text = new TextDecoder().decode(bytes);
+	      setFsSelectedFile(filePath);
+	      setFsSelectedFileMode("text");
+	      setFsFileText(text);
+	      setFsFileTextSaved(text);
+	      setFsPreviewUrl("");
+	      setFsStatus("");
+	    } catch (e: any) {
+	      setFsStatus(String(e?.message || e));
+	    }
+	  }
 
   async function openFileByPath(path: string) {
     const p = String(path || "")
@@ -2589,12 +2825,13 @@ export default function HomePage() {
     const name = p.split("/").filter(Boolean).pop() || "";
     if (!name) return;
 
-    setFsPath(dir);
-    setFsSelectedFile("");
-    setFsFileText("");
-    setFsFileTextSaved("");
-    setFsSelectedFileMode("none");
-    setFsStatus(t.tr(`Opening ${p} ...`, `打开中 ${p} ...`));
+	    setFsPath(dir);
+	    setFsSelectedFile("");
+	    setFsFileText("");
+	    setFsFileTextSaved("");
+	    setFsSelectedFileMode("none");
+	    setFsPreviewUrl("");
+	    setFsStatus(t.tr(`Opening ${p} ...`, `打开中 ${p} ...`));
 
     try {
       const payload = await callOkCommand("fs_list", { path: dir }, 30_000);
@@ -2608,13 +2845,15 @@ export default function HomePage() {
         return;
       }
 
-      const size = Number(entry?.size || 0);
-      const lower = String(name).toLowerCase();
-      const filePath = joinRelPath(dir, name);
-      const likelyBinaryExt =
-        lower.endsWith(".jar") ||
-        lower.endsWith(".zip") ||
-        lower.endsWith(".png") ||
+	      const size = Number(entry?.size || 0);
+	      const lower = String(name).toLowerCase();
+	      const filePath = joinRelPath(dir, name);
+	      const isImage =
+	        lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".gif") || lower.endsWith(".webp");
+	      const likelyBinaryExt =
+	        lower.endsWith(".jar") ||
+	        lower.endsWith(".zip") ||
+	        lower.endsWith(".png") ||
         lower.endsWith(".jpg") ||
         lower.endsWith(".jpeg") ||
         lower.endsWith(".gif") ||
@@ -2630,38 +2869,74 @@ export default function HomePage() {
         lower.endsWith(".dll") ||
         lower.endsWith(".exe") ||
         lower.endsWith(".so") ||
-        lower.endsWith(".dat") ||
-        lower.endsWith(".nbt");
+	        lower.endsWith(".dat") ||
+	        lower.endsWith(".nbt");
 
-      if (size > 512 * 1024 || likelyBinaryExt) {
-        setFsSelectedFile(filePath);
-        setFsFileText("");
-        setFsFileTextSaved("");
-        setFsSelectedFileMode("binary");
-        setFsStatus(t.tr("Binary/large file: download-only", "二进制/大文件：仅支持下载"));
-        return;
-      }
+	      if (isImage) {
+	        const max = 5 * 1024 * 1024;
+	        if (size > 0 && size <= max) {
+	          setFsSelectedFile(filePath);
+	          setFsFileText("");
+	          setFsFileTextSaved("");
+	          setFsSelectedFileMode("image");
+	          setFsPreviewUrl("");
+	          setFsStatus(t.tr(`Previewing ${filePath} ...`, `预览中 ${filePath} ...`));
+	          try {
+	            const payload = await callOkCommand("fs_read", { path: filePath }, 60_000);
+	            const bytes = b64DecodeBytes(String(payload?.b64 || ""));
+	            const mime =
+	              lower.endsWith(".png")
+	                ? "image/png"
+	                : lower.endsWith(".gif")
+	                  ? "image/gif"
+	                  : lower.endsWith(".webp")
+	                    ? "image/webp"
+	                    : "image/jpeg";
+	            const blob = new Blob([bytes], { type: mime });
+	            const url = URL.createObjectURL(blob);
+	            setFsPreviewUrl(url);
+	            setFsStatus("");
+	          } catch (e: any) {
+	            setFsSelectedFileMode("binary");
+	            setFsPreviewUrl("");
+	            setFsStatus(String(e?.message || e));
+	          }
+	          return;
+	        }
+	      }
 
-      const file = await callOkCommand("fs_read", { path: filePath }, 30_000);
-      const bytes = b64DecodeBytes(String(file?.b64 || ""));
-      if (isProbablyBinary(bytes)) {
-        setFsSelectedFile(filePath);
-        setFsFileText("");
-        setFsFileTextSaved("");
-        setFsSelectedFileMode("binary");
-        setFsStatus(t.tr("Binary file: download-only", "二进制文件：仅支持下载"));
-        return;
-      }
-      const text = new TextDecoder().decode(bytes);
-      setFsSelectedFile(filePath);
-      setFsSelectedFileMode("text");
-      setFsFileText(text);
-      setFsFileTextSaved(text);
-      setFsStatus("");
-    } catch (e: any) {
-      setFsStatus(String(e?.message || e));
-    }
-  }
+	      if (size > 512 * 1024 || likelyBinaryExt) {
+	        setFsSelectedFile(filePath);
+	        setFsFileText("");
+	        setFsFileTextSaved("");
+	        setFsSelectedFileMode("binary");
+	        setFsPreviewUrl("");
+	        setFsStatus(t.tr("Binary/large file: download-only", "二进制/大文件：仅支持下载"));
+	        return;
+	      }
+
+	      const file = await callOkCommand("fs_read", { path: filePath }, 30_000);
+	      const bytes = b64DecodeBytes(String(file?.b64 || ""));
+	      if (isProbablyBinary(bytes)) {
+	        setFsSelectedFile(filePath);
+	        setFsFileText("");
+	        setFsFileTextSaved("");
+	        setFsSelectedFileMode("binary");
+	        setFsPreviewUrl("");
+	        setFsStatus(t.tr("Binary file: download-only", "二进制文件：仅支持下载"));
+	        return;
+	      }
+	      const text = new TextDecoder().decode(bytes);
+	      setFsSelectedFile(filePath);
+	      setFsSelectedFileMode("text");
+	      setFsFileText(text);
+	      setFsFileTextSaved(text);
+	      setFsPreviewUrl("");
+	      setFsStatus("");
+	    } catch (e: any) {
+	      setFsStatus(String(e?.message || e));
+	    }
+	  }
 
   async function setServerJarFromFile(filePath: string) {
     const inst = instanceId.trim();
@@ -3166,12 +3441,12 @@ export default function HomePage() {
 	      Number.isFinite(defaultFrpRemoteRaw) && defaultFrpRemoteRaw >= 0 && defaultFrpRemoteRaw <= 65535 ? defaultFrpRemoteRaw : frpRemotePort;
 	    const profileId =
 	      profiles.find((p) => p.id === frpProfileId)?.id || profiles[0]?.id || "";
-	    setInstallForm((prev) => {
-	      const isKind = (k: any) =>
-	        k === "paper" || k === "zip" || k === "zip_url" || k === "modrinth" || k === "curseforge" || k === "vanilla";
-	      const chosenKind = isKind(preferredKind) ? preferredKind : isKind(prev?.kind) ? prev.kind : "vanilla";
-	      const relJar =
-	        chosenKind === "zip" || chosenKind === "zip_url" || chosenKind === "modrinth" || chosenKind === "curseforge" ? jarRel : jarNameOnly;
+		    setInstallForm((prev) => {
+		      const isKind = (k: any): k is InstallForm["kind"] =>
+		        k === "paper" || k === "zip" || k === "zip_url" || k === "modrinth" || k === "curseforge" || k === "vanilla";
+		      const chosenKind = isKind(preferredKind) ? preferredKind : isKind(prev?.kind) ? prev.kind : "vanilla";
+		      const relJar =
+		        chosenKind === "zip" || chosenKind === "zip_url" || chosenKind === "modrinth" || chosenKind === "curseforge" ? jarRel : jarNameOnly;
 	      return {
 	        instanceId: suggested,
 	        kind: chosenKind,
@@ -3631,12 +3906,24 @@ export default function HomePage() {
 	        // ignore
 	      }
 
-      const out = await callOkCommand("fs_trash", { path: id }, 60_000);
-      const trashPath = String(out?.trash_path || "").trim();
-      setServerOpStatus(trashPath ? t.tr(`Moved to trash: ${trashPath}`, `已移入回收站：${trashPath}`) : t.tr("Moved to trash", "已移入回收站"));
-      setInstanceId("");
-      if (fsPath === id || fsPath.startsWith(`${id}/`)) {
-        setFsPath("");
+	      const out = await callOkCommand("fs_trash", { path: id }, 60_000);
+	      const trashId = String(out?.trash_id || "").trim();
+	      const trashPath = String(out?.trash_path || "").trim();
+	      const daemonId = String(selected || "").trim();
+	      if (daemonId && (trashId || trashPath)) {
+	        setUndoTrash({
+	          daemonId,
+	          trashId,
+	          trashPath,
+	          originalPath: id,
+	          message: t.tr(`Moved ${id} to trash`, `已将 ${id} 移入回收站`),
+	          expiresAtMs: Date.now() + 9000,
+	        });
+	      }
+	      setServerOpStatus(trashPath ? t.tr(`Moved to trash: ${trashPath}`, `已移入回收站：${trashPath}`) : t.tr("Moved to trash", "已移入回收站"));
+	      setInstanceId("");
+	      if (fsPath === id || fsPath.startsWith(`${id}/`)) {
+	        setFsPath("");
         setFsSelectedFile("");
         setFsFileText("");
       }
@@ -4601,6 +4888,7 @@ export default function HomePage() {
     openAddNodeModal,
     openAddNodeAndDeploy,
     openDeployDaemonModal,
+    exportDiagnosticsBundle,
 
     // Games
     serverDirs,
@@ -4667,12 +4955,13 @@ export default function HomePage() {
     fsSelectedFile,
     fsDirty,
     setFsSelectedFile,
-    fsSelectedFileMode,
-    fsFileText,
-    setFsFileText,
-    openEntry,
-    openFileByPath,
-    setServerJarFromFile,
+	    fsSelectedFileMode,
+	    fsFileText,
+	    setFsFileText,
+	    fsPreviewUrl,
+	    openEntry,
+	    openFileByPath,
+	    setServerJarFromFile,
     saveFile,
     uploadInputKey,
     uploadFile,
@@ -5089,26 +5378,49 @@ export default function HomePage() {
 	        </div>
 	      ) : null}
 
-	      {toasts.length ? (
-	        <div className="toastWrap" aria-live="polite" aria-relevant="additions" onMouseEnter={pauseToasts} onMouseLeave={resumeToasts}>
-	          {toasts.map((t) => (
-	            <button
-	              key={t.id}
-	              type="button"
-	              className={`toast ${t.kind} ${t.detail ? "clickable" : ""}`}
-	              title={t.detail ? t.tr("Click to copy details", "点击复制详情") : undefined}
-	              onClick={() => (t.detail ? openCopyModal(t.detail) : null)}
-	            >
-	              {t.message}
-	            </button>
-	          ))}
-	        </div>
-	      ) : null}
+			      {toasts.length ? (
+			        <div className="toastWrap" aria-live="polite" aria-relevant="additions" onMouseEnter={pauseToasts} onMouseLeave={resumeToasts}>
+			          {toasts.map((toast) => (
+			            <button
+			              key={toast.id}
+		              type="button"
+		              className={`toast ${toast.kind} ${toast.detail ? "clickable" : ""}`}
+		              title={toast.detail ? t.tr("Click to copy details", "点击复制详情") : undefined}
+		              onClick={() => (toast.detail ? openCopyModal(toast.detail) : null)}
+		            >
+		              {toast.message}
+		            </button>
+			          ))}
+			        </div>
+			      ) : null}
 
-      <div className="appShell">
-        <div className={`sidebarOverlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
-	      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="sidebarHeader">
+			      {undoTrash ? (
+			        <div className="snackbarWrap" aria-live="polite" aria-relevant="additions">
+			          <div className="snackbar">
+			            <span className="snackbarMsg">{undoTrash.message}</span>
+			            <div className="snackbarActions">
+			              <button type="button" className="linkBtn" onClick={undoLastTrash} disabled={undoTrashBusy}>
+			                {undoTrashBusy ? t.tr("Restoring...", "恢复中...") : t.tr("Undo", "撤销")}
+			              </button>
+			              <button
+			                type="button"
+			                className="iconBtn iconOnly"
+			                aria-label={t.tr("Dismiss", "关闭")}
+			                title={t.tr("Dismiss", "关闭")}
+			                onClick={() => setUndoTrash(null)}
+			                disabled={undoTrashBusy}
+			              >
+			                ×
+			              </button>
+			            </div>
+			          </div>
+			        </div>
+			      ) : null}
+
+	      <div className="appShell">
+	        <div className={`sidebarOverlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
+		      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+	        <div className="sidebarHeader">
           <img
             className="logo"
             src={String(panelSettings?.logo_url || "/logo.svg")}
@@ -5122,32 +5434,32 @@ export default function HomePage() {
           </div>
         </div>
 
-        <nav className="nav">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={`navItem ${tab === t.id ? "active" : ""}`}
-              onClick={async () => {
-                if (tab === "files" && t.id !== "files" && fsDirty) {
-                  const ok = await confirmDialog(t.tr(`Discard unsaved changes in ${fsSelectedFile}?`, `放弃 ${fsSelectedFile} 的未保存更改？`), {
-                    title: t.tr("Unsaved Changes", "未保存更改"),
-                    confirmLabel: t.tr("Discard", "放弃"),
-                    cancelLabel: t.tr("Cancel", "取消"),
-                    danger: true,
-                  });
-                  if (!ok) return;
-                }
-                setTab(t.id);
-                setSidebarOpen(false);
-              }}
-            >
-              <span>{t.label}</span>
-              {t.id === "games" && instanceStatus?.running ? <span className="badge ok">{t.tr("running", "运行中")}</span> : null}
-              {t.id === "nodes" && nodes.length ? <span className="badge">{nodes.length}</span> : null}
-            </button>
-          ))}
-        </nav>
+	        <nav className="nav">
+	          {tabs.map((tabItem) => (
+	            <button
+	              key={tabItem.id}
+	              type="button"
+	              className={`navItem ${tab === tabItem.id ? "active" : ""}`}
+	              onClick={async () => {
+	                if (tab === "files" && tabItem.id !== "files" && fsDirty) {
+	                  const ok = await confirmDialog(t.tr(`Discard unsaved changes in ${fsSelectedFile}?`, `放弃 ${fsSelectedFile} 的未保存更改？`), {
+	                    title: t.tr("Unsaved Changes", "未保存更改"),
+	                    confirmLabel: t.tr("Discard", "放弃"),
+	                    cancelLabel: t.tr("Cancel", "取消"),
+	                    danger: true,
+	                  });
+	                  if (!ok) return;
+	                }
+	                setTab(tabItem.id);
+	                setSidebarOpen(false);
+	              }}
+	            >
+	              <span>{tabItem.label}</span>
+	              {tabItem.id === "games" && instanceStatus?.running ? <span className="badge ok">{t.tr("running", "运行中")}</span> : null}
+	              {tabItem.id === "nodes" && nodes.length ? <span className="badge">{nodes.length}</span> : null}
+	            </button>
+	          ))}
+	        </nav>
 
 	        <div className="sidebarFooter">
 	          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap" }}>

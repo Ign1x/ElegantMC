@@ -73,8 +73,9 @@ func (e *Executor) scheduleSet(cmd protocol.Command) protocol.CommandResult {
 		if t.Type == "" {
 			return fail(fmt.Sprintf("task[%d].type is required", i))
 		}
-		switch strings.ToLower(t.Type) {
-		case "restart", "backup":
+		tt := strings.ToLower(t.Type)
+		switch tt {
+		case "restart", "stop", "backup", "announce", "prune_logs":
 			// ok
 		default:
 			return fail(fmt.Sprintf("task[%d].type unsupported: %s", i, t.Type))
@@ -90,6 +91,27 @@ func (e *Executor) scheduleSet(cmd protocol.Command) protocol.CommandResult {
 		}
 		if t.KeepLast < 0 {
 			return fail(fmt.Sprintf("task[%d].keep_last invalid", i))
+		}
+		if t.KeepLast > 1000 {
+			return fail(fmt.Sprintf("task[%d].keep_last too large (max 1000)", i))
+		}
+
+		if tt == "announce" {
+			t.Message = strings.TrimSpace(t.Message)
+			if t.Message == "" {
+				return fail(fmt.Sprintf("task[%d].message is required", i))
+			}
+			if strings.ContainsAny(t.Message, "\r\n") {
+				return fail(fmt.Sprintf("task[%d].message must be single-line", i))
+			}
+			if len(t.Message) > 400 {
+				return fail(fmt.Sprintf("task[%d].message too long (max 400)", i))
+			}
+		}
+		if tt == "prune_logs" {
+			if t.KeepLast < 1 {
+				return fail(fmt.Sprintf("task[%d].keep_last is required for prune_logs", i))
+			}
 		}
 	}
 

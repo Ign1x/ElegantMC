@@ -626,6 +626,25 @@ button.navItem .badge {
   flex-wrap: wrap;
 }
 
+.gamesToolbarRight.compact {
+  width: 100%;
+  align-items: stretch;
+}
+
+.gamesToolbarRight.compact .gamesActionGroup {
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.gamesToolbarRight.compact .gamesActionGroup > button {
+  width: 100%;
+}
+
+.gamesToolbarRight.compact .gamesActionGroup .uiSelect {
+  width: 100%;
+}
+
 .row {
   display: flex;
   gap: 8px;
@@ -1147,6 +1166,45 @@ button.cmdPaletteItem:disabled {
   gap: 8px;
   z-index: 60;
   pointer-events: auto;
+}
+
+.snackbarWrap {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 59;
+  pointer-events: auto;
+  max-width: min(720px, calc(100vw - 32px));
+}
+
+.snackbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border2);
+  background: rgba(16, 20, 36, 0.90);
+  color: var(--text);
+  box-shadow: var(--shadow2);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+}
+
+.snackbarMsg {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snackbarActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .toast {

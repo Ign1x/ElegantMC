@@ -15,6 +15,15 @@ type State = {
 export default class ErrorBoundary extends React.Component<Props, State> {
   state: State = { error: null, details: "" };
 
+  tr(en: string, zh: string) {
+    try {
+      const locale = String(localStorage.getItem("elegantmc_locale") || "en").toLowerCase();
+      return locale.startsWith("zh") ? zh : en;
+    } catch {
+      return en;
+    }
+  }
+
   static getDerivedStateFromError(error: Error): State {
     return { error, details: "" };
   }
@@ -40,6 +49,22 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     }
   };
 
+  resetUiState = () => {
+    try {
+      const keys = Object.keys(localStorage || {});
+      for (const k of keys) {
+        if (String(k || "").startsWith("elegantmc_")) localStorage.removeItem(k);
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      location.reload();
+    } catch {
+      // ignore
+    }
+  };
+
   render() {
     if (!this.state.error) return this.props.children;
 
@@ -51,35 +76,39 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         <div className="modal" style={{ width: "min(860px, 100%)" }}>
           <div className="modalHeader">
             <div>
-              <div style={{ fontWeight: 800 }}>Something went wrong</div>
-              <div className="hint">The UI crashed. You can reload, or copy details for debugging.</div>
+              <div style={{ fontWeight: 800 }}>{this.tr("Something went wrong", "出错了")}</div>
+              <div className="hint">{this.tr("The UI crashed. Reload the page, or copy debug info.", "UI 崩溃了。你可以刷新页面，或复制调试信息。")}</div>
             </div>
             <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
               <button type="button" onClick={() => location.reload()}>
-                Reload
+                {this.tr("Reload", "刷新")}
               </button>
-              <button type="button" onClick={this.reset}>
-                Reset
+              <button type="button" className="iconBtn" onClick={this.copy}>
+                {this.tr("Copy debug info", "复制调试信息")}
+              </button>
+              <button type="button" className="dangerBtn iconBtn" onClick={this.resetUiState} title={this.tr("Clears local UI cache", "清理本地 UI 缓存")}>
+                {this.tr("Reset UI state", "重置 UI 状态")}
+              </button>
+              <button type="button" onClick={this.reset} title={this.tr("Try to recover without reload", "尝试不刷新恢复")}>
+                {this.tr("Try again", "重试")}
               </button>
             </div>
           </div>
 
           <div className="card danger" style={{ marginTop: 12 }}>
-            <b>Error:</b> {msg}
+            <b>{this.tr("Error:", "错误：")}</b> {msg}
           </div>
 
-          <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center" }}>
-            <div className="hint">Details</div>
-            <button type="button" onClick={this.copy}>
-              Copy
-            </button>
-          </div>
-          <pre style={{ marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid var(--border)", overflow: "auto", maxHeight: 420 }}>
-            {details}
-          </pre>
+          <details style={{ marginTop: 12 }}>
+            <summary className="hint" style={{ cursor: "pointer" }}>
+              {this.tr("Details", "详情")}
+            </summary>
+            <pre style={{ marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid var(--border)", overflow: "auto", maxHeight: 420 }}>
+              {details}
+            </pre>
+          </details>
         </div>
       </div>
     );
   }
 }
-

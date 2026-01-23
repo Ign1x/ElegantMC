@@ -1404,6 +1404,22 @@ button.logNewPill:hover {
   margin-bottom: 12px;
 }
 
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 6px;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 12px 6px 6px 6px;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+
 .cmdPaletteList {
   margin-top: 10px;
   display: flex;

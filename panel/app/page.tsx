@@ -7099,95 +7099,89 @@ export default function HomePage() {
         </div>
 	      ) : null}
 
-	      {confirmOpen ? (
-	        <div className="modalOverlay" onClick={() => closeConfirm(false)}>
-	          <div className="modal" style={{ width: "min(520px, 100%)" }} onClick={(e) => e.stopPropagation()}>
-	            <div className="modalHeader">
-	              <div>
-	                <div style={{ fontWeight: 800 }}>{confirmTitle}</div>
-	                <div className="hint" style={{ whiteSpace: "pre-wrap" }}>
-	                  {confirmMessage}
-	                </div>
-	              </div>
-	              <button type="button" onClick={() => closeConfirm(false)}>
-	                {t.tr("Close", "关闭")}
-	              </button>
-	            </div>
-	            <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-	              <button type="button" onClick={() => closeConfirm(false)}>
-	                {confirmCancelLabel}
-	              </button>
-	              <button type="button" className={confirmDanger ? "dangerBtn" : "primary"} onClick={() => closeConfirm(true)}>
-	                {confirmConfirmLabel}
-	              </button>
-	            </div>
-	          </div>
-	        </div>
-	      ) : null}
+		      {confirmOpen ? (
+		        <div className="modalOverlay" onClick={() => closeConfirm(false)}>
+		          <div className="modal" style={{ width: "min(520px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+		            <div className="modalHeader">
+		              <div style={{ fontWeight: 800 }}>{confirmTitle}</div>
+		              <button type="button" onClick={() => closeConfirm(false)}>
+		                {t.tr("Close", "关闭")}
+		              </button>
+		            </div>
+		            <div className="modalBody">
+		              <div className="hint" style={{ whiteSpace: "pre-wrap" }}>
+		                {confirmMessage}
+		              </div>
+		            </div>
+		            <div className="modalFooter">
+		              <button type="button" onClick={() => closeConfirm(false)}>
+		                {confirmCancelLabel}
+		              </button>
+		              <button type="button" className={confirmDanger ? "dangerBtn" : "primary"} onClick={() => closeConfirm(true)}>
+		                {confirmConfirmLabel}
+		              </button>
+		            </div>
+		          </div>
+		        </div>
+		      ) : null}
 
-	      {promptOpen ? (
-	        <div className="modalOverlay" onClick={() => closePrompt(null)}>
-	          <div className="modal" style={{ width: "min(520px, 100%)" }} onClick={(e) => e.stopPropagation()}>
-	            <div className="modalHeader">
-	              <div>
-	                <div style={{ fontWeight: 800 }}>{promptTitle}</div>
-	                {promptMessage ? (
-	                  <div className="hint" style={{ whiteSpace: "pre-wrap" }}>
-	                    {promptMessage}
-	                  </div>
-	                ) : null}
-	              </div>
-	              <button type="button" onClick={() => closePrompt(null)}>
-	                {t.tr("Close", "关闭")}
-	              </button>
-	            </div>
-	            <form
-	              onSubmit={(e) => {
-	                e.preventDefault();
-	                closePrompt(promptValue);
-	              }}
-	            >
-	              <div className="field" style={{ marginTop: 8 }}>
-	                <label>{t.tr("Value", "值")}</label>
-	                <input value={promptValue} onChange={(e) => setPromptValue(e.target.value)} placeholder={promptPlaceholder} autoFocus />
-	              </div>
-	              <div className="btnGroup" style={{ justifyContent: "flex-end", marginTop: 10 }}>
-	                <button type="button" onClick={() => closePrompt(null)}>
-	                  {promptCancelLabel}
-	                </button>
-	                <button type="submit" className="primary" disabled={!promptValue.trim()}>
-	                  {promptOkLabel}
-	                </button>
-	              </div>
-	            </form>
-	          </div>
-	        </div>
-	      ) : null}
+		      {promptOpen ? (
+		        <div className="modalOverlay" onClick={() => closePrompt(null)}>
+		          <div className="modal" style={{ width: "min(520px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+		            <div className="modalHeader">
+		              <div style={{ fontWeight: 800 }}>{promptTitle}</div>
+		              <button type="button" onClick={() => closePrompt(null)}>
+		                {t.tr("Close", "关闭")}
+		              </button>
+		            </div>
+		            <form
+		              onSubmit={(e) => {
+		                e.preventDefault();
+		                closePrompt(promptValue);
+		              }}
+		            >
+		              <div className="modalBody">
+		                {promptMessage ? (
+		                  <div className="hint" style={{ whiteSpace: "pre-wrap" }}>
+		                    {promptMessage}
+		                  </div>
+		                ) : null}
+		                <div className="field">
+		                  <label>{t.tr("Value", "值")}</label>
+		                  <input value={promptValue} onChange={(e) => setPromptValue(e.target.value)} placeholder={promptPlaceholder} autoFocus />
+		                </div>
+		              </div>
+		              <div className="modalFooter">
+		                <button type="button" onClick={() => closePrompt(null)}>
+		                  {promptCancelLabel}
+		                </button>
+		                <button type="submit" className="primary" disabled={!promptValue.trim()}>
+		                  {promptOkLabel}
+		                </button>
+		              </div>
+		            </form>
+		          </div>
+		        </div>
+		      ) : null}
 
-	      {copyOpen ? (
-	        <div className="modalOverlay" onClick={() => setCopyOpen(false)}>
-	          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
-	            <div className="modalHeader">
-	              <div>
-	                <div style={{ fontWeight: 800 }}>{t.tr("Copy", "复制")}</div>
-	                <div className="hint">{t.tr("Clipboard API is unavailable. Copy the content below manually.", "Clipboard API 不可用，请手动复制下面内容。")}</div>
-	              </div>
-	              <button type="button" onClick={() => setCopyOpen(false)}>
-	                {t.tr("Close", "关闭")}
-	              </button>
-	            </div>
-	            <textarea
-	              readOnly
-	              value={copyValue}
-	              rows={6}
-	              style={{ width: "100%" }}
-	              onFocus={(e) => e.currentTarget.select()}
-	            />
-	            <div className="btnGroup" style={{ marginTop: 10, justifyContent: "flex-end" }}>
-	              <button
-	                type="button"
-	                className="primary"
-	                onClick={async () => {
+		      {copyOpen ? (
+		        <div className="modalOverlay" onClick={() => setCopyOpen(false)}>
+		          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+		            <div className="modalHeader">
+		              <div style={{ fontWeight: 800 }}>{t.tr("Copy", "复制")}</div>
+		              <button type="button" onClick={() => setCopyOpen(false)}>
+		                {t.tr("Close", "关闭")}
+		              </button>
+		            </div>
+		            <div className="modalBody">
+		              <div className="hint">{t.tr("Clipboard API is unavailable. Copy the content below manually.", "Clipboard API 不可用，请手动复制下面内容。")}</div>
+		              <textarea readOnly value={copyValue} rows={6} style={{ width: "100%" }} onFocus={(e) => e.currentTarget.select()} />
+		            </div>
+		            <div className="modalFooter">
+		              <button
+		                type="button"
+		                className="primary"
+		                onClick={async () => {
 	                  try {
 	                    await navigator.clipboard.writeText(copyValue);
 	                    setServerOpStatus(t.tr("Copied", "已复制"));
@@ -7195,14 +7189,14 @@ export default function HomePage() {
 	                  } catch {
 	                    // ignore
 	                  }
-	                }}
-	              >
-	                {t.tr("Try Copy", "尝试复制")}
-	              </button>
-	            </div>
-	          </div>
-	        </div>
-	      ) : null}
+		                }}
+		              >
+		                {t.tr("Try Copy", "尝试复制")}
+		              </button>
+		            </div>
+		          </div>
+		        </div>
+		      ) : null}
 
 	      {cmdPaletteOpen ? (
 	        <div className="modalOverlay" onClick={() => setCmdPaletteOpen(false)}>

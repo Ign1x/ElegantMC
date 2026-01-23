@@ -132,7 +132,7 @@ WF-20260118-130,P3,security,done,Two-factor authentication,"Password-only login 
 WF-20260118-131,P2,security,done,Login rate limiting,"Brute-force attempts are not mitigated","Add IP-based rate limiting on login endpoints with safe defaults",sec(panel): rate limit
 WF-20260118-132,P2,security,done,Session management UI,"Users cannot see or revoke active sessions","Add sessions list with revoke-all and revoke-single actions",feat(security): session management
 WF-20260118-133,P3,security,done,Rotate panel secret,"Long-lived secrets increase risk over time","Add a command/UI to rotate the server secret and invalidate sessions safely",sec(panel): rotate secret
-WF-20260118-134,P2,api,todo,API tokens for automation,"Automations currently require using admin session cookies","Add API token generation and authentication for /api endpoints",feat(api): tokens
+WF-20260118-134,P2,api,done,API tokens for automation,"Automations currently require using admin session cookies","Add API token generation and authentication for /api endpoints",feat(api): tokens
 WF-20260118-135,P2,observability,todo,Instance resource graphs,"Users want to understand memory/CPU usage trends","Add simple charts for CPU/memory per instance over time",feat(obs): instance graphs
 WF-20260118-136,P2,daemon,todo,Stats streaming endpoint,"Panel cannot draw graphs without metrics feed","Daemon streams periodic CPU/memory stats per instance and node",feat(daemon): stats stream
 WF-20260118-137,P2,daemon,todo,Disk usage per instance,"Panel needs disk usage breakdown per instance","Daemon adds command to compute instance directory size with caching",feat(daemon): instance disk usage

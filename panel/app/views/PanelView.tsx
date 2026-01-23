@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
+import Field from "../ui/Field";
 import Select from "../ui/Select";
 
 export default function PanelView() {
@@ -844,33 +845,40 @@ export default function PanelView() {
           <>
             <div className="grid2" style={{ alignItems: "start" }}>
               {show("brand name", "brand", "title", "sidebar") ? (
-                <div className="field">
-                  <label>{t.tr("Brand Name", "品牌名称")}</label>
+                <Field
+                  label={t.tr("Brand Name", "品牌名称")}
+                  hint={t.tr("Shown in sidebar and browser title.", "显示在侧边栏与浏览器标题")}
+                >
                   <input value={String(draft.brand_name || "")} onChange={(e) => setDraft((d: any) => ({ ...d, brand_name: e.target.value }))} />
-                  <div className="hint">{t.tr("Shown in sidebar and browser title.", "显示在侧边栏与浏览器标题")}</div>
-                </div>
+                </Field>
               ) : null}
               {show("brand tagline", "tagline") ? (
-                <div className="field">
-                  <label>{t.tr("Brand Tagline", "品牌标语")}</label>
+                <Field label={t.tr("Brand Tagline", "品牌标语")} hint={t.tr("Optional.", "可留空")}>
                   <input
                     value={String(draft.brand_tagline || "")}
                     onChange={(e) => setDraft((d: any) => ({ ...d, brand_tagline: e.target.value }))}
                   />
-                  <div className="hint">{t.tr("Optional.", "可留空")}</div>
-                </div>
+                </Field>
               ) : null}
               {show("logo", "logo url", "icon") ? (
-                <div className="field" style={{ gridColumn: "1 / -1" }}>
-                  <label>{t.tr("Logo URL", "Logo URL")}</label>
+                <Field
+                  label={t.tr("Logo URL", "Logo URL")}
+                  hint={t.tr("Default: /logo.svg (or a custom URL).", "默认：/logo.svg（可填自定义 URL）")}
+                  style={{ gridColumn: "1 / -1" }}
+                >
                   <input value={String(draft.logo_url || "")} onChange={(e) => setDraft((d: any) => ({ ...d, logo_url: e.target.value }))} />
-                  <div className="hint">{t.tr("Default: /logo.svg (or a custom URL).", "默认：/logo.svg（可填自定义 URL）")}</div>
-                </div>
+                </Field>
               ) : null}
 
               {show("curseforge", "api key", "cf_") ? (
-                <div className="field" style={{ gridColumn: "1 / -1" }}>
-                  <label>{t.tr("CurseForge API Key (optional)", "CurseForge API Key（可选）")}</label>
+                <Field
+                  label={t.tr("CurseForge API Key (optional)", "CurseForge API Key（可选）")}
+                  hint={t.tr(
+                    "After setting this, CurseForge search/install works without environment variables.",
+                    "配置后可直接使用 CurseForge 搜索/下载安装（不需要再改环境变量）"
+                  )}
+                  style={{ gridColumn: "1 / -1" }}
+                >
                   <input
                     type="password"
                     value={String(draft.curseforge_api_key || "")}
@@ -878,28 +886,20 @@ export default function PanelView() {
                     placeholder="cf_..."
                     autoComplete="off"
                   />
-                  <div className="hint">
-                    {t.tr(
-                      "After setting this, CurseForge search/install works without environment variables.",
-                      "配置后可直接使用 CurseForge 搜索/下载安装（不需要再改环境变量）"
-                    )}
-                  </div>
-                </div>
+                </Field>
               ) : null}
 
               {show("default version", "version") ? (
-                <div className="field">
-                  <label>{t.tr("Default Version", "默认版本")}</label>
+                <Field label={t.tr("Default Version", "默认版本")}>
                   <input
                     value={String(draft.defaults?.version || "")}
                     onChange={(e) => setDraft((d: any) => ({ ...d, defaults: { ...(d.defaults || {}), version: e.target.value } }))}
                     placeholder="1.20.1"
                   />
-                </div>
+                </Field>
               ) : null}
               {show("default game port", "port", "25565") ? (
-                <div className="field">
-                  <label>{t.tr("Default Game Port", "默认端口")}</label>
+                <Field label={t.tr("Default Game Port", "默认端口")}>
                   <input
                     type="number"
                     value={Number.isFinite(Number(draft.defaults?.game_port)) ? Number(draft.defaults.game_port) : 25565}
@@ -907,11 +907,10 @@ export default function PanelView() {
                     min={1}
                     max={65535}
                   />
-                </div>
+                </Field>
               ) : null}
               {show("default memory", "memory", "xms", "xmx") ? (
-                <div className="field">
-                  <label>{t.tr("Default Memory", "默认内存")}</label>
+                <Field label={t.tr("Default Memory", "默认内存")}>
                   <div className="row">
                     <input
                       value={String(draft.defaults?.xms || "")}
@@ -924,11 +923,10 @@ export default function PanelView() {
                       placeholder="Xmx (e.g. 2G)"
                     />
                   </div>
-                </div>
+                </Field>
               ) : null}
               {show("eula", "accept eula") ? (
-                <div className="field">
-                  <label>{t.tr("Default EULA", "默认同意 EULA")}</label>
+                <Field label={t.tr("Default EULA", "默认同意 EULA")}>
                   <label className="checkRow">
                     <input
                       type="checkbox"
@@ -939,11 +937,10 @@ export default function PanelView() {
                     />
                     {t.tr("auto write eula.txt", "自动写入 eula.txt")}
                   </label>
-                </div>
+                </Field>
               ) : null}
               {show("frp", "default frp") ? (
-                <div className="field">
-                  <label>{t.tr("Default FRP", "默认启用 FRP")}</label>
+                <Field label={t.tr("Default FRP", "默认启用 FRP")}>
                   <label className="checkRow">
                     <input
                       type="checkbox"
@@ -954,11 +951,10 @@ export default function PanelView() {
                     />
                     {t.tr("enable by default", "默认启用")}
                   </label>
-                </div>
+                </Field>
               ) : null}
               {show("frp remote port", "remote port", "25566") ? (
-                <div className="field">
-                  <label>{t.tr("Default FRP Remote Port", "默认 FRP Remote Port")}</label>
+                <Field label={t.tr("Default FRP Remote Port", "默认 FRP Remote Port")} hint={t.tr("0 means server-assigned.", "0 表示由服务端分配")}>
                   <input
                     type="number"
                     value={Number.isFinite(Number(draft.defaults?.frp_remote_port)) ? Number(draft.defaults.frp_remote_port) : 25566}
@@ -966,8 +962,7 @@ export default function PanelView() {
                     min={0}
                     max={65535}
                   />
-                  <div className="hint">{t.tr("0 means server-assigned.", "0 表示由服务端分配")}</div>
-                </div>
+                </Field>
               ) : null}
             </div>
 
@@ -996,16 +991,12 @@ export default function PanelView() {
         </div>
 
         <div className="grid2" style={{ alignItems: "end" }}>
-          <div className="field">
-            <label>{t.tr("username", "用户名")}</label>
+          <Field label={t.tr("username", "用户名")} hint={t.tr("A-Z a-z 0-9 . _ - (max 32)", "A-Z a-z 0-9 . _ -（最长 32）")}>
             <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="alice" autoCapitalize="none" autoCorrect="off" />
-            <div className="hint">{t.tr("A-Z a-z 0-9 . _ - (max 32)", "A-Z a-z 0-9 . _ -（最长 32）")}</div>
-          </div>
-          <div className="field">
-            <label>{t.tr("password", "密码")}</label>
+          </Field>
+          <Field label={t.tr("password", "密码")} hint={t.tr("min 8 chars", "至少 8 个字符")}>
             <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} placeholder="••••••••" />
-            <div className="hint">{t.tr("min 8 chars", "至少 8 个字符")}</div>
-          </div>
+          </Field>
         </div>
         <div className="btnGroup" style={{ marginTop: 10, justifyContent: "flex-end" }}>
           <button type="button" className="primary" onClick={createUserNow} disabled={usersBusy || !newUsername.trim() || newUserPassword.length < 8}>
@@ -1086,10 +1077,9 @@ export default function PanelView() {
         </div>
 
         <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-          <div className="field" style={{ minWidth: 260, flex: 1 }}>
-            <label>{t.tr("name", "名称")}</label>
+          <Field label={t.tr("name", "名称")} style={{ minWidth: 260, flex: 1 }}>
             <input value={newTokenName} onChange={(e) => setNewTokenName(e.target.value)} placeholder={t.tr("e.g. backup-bot", "例如 backup-bot")} />
-          </div>
+          </Field>
           <div className="btnGroup" style={{ alignSelf: "end", justifyContent: "flex-end" }}>
             <button type="button" className="primary" onClick={createApiTokenNow} disabled={apiTokensBusy}>
               {t.tr("Create token", "创建 token")}
@@ -1198,54 +1188,61 @@ export default function PanelView() {
             <button type="button" onClick={addTemplateTask} disabled={!selectedDaemon?.connected || scheduleBusy || !parsedSchedule.ok}>
               {t.tr("Add task", "添加任务")}
             </button>
-          </div>
-          <div className="grid2" style={{ marginTop: 10, alignItems: "end" }}>
-            <div className="field">
-              <label>{t.tr("Template", "模板")}</label>
-              <Select
-                value={templateKind}
-                onChange={(v) => setTemplateKind((v as any) || "backup")}
-                options={[
-                  { value: "backup", label: t.tr("Backup", "备份") },
-                  { value: "restart", label: t.tr("Restart", "重启") },
-                  { value: "stop", label: t.tr("Stop", "停止") },
-                  { value: "prune_logs", label: t.tr("Prune logs", "清理日志") },
-                  { value: "announce", label: t.tr("Announce", "公告") },
-                ]}
-              />
-            </div>
-            <div className="field">
-              <label>{t.tr("Instance", "实例")}</label>
-              {Array.isArray(serverDirs) && serverDirs.length ? (
-                <Select
-                  value={backupPresetInstanceId}
-                  onChange={(v: string) => setBackupPresetInstanceId(v)}
-                  options={serverDirs.map((s: any) => ({ value: String(s || ""), label: String(s || "") }))}
-                  placeholder={t.tr("Select instance…", "选择实例…")}
-                />
-              ) : (
-                <input
-                  value={backupPresetInstanceId}
-                  onChange={(e) => setBackupPresetInstanceId(e.target.value)}
-                  placeholder={t.tr("instance_id (e.g. server1)", "instance_id（例如 server1）")}
-                />
-              )}
-            </div>
-
-            <div className="field">
-              <label>{t.tr("Schedule", "时间")}</label>
-              <Select
-                value={backupPresetScheduleKind}
-                onChange={(v) => setBackupPresetScheduleKind((v as any) || "daily")}
-                options={[
-                  { value: "daily", label: t.tr("Daily at…", "每天在…") },
-                  { value: "weekly", label: t.tr("Weekly at…", "每周在…") },
-                  { value: "interval", label: t.tr("Interval", "固定间隔") },
-                ]}
-              />
-              {backupPresetScheduleKind === "interval" ? (
-                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
-                  <input
+	          </div>
+	          <div className="grid2" style={{ marginTop: 10, alignItems: "end" }}>
+	            <Field label={t.tr("Template", "模板")}>
+	              <Select
+	                value={templateKind}
+	                onChange={(v) => setTemplateKind((v as any) || "backup")}
+	                options={[
+	                  { value: "backup", label: t.tr("Backup", "备份") },
+	                  { value: "restart", label: t.tr("Restart", "重启") },
+	                  { value: "stop", label: t.tr("Stop", "停止") },
+	                  { value: "prune_logs", label: t.tr("Prune logs", "清理日志") },
+	                  { value: "announce", label: t.tr("Announce", "公告") },
+	                ]}
+	              />
+	            </Field>
+	            <Field label={t.tr("Instance", "实例")}>
+	              {Array.isArray(serverDirs) && serverDirs.length ? (
+	                <Select
+	                  value={backupPresetInstanceId}
+	                  onChange={(v: string) => setBackupPresetInstanceId(v)}
+	                  options={serverDirs.map((s: any) => ({ value: String(s || ""), label: String(s || "") }))}
+	                  placeholder={t.tr("Select instance…", "选择实例…")}
+	                />
+	              ) : (
+	                <input
+	                  value={backupPresetInstanceId}
+	                  onChange={(e) => setBackupPresetInstanceId(e.target.value)}
+	                  placeholder={t.tr("instance_id (e.g. server1)", "instance_id（例如 server1）")}
+	                />
+	              )}
+	            </Field>
+	
+	            <Field
+	              label={t.tr("Schedule", "时间")}
+	              hint={
+	                <>
+	                  {t.tr("Next run", "下次运行")}: <code>{fmtUnix(Number(backupSchedulePreview.next_run_unix || nowUnix))}</code> ·{" "}
+	                  <span className="muted">
+	                    {t.tr("cron (ref)", "cron（参考）")}: <code>{String(backupSchedulePreview.cron || "-")}</code>
+	                  </span>
+	                </>
+	              }
+	            >
+	              <Select
+	                value={backupPresetScheduleKind}
+	                onChange={(v) => setBackupPresetScheduleKind((v as any) || "daily")}
+	                options={[
+	                  { value: "daily", label: t.tr("Daily at…", "每天在…") },
+	                  { value: "weekly", label: t.tr("Weekly at…", "每周在…") },
+	                  { value: "interval", label: t.tr("Interval", "固定间隔") },
+	                ]}
+	              />
+	              {backupPresetScheduleKind === "interval" ? (
+	                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
+	                  <input
                     type="number"
                     min={1}
                     max={24 * 365}
@@ -1310,21 +1307,14 @@ export default function PanelView() {
                     step={1}
                     value={backupPresetAtMinute}
                     onChange={(e) => setBackupPresetAtMinute(Math.max(0, Math.min(59, Math.round(Number(e.target.value)))))}
-                  />
-                </div>
-              )}
-              <div className="hint">
-                {t.tr("Next run", "下次运行")}: <code>{fmtUnix(Number(backupSchedulePreview.next_run_unix || nowUnix))}</code> ·{" "}
-                <span className="muted">
-                  {t.tr("cron (ref)", "cron（参考）")}: <code>{String(backupSchedulePreview.cron || "-")}</code>
-                </span>
-              </div>
-            </div>
+	                  />
+	                </div>
+	              )}
+	            </Field>
 
             {templateKind === "backup" ? (
               <>
-                <div className="field">
-                  <label>{t.tr("Keep last (0 = no prune)", "保留数量（0 = 不清理）")}</label>
+                <Field label={t.tr("Keep last (0 = no prune)", "保留数量（0 = 不清理）")}>
                   <input
                     type="number"
                     min={0}
@@ -1333,20 +1323,21 @@ export default function PanelView() {
                     value={backupPresetKeepLast}
                     onChange={(e) => setBackupPresetKeepLast(Math.max(0, Math.round(Number(e.target.value))))}
                   />
-                </div>
-                <div className="field">
-                  <label>{t.tr("Options", "选项")}</label>
+                </Field>
+                <Field label={t.tr("Options", "选项")}>
                   <label className="checkRow">
                     <input type="checkbox" checked={backupPresetStopServer} onChange={(e) => setBackupPresetStopServer(e.target.checked)} />
                     {t.tr("Stop server before backup (recommended)", "备份前停止服务器（推荐）")}
                   </label>
-                </div>
+                </Field>
               </>
             ) : null}
 
             {templateKind === "prune_logs" ? (
-              <div className="field">
-                <label>{t.tr("Keep last logs", "保留日志数量")}</label>
+              <Field
+                label={t.tr("Keep last logs", "保留日志数量")}
+                hint={t.tr("Keeps newest files in logs/ and deletes older ones.", "保留 logs/ 下最新的文件，删除更旧的。")}
+              >
                 <input
                   type="number"
                   min={1}
@@ -1355,26 +1346,23 @@ export default function PanelView() {
                   value={pruneLogsKeepLast}
                   onChange={(e) => setPruneLogsKeepLast(Math.max(1, Math.round(Number(e.target.value))))}
                 />
-                <div className="hint">{t.tr("Keeps newest files in logs/ and deletes older ones.", "保留 logs/ 下最新的文件，删除更旧的。")}</div>
-              </div>
+              </Field>
             ) : null}
 
             {templateKind === "announce" ? (
-              <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label>{t.tr("Message", "消息")}</label>
+              <Field label={t.tr("Message", "消息")} hint={t.tr("Sends: say <message>", "将执行：say <消息>")} style={{ gridColumn: "1 / -1" }}>
                 <input
                   value={announceMessage}
                   onChange={(e) => setAnnounceMessage(e.target.value)}
                   maxLength={400}
                   placeholder={t.tr("e.g. Server will restart in 5 minutes", "例如：服务器将在 5 分钟后重启")}
                 />
-                <div className="hint">{t.tr("Sends: say <message>", "将执行：say <消息>")}</div>
-              </div>
+              </Field>
             ) : null}
 
-            <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <div className="hint">{t.tr("Tip: Save updates schedule.json on the daemon.", "提示：点击 Save 才会写入 daemon 的 schedule.json。")}</div>
-            </div>
+            <Field hint={t.tr("Tip: Save updates schedule.json on the daemon.", "提示：点击 Save 才会写入 daemon 的 schedule.json。")} style={{ gridColumn: "1 / -1" }}>
+              {null}
+            </Field>
           </div>
         </div>
 
@@ -1559,11 +1547,9 @@ export default function PanelView() {
                 {t.tr("Close", "关闭")}
               </button>
             </div>
-            <div className="field">
-              <label>{t.tr("New password", "新密码")}</label>
+            <Field label={t.tr("New password", "新密码")} hint={t.tr("min 8 chars", "至少 8 个字符")}>
               <input type="password" value={resetPwdValue} onChange={(e) => setResetPwdValue(e.target.value)} placeholder="••••••••" autoFocus />
-              <div className="hint">{t.tr("min 8 chars", "至少 8 个字符")}</div>
-            </div>
+            </Field>
             <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
               <button type="button" onClick={() => setResetPwdOpen(false)} disabled={usersBusy}>
                 {t.tr("Cancel", "取消")}
@@ -1608,13 +1594,14 @@ export default function PanelView() {
             ) : (
               <>
                 <div className="grid2" style={{ alignItems: "end" }}>
-                  <div className="field" style={{ gridColumn: "1 / -1" }}>
-                    <label>{t.tr("Secret (base32)", "密钥（base32）")}</label>
+                  <Field
+                    label={t.tr("Secret (base32)", "密钥（base32）")}
+                    hint={t.tr("Add to your authenticator app.", "添加到你的验证器 App。")}
+                    style={{ gridColumn: "1 / -1" }}
+                  >
                     <input value={totpSecret} readOnly />
-                    <div className="hint">{t.tr("Add to your authenticator app.", "添加到你的验证器 App。")}</div>
-                  </div>
-                  <div className="field" style={{ gridColumn: "1 / -1" }}>
-                    <label>{t.tr("otpauth URI", "otpauth URI")}</label>
+                  </Field>
+                  <Field label={t.tr("otpauth URI", "otpauth URI")} style={{ gridColumn: "1 / -1" }}>
                     <input value={totpUri} readOnly />
                     <div className="btnGroup" style={{ marginTop: 8, justifyContent: "flex-end" }}>
                       <button type="button" className="iconBtn" onClick={() => copyText(totpSecret)} disabled={!totpSecret}>
@@ -1624,12 +1611,14 @@ export default function PanelView() {
                         {t.tr("Copy URI", "复制 URI")}
                       </button>
                     </div>
-                  </div>
-                  <div className="field" style={{ gridColumn: "1 / -1" }}>
-                    <label>{t.tr("Code", "验证码")}</label>
+                  </Field>
+                  <Field
+                    label={t.tr("Code", "验证码")}
+                    hint={t.tr("Enter the 6-digit code to confirm.", "输入 6 位动态码以确认。")}
+                    style={{ gridColumn: "1 / -1" }}
+                  >
                     <input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} placeholder="123456" autoCapitalize="none" autoCorrect="off" />
-                    <div className="hint">{t.tr("Enter the 6-digit code to confirm.", "输入 6 位动态码以确认。")}</div>
-                  </div>
+                  </Field>
                 </div>
                 <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
                   <button type="button" onClick={() => setTotpOpen(false)} disabled={totpBusy}>
@@ -1658,10 +1647,9 @@ export default function PanelView() {
                 {t.tr("Close", "关闭")}
               </button>
             </div>
-            <div className="field">
-              <label>{t.tr('Type "ROTATE" to confirm', '输入 "ROTATE" 以确认')}</label>
+            <Field label={t.tr('Type "ROTATE" to confirm', '输入 "ROTATE" 以确认')}>
               <input value={rotateSecretConfirm} onChange={(e) => setRotateSecretConfirm(e.target.value)} placeholder="ROTATE" autoCapitalize="none" autoCorrect="off" />
-            </div>
+            </Field>
             <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
               <button type="button" onClick={() => setRotateSecretOpen(false)} disabled={rotateSecretBusy}>
                 {t.tr("Cancel", "取消")}

@@ -7628,8 +7628,22 @@ export default function HomePage() {
               </div>
               <div className="pageSubtitle">
                 {t.tr("daemon", "daemon")}: <code>{selectedDaemon?.id || "-"}</code> ·{" "}
-                {selectedDaemon?.connected ? <span>{t.tr("online", "在线")}</span> : <span>{t.tr("offline", "离线")}</span>} · {t.tr("last", "最近")}:{" "}
-                {fmtUnix(selectedDaemon?.lastSeenUnix)}
+                {selectedDaemon?.connected ? <span className="badge ok">{t.tr("online", "在线")}</span> : <span className="badge">{t.tr("offline", "离线")}</span>} ·{" "}
+                {t.tr("last", "最近")}: {fmtUnix(selectedDaemon?.lastSeenUnix)}
+                {daemonsCacheAtUnix > 0 ? (
+                  <>
+                    {" "}
+                    · {t.tr("updated", "更新时间")}: {fmtUnix(daemonsCacheAtUnix)}
+                  </>
+                ) : authed === true ? (
+                  <> · {t.tr("connecting…", "连接中…")}</>
+                ) : null}
+                {authed === true && error && daemonsCacheAtUnix > 0 ? (
+                  <>
+                    {" "}
+                    · <span className="badge warn">{t.tr("offline mode", "离线模式")}</span>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>

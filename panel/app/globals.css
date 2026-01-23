@@ -568,6 +568,11 @@ button.navItem .badge {
   text-overflow: ellipsis;
 }
 
+.pageSubtitle .badge {
+  padding: 2px 8px;
+  font-size: var(--font-size-2xs);
+}
+
 .content {
   display: flex;
   flex-direction: column;

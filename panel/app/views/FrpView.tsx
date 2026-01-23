@@ -114,8 +114,8 @@ export default function FrpView() {
                         }
                       }}
                       disabled={!p.has_token}
-                      >
-                        <Icon name="copy" />
+                    >
+                      <Icon name="copy" />
                       {t.tr("Copy", "复制")}
                     </button>
                   </div>
@@ -205,7 +205,18 @@ export default function FrpView() {
             ))}
           </div>
         ) : (
-          <div className="emptyState">{t.tr("No profiles yet. Click Add to save an FRP server profile.", "暂无配置。点击右上角 Add 保存一个 FRP Server profile。")}</div>
+          <div className="emptyState">
+            <div style={{ fontWeight: 800 }}>{t.tr("No FRP profiles yet", "暂无 FRP 配置")}</div>
+            <div className="hint" style={{ marginTop: 6 }}>
+              {t.tr("Add an FRP server profile, then reuse it from Games.", "先添加一个 FRP Server 配置，然后在 Games 里一键复用。")}
+            </div>
+            <div className="btnGroup" style={{ justifyContent: "center", marginTop: 10 }}>
+              <button type="button" className="primary iconBtn" onClick={openAddFrpModal}>
+                <Icon name="plus" />
+                {t.tr("Add", "添加")}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

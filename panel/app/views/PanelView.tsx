@@ -814,7 +814,15 @@ export default function PanelView() {
             </div>
           </div>
         ) : (
-          <div className="emptyState">{t.tr("No update info yet.", "暂无更新信息。")}</div>
+          <div className="emptyState">
+            <div style={{ fontWeight: 800 }}>{t.tr("No update info yet", "暂无更新信息")}</div>
+            <div className="hint" style={{ marginTop: 6 }}>{t.tr("Click Check updates to fetch the latest release info.", "点击「检查更新」以获取最新版本信息。")}</div>
+            <div className="btnGroup" style={{ justifyContent: "center", marginTop: 10 }}>
+              <button type="button" className="primary" onClick={() => checkUpdates({ force: true })} disabled={updateBusy}>
+                {t.tr("Check updates", "检查更新")}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -840,7 +848,15 @@ export default function PanelView() {
         </div>
 
         {!draft ? (
-          <div className="emptyState">{t.tr("No settings loaded.", "未加载设置。")}</div>
+          <div className="emptyState">
+            <div style={{ fontWeight: 800 }}>{t.tr("No settings loaded", "未加载设置")}</div>
+            <div className="hint" style={{ marginTop: 6 }}>{t.tr("Click Reload to load current panel settings.", "点击「刷新」以加载面板设置。")}</div>
+            <div className="btnGroup" style={{ justifyContent: "center", marginTop: 10 }}>
+              <button type="button" className="primary" onClick={refreshPanelSettings}>
+                {t.tr("Reload", "刷新")}
+              </button>
+            </div>
+          </div>
         ) : (
           <>
             <div className="grid2" style={{ alignItems: "start" }}>

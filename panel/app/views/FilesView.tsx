@@ -277,7 +277,10 @@ function highlightToHtml(text: string, kind: "json" | "yaml" | "properties" | "l
 export default function FilesView() {
   const {
     t,
+    daemons,
     selected,
+    setSelected,
+    setTab,
     instanceId,
     fsPath,
     fsBreadcrumbs,
@@ -621,6 +624,17 @@ export default function FilesView() {
   }
 
   if (!selected) {
+    const daemonOptions = daemons.map((d: any) => ({
+      value: String(d?.id || ""),
+      label: (
+        <span className="row" style={{ justifyContent: "space-between", gap: 10, width: "100%" }}>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{String(d?.id || "")}</span>
+          {d?.connected ? <span className="badge ok">{t.tr("online", "在线")}</span> : <span className="badge">{t.tr("offline", "离线")}</span>}
+        </span>
+      ),
+      disabled: !d?.connected,
+    }));
+    const hasOnlineDaemon = daemonOptions.some((o) => !o.disabled);
     return (
       <div className="card">
         <div className="toolbar">
@@ -631,7 +645,31 @@ export default function FilesView() {
             </div>
           </div>
         </div>
-        <div className="emptyState">{t.tr("No daemon selected.", "未选择 Daemon。")}</div>
+        <div className="emptyState">
+          <div style={{ fontWeight: 800 }}>{t.tr("No daemon selected", "未选择 Daemon")}</div>
+          <div className="hint" style={{ marginTop: 6 }}>
+            {hasOnlineDaemon
+              ? t.tr("Pick an online daemon to browse files under servers/.", "选择一个在线的 Daemon 以浏览 servers/ 目录。")
+              : daemonOptions.length
+                ? t.tr("No daemons are online. Go to Nodes to deploy or troubleshoot.", "当前没有在线的 Daemon。前往 Nodes 部署或排查连接。")
+              : t.tr("Create/deploy a daemon first, then come back here to browse files.", "请先创建/部署一个 Daemon，然后回来浏览文件。")}
+          </div>
+          <div className="btnGroup" style={{ justifyContent: "center", marginTop: 10 }}>
+            {hasOnlineDaemon ? (
+              <Select
+                value=""
+                onChange={(id) => setSelected(id)}
+                options={daemonOptions}
+                placeholder={t.tr("Select a daemon…", "选择一个 Daemon…")}
+                style={{ width: "min(420px, 100%)" }}
+              />
+            ) : (
+              <button type="button" className="primary" onClick={() => setTab("nodes")}>
+                {t.tr("Go to Nodes", "前往 Nodes")}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     );
   }

@@ -929,15 +929,19 @@ button.linkBtn:focus-visible {
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 6px 9px;
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
+  min-height: 30px;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.02s ease;
 }
 
 button.iconBtn {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
 }
 
@@ -964,6 +968,30 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button[aria-busy="true"],
+button.loading {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+button.btnSm {
+  padding: 6px 9px;
+  min-height: 30px;
+  font-size: var(--font-size-xs);
+}
+
+button.btnMd {
+  padding: 8px 12px;
+  min-height: 34px;
+  font-size: var(--font-size-sm);
+}
+
+button.btnLg {
+  padding: 10px 14px;
+  min-height: 38px;
+  font-size: var(--font-size-md);
+}
+
 button.primary {
   background: linear-gradient(180deg, rgba(139, 92, 246, 0.92), rgba(139, 92, 246, 0.74));
   border-color: var(--primary-border);
@@ -982,10 +1010,40 @@ button.dangerBtn:hover {
   background: rgba(248, 113, 113, 0.20);
 }
 
+button.danger {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: var(--danger-border);
+}
+
+button.danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.20);
+}
+
+button.secondary {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
 button.linkBtn {
   background: transparent;
   border: none;
   padding: 0;
+  min-height: unset;
   color: rgba(147, 197, 253, 0.95);
   text-decoration: underline;
   cursor: pointer;

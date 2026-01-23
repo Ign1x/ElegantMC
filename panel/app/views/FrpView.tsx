@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAppCtx } from "../appCtx";
 import Icon from "../ui/Icon";
+import DangerZone from "../ui/DangerZone";
 
 export default function FrpView() {
   const {
@@ -20,6 +21,7 @@ export default function FrpView() {
     setProfilesStatus,
     apiFetch,
     confirmDialog,
+    promptDialog,
   } = useAppCtx();
 
   const [testingId, setTestingId] = useState<string>("");
@@ -157,11 +159,41 @@ export default function FrpView() {
                         {t.tr("Test", "测试")}
                       </button>
                     </div>
-                    <button type="button" className="dangerBtn iconBtn" onClick={() => removeFrpProfile(p.id)}>
-                      <Icon name="trash" />
-                      {t.tr("Delete", "删除")}
-                    </button>
                   </div>
+
+                  <DangerZone
+                    title={t.tr("Danger Zone", "危险区")}
+                    hint={t.tr("Deleting a profile cannot be undone (you can recreate it later).", "删除后不可撤销（可稍后重新创建）。")}
+                  >
+                    <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        className="dangerBtn iconBtn"
+                        onClick={async () => {
+                          const name = String(p?.name || "").trim() || "-";
+                          const ok = await confirmDialog(t.tr(`Delete FRP profile "${name}"?`, `删除 FRP 配置「${name}」？`), {
+                            title: t.tr("Delete", "删除"),
+                            confirmLabel: t.tr("Delete", "删除"),
+                            cancelLabel: t.tr("Cancel", "取消"),
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          const typed = await promptDialog({
+                            title: t.tr("Confirm Delete", "确认删除"),
+                            message: t.tr(`Type "${name}" to confirm deleting this profile.`, `输入「${name}」以确认删除该配置。`),
+                            placeholder: name,
+                            okLabel: t.tr("Delete", "删除"),
+                            cancelLabel: t.tr("Cancel", "取消"),
+                          });
+                          if (typed !== name) return;
+                          await removeFrpProfile(p.id);
+                        }}
+                      >
+                        <Icon name="trash" />
+                        {t.tr("Delete", "删除")}
+                      </button>
+                    </div>
+                  </DangerZone>
                 </div>
               );
             })}

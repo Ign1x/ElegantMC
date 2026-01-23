@@ -4,6 +4,7 @@ import path from "node:path";
 
 const MAX_LOG_LINES = 2000;
 const MAX_HB_POINTS = 600;
+const MAX_INSTANCE_POINTS = 600;
 const FRP_MAX_PROFILES = 50;
 const DAEMON_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -355,6 +356,7 @@ export function getOrCreateDaemon(id) {
       hello: null,
       heartbeat: null,
       history: [],
+      instanceHistory: {},
       logs: [],
     };
     state.daemons.set(id, d);
@@ -435,6 +437,23 @@ export function handleDaemonMessage(daemonId, raw) {
     });
     if (d.history.length > MAX_HB_POINTS) {
       d.history.splice(0, d.history.length - MAX_HB_POINTS);
+    }
+
+    // Per-instance stats (cpu_percent + mem_rss_bytes) from heartbeat.instances.
+    if (!d.instanceHistory || typeof d.instanceHistory !== "object") d.instanceHistory = {};
+    const instList = Array.isArray(hb?.instances) ? hb.instances : [];
+    for (const it of instList) {
+      const instID = String(it?.id || "").trim();
+      if (!instID) continue;
+      const cpuP = typeof it?.cpu_percent === "number" ? Number(it.cpu_percent) : null;
+      const memB = typeof it?.mem_rss_bytes === "number" ? Number(it.mem_rss_bytes) : null;
+      if (cpuP == null && memB == null) continue;
+      const arr = Array.isArray(d.instanceHistory[instID]) ? d.instanceHistory[instID] : [];
+      arr.push({ ts_unix: ts, cpu_percent: cpuP, mem_rss_bytes: memB });
+      if (arr.length > MAX_INSTANCE_POINTS) {
+        arr.splice(0, arr.length - MAX_INSTANCE_POINTS);
+      }
+      d.instanceHistory[instID] = arr;
     }
     return;
   }

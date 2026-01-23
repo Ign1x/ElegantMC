@@ -8,6 +8,7 @@ import Select from "../ui/Select";
 export default function NodesView() {
   const {
     t,
+    panelInfo,
     nodes,
     nodesStatus,
     setNodesStatus,
@@ -138,8 +139,13 @@ export default function NodesView() {
               const hb = n.heartbeat || {};
               const cpu = typeof hb?.cpu?.usage_percent === "number" ? hb.cpu.usage_percent : null;
               const mem = hb?.mem || {};
+              const disk = hb?.disk || {};
               const instances = Array.isArray(hb?.instances) ? hb.instances : [];
               const memPct = mem?.total_bytes ? pct(mem.used_bytes, mem.total_bytes) : null;
+              const diskPct = disk?.total_bytes ? pct(disk.used_bytes, disk.total_bytes) : null;
+              const daemonVer = String(n?.hello?.version || "").trim();
+              const panelVer = String(panelInfo?.version || "").trim();
+              const verMismatch = !!daemonVer && !!panelVer && daemonVer !== panelVer && panelVer !== "dev";
               return (
                 <div key={n.id} className="itemCard" style={{ opacity: n.connected ? 1 : 0.78 }}>
                   <div className="itemCardHeader">
@@ -147,14 +153,23 @@ export default function NodesView() {
                       <div className="itemTitle">{n.id}</div>
                       <div className="itemMeta">
                         {t.tr("last", "最近")}: {fmtUnix(n.lastSeenUnix)} · {t.tr("instances", "实例")}: {instances.length}
+                        {daemonVer ? ` · v${daemonVer}` : ""}
                       </div>
                     </div>
-                    <span className={`badge ${n.connected ? "ok" : ""}`}>{n.connected ? t.tr("online", "在线") : t.tr("offline", "离线")}</span>
+                    <div className="row" style={{ gap: 8 }}>
+                      <span className={`badge ${n.connected ? "ok" : ""}`}>{n.connected ? t.tr("online", "在线") : t.tr("offline", "离线")}</span>
+                      {verMismatch ? (
+                        <span className="badge warn" title={t.tr("Panel/daemon version mismatch", "Panel/daemon 版本不一致")}>
+                          {t.tr("version mismatch", "版本不一致")}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="row" style={{ gap: 8 }}>
                     <span className="badge">{cpu == null ? t.tr("CPU -", "CPU -") : `CPU ${cpu.toFixed(1)}%`}</span>
                     <span className="badge">{memPct == null ? t.tr("MEM -", "MEM -") : `MEM ${memPct.toFixed(0)}%`}</span>
+                    <span className="badge">{diskPct == null ? t.tr("DISK -", "DISK -") : `DISK ${diskPct.toFixed(0)}%`}</span>
                   </div>
                   {mem?.total_bytes ? (
                     <div className="hint">
@@ -162,6 +177,13 @@ export default function NodesView() {
                     </div>
                   ) : (
                     <div className="hint">{t.tr("memory: -", "内存：-")}</div>
+                  )}
+                  {disk?.total_bytes ? (
+                    <div className="hint">
+                      {t.tr("disk", "磁盘")}: {fmtBytes(disk.used_bytes)}/{fmtBytes(disk.total_bytes)} ({fmtBytes(disk.free_bytes)} {t.tr("free", "可用")})
+                    </div>
+                  ) : (
+                    <div className="hint">{t.tr("disk: -", "磁盘：-")}</div>
                   )}
 
                   <div className="row" style={{ justifyContent: "space-between", gap: 10, minWidth: 0 }}>
@@ -270,24 +292,10 @@ export default function NodesView() {
                     </div>
                     <button
                       type="button"
-                      className="dangerBtn"
-                      onClick={async () => {
-                        const ok = await confirmDialog(t.tr(`Delete node ${n.id}?`, `删除节点 ${n.id}？`), { title: t.tr("Delete Node", "删除节点"), confirmLabel: t.tr("Delete", "删除"), danger: true });
-                        if (!ok) return;
-                        setNodesStatus("");
-                        try {
-                          const res = await apiFetch(`/api/nodes/${encodeURIComponent(n.id)}`, { method: "DELETE" });
-                          const json = await res.json();
-                          if (!res.ok) throw new Error(json?.error || "failed");
-                          const res2 = await apiFetch("/api/nodes", { cache: "no-store" });
-                          const json2 = await res2.json();
-                          if (res2.ok) setNodes(json2.nodes || []);
-                        } catch (e: any) {
-                          setNodesStatus(String(e?.message || e));
-                        }
-                      }}
+                      className="iconBtn"
+                      onClick={() => openNodeDetails(n.id)}
                     >
-                      {t.tr("Delete", "删除")}
+                      {t.tr("Danger Zone…", "危险区…")}
                     </button>
                   </div>
                 </div>

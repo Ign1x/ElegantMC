@@ -1,17 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { AppCtxProvider } from "./appCtx";
 import { createT, normalizeLocale, type Locale } from "./i18n";
 import Icon from "./ui/Icon";
 import ErrorBoundary from "./ui/ErrorBoundary";
+import DangerZone from "./ui/DangerZone";
 import Select from "./ui/Select";
-import AdvancedView from "./views/AdvancedView";
-import FilesView from "./views/FilesView";
-import FrpView from "./views/FrpView";
-import GamesView from "./views/GamesView";
-import NodesView from "./views/NodesView";
-import PanelView from "./views/PanelView";
+
+const AdvancedView = dynamic(() => import("./views/AdvancedView"), { ssr: false });
+const FilesView = dynamic(() => import("./views/FilesView"), { ssr: false });
+const FrpView = dynamic(() => import("./views/FrpView"), { ssr: false });
+const GamesView = dynamic(() => import("./views/GamesView"), { ssr: false });
+const NodesView = dynamic(() => import("./views/NodesView"), { ssr: false });
+const PanelView = dynamic(() => import("./views/PanelView"), { ssr: false });
 
 type Daemon = {
   id: string;
@@ -30,6 +33,7 @@ type McVersion = {
 };
 
 const INSTANCE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const DAEMONS_CACHE_KEY = "elegantmc_daemons_cache_v1";
 
 type TrFn = (en: string, zh: string) => string;
 
@@ -105,6 +109,8 @@ type GameSettingsSnapshot = {
   gamePort: number;
   xms: string;
   xmx: string;
+  jvmArgsPreset: "default" | "aikar" | "conservative";
+  jvmArgsExtra: string;
   enableFrp: boolean;
   frpProfileId: string;
   frpRemotePort: number;
@@ -112,7 +118,7 @@ type GameSettingsSnapshot = {
 
 type InstallForm = {
   instanceId: string;
-  kind: "vanilla" | "paper" | "zip" | "zip_url" | "modrinth" | "curseforge";
+  kind: "vanilla" | "paper" | "purpur" | "zip" | "zip_url" | "modrinth" | "curseforge";
   version: string;
   paperBuild: number;
   xms: string;
@@ -134,12 +140,14 @@ type StartOverride = Partial<{
   gamePort: number;
   xms: string;
   xmx: string;
+  jvmArgs: string[];
   enableFrp: boolean;
   frpProfileId: string;
   frpRemotePort: number;
 }>;
 
 const INSTANCE_CONFIG_NAME = ".elegantmc.json";
+const PACK_MANIFEST_NAME = ".elegantmc_pack.json";
 
 function joinRelPath(a: string, b: string) {
   const left = (a || "")
@@ -214,11 +222,6 @@ function isProbablyBinary(bytes: Uint8Array) {
   return suspicious / len > 0.2;
 }
 
-function fmtUnix(ts?: number | null) {
-  if (!ts) return "-";
-  return new Date(ts * 1000).toLocaleString();
-}
-
 function fmtBytes(n?: number) {
   const v = Number(n || 0);
   if (!Number.isFinite(v) || v <= 0) return "0 B";
@@ -242,6 +245,107 @@ function pct(used?: number, total?: number) {
 function clamp(v: number, lo: number, hi: number) {
   if (!Number.isFinite(v)) return lo;
   return Math.max(lo, Math.min(hi, v));
+}
+
+function parseByteSize(raw: string) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  const m = s.match(/^(\d+(?:\.\d+)?)([KMGTP])?(?:i?b)?$/i);
+  if (!m) return null;
+  const n = Number.parseFloat(m[1] || "");
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const unit = String(m[2] || "").toUpperCase();
+  const mul =
+    unit === "K"
+      ? 1024
+      : unit === "M"
+        ? 1024 ** 2
+        : unit === "G"
+          ? 1024 ** 3
+          : unit === "T"
+            ? 1024 ** 4
+            : unit === "P"
+              ? 1024 ** 5
+              : 1;
+  const bytes = n * mul;
+  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+  return Math.round(bytes);
+}
+
+function fmtMemPreset(bytes: number) {
+  const b = Math.max(0, Math.floor(Number(bytes || 0)));
+  if (!b) return "";
+  const gib = 1024 ** 3;
+  const mib = 1024 ** 2;
+  if (b % gib === 0) return `${b / gib}G`;
+  if (b % mib === 0) return `${b / mib}M`;
+  return fmtBytes(b);
+}
+
+const JVM_ARGS_PRESETS = {
+  default: [] as string[],
+  conservative: [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=200",
+    "-XX:+ParallelRefProcEnabled",
+    "-XX:+DisableExplicitGC",
+  ],
+  aikar: [
+    "-XX:+UseG1GC",
+    "-XX:+ParallelRefProcEnabled",
+    "-XX:MaxGCPauseMillis=200",
+    "-XX:+UnlockExperimentalVMOptions",
+    "-XX:+DisableExplicitGC",
+    "-XX:+AlwaysPreTouch",
+    "-XX:G1NewSizePercent=30",
+    "-XX:G1MaxNewSizePercent=40",
+    "-XX:G1HeapRegionSize=8M",
+    "-XX:G1ReservePercent=20",
+    "-XX:G1HeapWastePercent=5",
+    "-XX:G1MixedGCCountTarget=4",
+    "-XX:InitiatingHeapOccupancyPercent=15",
+    "-XX:G1MixedGCLiveThresholdPercent=90",
+    "-XX:G1RSetUpdatingPauseTimePercent=5",
+    "-XX:SurvivorRatio=32",
+    "-XX:+PerfDisableSharedMem",
+    "-XX:MaxTenuringThreshold=1",
+    "-Dusing.aikar.flags=https://mcflags.emc.gs",
+    "-Daikar.flags=true",
+  ],
+} satisfies Record<string, string[]>;
+
+function normalizeJvmPreset(raw: any): "default" | "aikar" | "conservative" {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v === "aikar" || v === "conservative" || v === "default") return v;
+  return "default";
+}
+
+function parseJvmArgsExtraLines(text: string) {
+  const raw = String(text || "");
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s) continue;
+    if (s.startsWith("#")) continue;
+    out.push(s);
+  }
+  return out.slice(0, 80);
+}
+
+function computeJvmArgs(preset: any, extraText: any) {
+  const p = normalizeJvmPreset(preset);
+  const base = JVM_ARGS_PRESETS[p] || [];
+  const extra = parseJvmArgsExtraLines(String(extraText || ""));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const a of [...base, ...extra]) {
+    const s = String(a || "").trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
 }
 
 function Sparkline({
@@ -505,15 +609,23 @@ export default function HomePage() {
   const [panelInfo, setPanelInfo] = useState<{ id: string; version: string; revision: string; buildDate: string } | null>(null);
   const [panelSettings, setPanelSettings] = useState<any | null>(null);
   const [panelSettingsStatus, setPanelSettingsStatus] = useState<string>("");
+  const [updateInfo, setUpdateInfo] = useState<any | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<string>("");
+  const [updateBusy, setUpdateBusy] = useState<boolean>(false);
 
   const [daemons, setDaemons] = useState<Daemon[]>([]);
+  const [daemonsCacheAtUnix, setDaemonsCacheAtUnix] = useState<number>(0);
   const [selected, setSelected] = useState<string>("");
   const selectedDaemon = useMemo(() => daemons.find((d) => d.id === selected) || null, [daemons, selected]);
 
   const [error, setError] = useState<string>("");
   const [uiHost, setUiHost] = useState<string>("");
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [authMe, setAuthMe] = useState<{ via: string; user_id: string; username: string; totp_enabled?: boolean } | null>(null);
+  const [loginUsername, setLoginUsername] = useState<string>("admin");
   const [loginPassword, setLoginPassword] = useState<string>("");
+  const [loginOtp, setLoginOtp] = useState<string>("");
+  const [loginNeeds2fa, setLoginNeeds2fa] = useState<boolean>(false);
   const [loginStatus, setLoginStatus] = useState<string>("");
   const [locale, setLocale] = useState<Locale>("en");
   const t = useMemo(() => createT(locale), [locale]);
@@ -634,12 +746,19 @@ export default function HomePage() {
   const [gamePort, setGamePort] = useState<number>(25565);
   const [xms, setXms] = useState<string>("1G");
   const [xmx, setXmx] = useState<string>("2G");
+  const [jvmArgsPreset, setJvmArgsPreset] = useState<"default" | "aikar" | "conservative">("default");
+  const [jvmArgsExtra, setJvmArgsExtra] = useState<string>("");
+  const [installedServerKind, setInstalledServerKind] = useState<"unknown" | "vanilla" | "paper" | "purpur">("unknown");
+  const [installedServerVersion, setInstalledServerVersion] = useState<string>("");
+  const [installedServerBuild, setInstalledServerBuild] = useState<number>(0);
   const [consoleLine, setConsoleLine] = useState<string>("");
   const [serverOpStatus, setServerOpStatus] = useState<string>("");
   const [gameActionBusy, setGameActionBusy] = useState<boolean>(false);
   const [instanceUsageBytes, setInstanceUsageBytes] = useState<number | null>(null);
   const [instanceUsageStatus, setInstanceUsageStatus] = useState<string>("");
   const [instanceUsageBusy, setInstanceUsageBusy] = useState<boolean>(false);
+  const [instanceMetricsHistory, setInstanceMetricsHistory] = useState<any[]>([]);
+  const [instanceMetricsStatus, setInstanceMetricsStatus] = useState<string>("");
   const [restoreOpen, setRestoreOpen] = useState<boolean>(false);
   const [restoreStatus, setRestoreStatus] = useState<string>("");
   const [restoreCandidates, setRestoreCandidates] = useState<string[]>([]);
@@ -648,6 +767,28 @@ export default function HomePage() {
   const [trashStatus, setTrashStatus] = useState<string>("");
   const [trashItems, setTrashItems] = useState<any[]>([]);
   const [trashShowAll, setTrashShowAll] = useState<boolean>(false);
+  const [datapackOpen, setDatapackOpen] = useState<boolean>(false);
+  const [datapackBusy, setDatapackBusy] = useState<boolean>(false);
+  const [datapackStatus, setDatapackStatus] = useState<string>("");
+  const [datapackWorld, setDatapackWorld] = useState<string>("world");
+  const [datapackUrl, setDatapackUrl] = useState<string>("");
+  const [datapackFile, setDatapackFile] = useState<File | null>(null);
+  const [datapackInputKey, setDatapackInputKey] = useState<number>(0);
+  const [resPackOpen, setResPackOpen] = useState<boolean>(false);
+  const [resPackBusy, setResPackBusy] = useState<boolean>(false);
+  const [resPackStatus, setResPackStatus] = useState<string>("");
+  const [resPackUrl, setResPackUrl] = useState<string>("");
+  const [resPackSha1, setResPackSha1] = useState<string>("");
+  const [resPackFile, setResPackFile] = useState<File | null>(null);
+  const [resPackInputKey, setResPackInputKey] = useState<number>(0);
+  const [jarUpdateOpen, setJarUpdateOpen] = useState<boolean>(false);
+  const [jarUpdateBusy, setJarUpdateBusy] = useState<boolean>(false);
+  const [jarUpdateStatus, setJarUpdateStatus] = useState<string>("");
+  const [jarUpdateType, setJarUpdateType] = useState<"vanilla" | "paper" | "purpur">("paper");
+  const [jarUpdateVersion, setJarUpdateVersion] = useState<string>("1.20.1");
+  const [jarUpdateBuild, setJarUpdateBuild] = useState<number>(0);
+  const [jarUpdateJarName, setJarUpdateJarName] = useState<string>("server.jar");
+  const [jarUpdateBackup, setJarUpdateBackup] = useState<boolean>(true);
   const [serverPropsOpen, setServerPropsOpen] = useState<boolean>(false);
   const [serverPropsStatus, setServerPropsStatus] = useState<string>("");
   const [serverPropsRaw, setServerPropsRaw] = useState<string>("");
@@ -664,6 +805,7 @@ export default function HomePage() {
   const [installStep, setInstallStep] = useState<1 | 2 | 3>(1);
   const [installStartUnix, setInstallStartUnix] = useState<number>(0);
   const [installInstance, setInstallInstance] = useState<string>("");
+  const [installProgress, setInstallProgress] = useState<{ phase: string; currentFile: string; done: number; total: number } | null>(null);
   const [installForm, setInstallForm] = useState<InstallForm>(() => ({
     instanceId: "",
     kind: "vanilla",
@@ -692,7 +834,6 @@ export default function HomePage() {
   const [cfResolveStatus, setCfResolveStatus] = useState<string>("");
   const [cfResolveBusy, setCfResolveBusy] = useState<boolean>(false);
   const [modpackProviders, setModpackProviders] = useState<any[]>([]);
-  const [modpackProvidersStatus, setModpackProvidersStatus] = useState<string>("");
   const [logView, setLogView] = useState<"all" | "mc" | "install" | "frp">("all");
 
   useEffect(() => {
@@ -708,6 +849,8 @@ export default function HomePage() {
   const [serverDirs, setServerDirs] = useState<string[]>([]);
   const [serverDirsStatus, setServerDirsStatus] = useState<string>("");
   const [instanceTagsById, setInstanceTagsById] = useState<Record<string, string[]>>({});
+  const [favoriteInstanceIds, setFavoriteInstanceIds] = useState<string[]>([]);
+  const [instanceNotesById, setInstanceNotesById] = useState<Record<string, string>>({});
 
   // Vanilla versions
   const [versions, setVersions] = useState<McVersion[]>([]);
@@ -736,6 +879,7 @@ export default function HomePage() {
   const [nodeDetailsOpen, setNodeDetailsOpen] = useState<boolean>(false);
   const [nodeDetailsId, setNodeDetailsId] = useState<string>("");
   const [nodeDetailsRangeSec, setNodeDetailsRangeSec] = useState<number>(15 * 60);
+  const [nodeInstanceUsageByKey, setNodeInstanceUsageByKey] = useState<Record<string, { bytes: number | null; status: string; busy: boolean; updatedAtUnix: number }>>({});
   const [addNodeOpen, setAddNodeOpen] = useState<boolean>(false);
   const [createdNode, setCreatedNode] = useState<{ id: string; token: string } | null>(null);
   const [newNodeId, setNewNodeId] = useState<string>("");
@@ -824,11 +968,54 @@ export default function HomePage() {
     return { jarErr, portErr, frpRemoteErr, ok };
   }, [jarPath, gamePort, frpRemotePort, t]);
 
+  const jvmArgsComputed = useMemo(() => computeJvmArgs(jvmArgsPreset, jvmArgsExtra), [jvmArgsPreset, jvmArgsExtra]);
+
+  const memoryInfo = useMemo(() => {
+    const totalBytes = Math.floor(Number(selectedDaemon?.heartbeat?.mem?.total_bytes || 0));
+    const xmsBytes = parseByteSize(xms);
+    const xmxBytes = parseByteSize(xmx);
+    const warnings: { kind: "warn" | "danger"; text: string }[] = [];
+
+    if (xmsBytes != null && xmxBytes != null && xmsBytes > xmxBytes) {
+      warnings.push({ kind: "danger", text: t.tr("Xms is larger than Xmx", "Xms 大于 Xmx") });
+    }
+    if (totalBytes > 0 && xmxBytes != null) {
+      const pct = (xmxBytes * 100) / totalBytes;
+      if (pct > 90) warnings.push({ kind: "danger", text: t.tr(`Xmx is ${pct.toFixed(0)}% of node memory`, `Xmx 占节点内存 ${pct.toFixed(0)}%`) });
+      else if (pct > 75) warnings.push({ kind: "warn", text: t.tr(`Xmx is ${pct.toFixed(0)}% of node memory`, `Xmx 占节点内存 ${pct.toFixed(0)}%`) });
+    }
+    return { totalBytes, xmsBytes, xmxBytes, warnings };
+  }, [selectedDaemon, xms, xmx, t]);
+
+  const memoryPresets = useMemo(() => {
+    const total = memoryInfo.totalBytes;
+    const mib = 1024 ** 2;
+    const gib = 1024 ** 3;
+    const base = [512 * mib, 1 * gib, 2 * gib, 3 * gib, 4 * gib, 6 * gib, 8 * gib, 12 * gib, 16 * gib, 24 * gib, 32 * gib];
+    const limit = total > 0 ? Math.floor(total * 0.9) : 0;
+    const list = base.filter((b) => (limit > 0 ? b <= limit : b <= 12 * gib));
+    const out: number[] = [];
+    const seen = new Set<number>();
+    for (const b of list) {
+      if (b <= 0) continue;
+      if (seen.has(b)) continue;
+      seen.add(b);
+      out.push(b);
+    }
+    return out;
+  }, [memoryInfo.totalBytes]);
+
   const settingsSearchQ = settingsSearch.trim().toLowerCase();
   const showSettingsField = (...terms: string[]) =>
     !settingsSearchQ || terms.some((t) => String(t || "").toLowerCase().includes(settingsSearchQ));
 
   const nodeDetailsNode = useMemo(() => nodes.find((n: any) => n?.id === nodeDetailsId) || null, [nodes, nodeDetailsId]);
+  const nodeDetailsUpdate = useMemo(() => {
+    const id = String(nodeDetailsId || "").trim();
+    if (!id || !updateInfo) return null;
+    const list = Array.isArray((updateInfo as any)?.daemons?.nodes) ? (updateInfo as any).daemons.nodes : [];
+    return list.find((x: any) => String(x?.id || "").trim() === id) || null;
+  }, [updateInfo, nodeDetailsId]);
   const nodeDetailsHistory = useMemo(() => {
     const hist = Array.isArray(nodeDetailsNode?.history) ? nodeDetailsNode.history : [];
     const rangeSec = Math.max(0, Math.round(Number(nodeDetailsRangeSec || 0)));
@@ -963,11 +1150,8 @@ export default function HomePage() {
         mql.addEventListener("change", onChange);
         return () => mql.removeEventListener("change", onChange);
       }
-      // eslint-disable-next-line deprecation/deprecation
       if (typeof (mql as any).addListener === "function") {
-        // eslint-disable-next-line deprecation/deprecation
         (mql as any).addListener(onChange);
-        // eslint-disable-next-line deprecation/deprecation
         return () => (mql as any).removeListener(onChange);
       }
     } catch {
@@ -1129,6 +1313,64 @@ export default function HomePage() {
     }
   }, [selected, instanceTagsById]);
 
+  // Favorite instances (per daemon, stored in localStorage)
+  useEffect(() => {
+    if (!selected) {
+      setFavoriteInstanceIds([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`elegantmc_instance_favorites_v1:${selected}`);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const list = Array.isArray(parsed) ? parsed : [];
+      const cleaned = list.map((s: any) => String(s || "").trim()).filter(Boolean).slice(0, 200);
+      setFavoriteInstanceIds(cleaned);
+    } catch {
+      setFavoriteInstanceIds([]);
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    try {
+      localStorage.setItem(`elegantmc_instance_favorites_v1:${selected}`, JSON.stringify(favoriteInstanceIds || []));
+    } catch {
+      // ignore
+    }
+  }, [selected, favoriteInstanceIds]);
+
+  // Instance notes (per daemon, stored in localStorage)
+  useEffect(() => {
+    if (!selected) {
+      setInstanceNotesById({});
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`elegantmc_instance_notes_v1:${selected}`);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed || {})) {
+        const inst = String(k || "").trim();
+        if (!inst) continue;
+        const note = String(v || "").slice(0, 4000);
+        if (!note.trim()) continue;
+        out[inst] = note;
+      }
+      setInstanceNotesById(out);
+    } catch {
+      setInstanceNotesById({});
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    try {
+      localStorage.setItem(`elegantmc_instance_notes_v1:${selected}`, JSON.stringify(instanceNotesById || {}));
+    } catch {
+      // ignore
+    }
+  }, [selected, instanceNotesById]);
+
   useEffect(() => {
     const name = String(panelSettings?.brand_name || "").trim();
     if (!name) return;
@@ -1277,9 +1519,27 @@ export default function HomePage() {
     async function check() {
       try {
         const res = await fetch("/api/auth/me", { cache: "no-store", credentials: "include" });
-        if (!cancelled) setAuthed(res.ok);
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (res.ok) {
+          setAuthed(true);
+          setAuthMe({
+            via: String(json?.via || "session"),
+            user_id: String(json?.user_id || ""),
+            username: String(json?.username || ""),
+            totp_enabled: !!json?.totp_enabled,
+          });
+          setLoginNeeds2fa(false);
+          setLoginOtp("");
+        } else {
+          setAuthed(false);
+          setAuthMe(null);
+        }
       } catch {
-        if (!cancelled) setAuthed(false);
+        if (!cancelled) {
+          setAuthed(false);
+          setAuthMe(null);
+        }
       }
     }
     check();
@@ -1293,7 +1553,10 @@ export default function HomePage() {
     if (!nextInit.cache) nextInit.cache = "no-store";
     if (!nextInit.credentials) nextInit.credentials = "include";
     const res = await fetch(url, nextInit);
-    if (res.status === 401) setAuthed(false);
+    if (res.status === 401) {
+      setAuthed(false);
+      setAuthMe(null);
+    }
     return res;
   }
 
@@ -1314,16 +1577,13 @@ export default function HomePage() {
   }
 
   async function refreshModpackProviders() {
-    setModpackProvidersStatus(t.tr("Loading...", "加载中..."));
     try {
       const res = await apiFetch("/api/modpacks/providers", { cache: "no-store" });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
       setModpackProviders(Array.isArray(json?.providers) ? json.providers : []);
-      setModpackProvidersStatus("");
     } catch (e: any) {
       setModpackProviders([]);
-      setModpackProvidersStatus(String(e?.message || e));
     }
   }
 
@@ -1361,6 +1621,30 @@ export default function HomePage() {
     }
   }
 
+  async function checkUpdates(opts: { force?: boolean } = {}) {
+    if (updateBusy) return;
+    setUpdateBusy(true);
+    setUpdateStatus(t.tr("Checking...", "检查中..."));
+    try {
+      const qs = opts.force ? "?force=1" : "";
+      const res = await apiFetch(`/api/updates/check${qs}`, { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setUpdateInfo(json || null);
+      setUpdateStatus(t.tr("Checked", "已检查"));
+      try {
+        localStorage.setItem("elegantmc_updates_cache", JSON.stringify(json || null));
+      } catch {
+        // ignore
+      }
+      setTimeout(() => setUpdateStatus(""), 900);
+    } catch (e: any) {
+      setUpdateStatus(String(e?.message || e));
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
   async function loadSchedule() {
     if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
     return await callOkCommand("schedule_get", {}, 30_000);
@@ -1383,21 +1667,45 @@ export default function HomePage() {
   async function login() {
     setLoginStatus(t.tr("Logging in...", "登录中..."));
     try {
+      const otpRaw = String(loginOtp || "").trim();
+      const otpDigits = otpRaw.replace(/\s+/g, "");
+      const body: any = { username: loginUsername, password: loginPassword };
+      if (otpRaw) {
+        if (/^[0-9]{6}$/.test(otpDigits)) body.totp_code = otpDigits;
+        else body.recovery_code = otpRaw;
+      }
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: loginPassword }),
+        body: JSON.stringify(body),
         credentials: "include",
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || t.tr("login failed", "登录失败"));
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (json?.needs_2fa) {
+          setLoginNeeds2fa(true);
+          setLoginStatus(t.tr("2FA required", "需要 2FA"));
+          return;
+        }
+        throw new Error(json?.error || t.tr("login failed", "登录失败"));
+      }
       setAuthed(true);
+      setAuthMe({
+        via: "session",
+        user_id: String(json?.user_id || ""),
+        username: String(json?.username || ""),
+        totp_enabled: !!json?.totp_enabled,
+      });
+      setLoginUsername("admin");
       setLoginPassword("");
+      setLoginOtp("");
+      setLoginNeeds2fa(false);
       setLoginStatus("");
       setError("");
     } catch (e: any) {
       setLoginStatus(String(e?.message || e));
       setAuthed(false);
+      setAuthMe(null);
     }
   }
 
@@ -1408,6 +1716,7 @@ export default function HomePage() {
       // ignore
     }
     setAuthed(false);
+    setAuthMe(null);
   }
 
   async function callCommand(name: string, args: any, timeoutMs = 60_000) {
@@ -1668,6 +1977,62 @@ export default function HomePage() {
     setNodeDetailsOpen(true);
   }
 
+  async function deleteNodeNow(idRaw: string) {
+    const id = String(idRaw || "").trim();
+    if (!id) return;
+
+    const ok = await confirmDialog(
+      t.tr(
+        `Delete node ${id}?\n\nThis removes its saved token from the panel and will prevent reconnecting until you re-add it.`,
+        `删除节点 ${id}？\n\n这会从面板移除该节点的 token，并阻止其再次连接（除非重新添加）。`
+      ),
+      { title: t.tr("Delete Node", "删除节点"), confirmLabel: t.tr("Continue", "继续"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+    );
+    if (!ok) return;
+
+    const typed = await promptDialog({
+      title: t.tr("Confirm", "确认"),
+      message: t.tr(`Type "${id}" to confirm deleting this node.`, `输入 “${id}” 以确认删除该节点。`),
+      placeholder: id,
+      okLabel: t.tr("Delete", "删除"),
+      cancelLabel: t.tr("Cancel", "取消"),
+    });
+    if (typed !== id) {
+      setNodesStatus(t.tr("Cancelled", "已取消"));
+      return;
+    }
+
+    setNodesStatus(t.tr("Deleting...", "删除中..."));
+    try {
+      const res = await apiFetch(`/api/nodes/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "failed");
+
+      if (String(selected || "").trim() === id) {
+        setSelected("");
+        setInstanceId("");
+        setServerDirs([]);
+        setServerDirsStatus("");
+      }
+
+      setNodeDetailsOpen(false);
+      setNodeDetailsId("");
+
+      try {
+        const res2 = await apiFetch("/api/nodes", { cache: "no-store" });
+        const json2 = await res2.json().catch(() => null);
+        if (res2.ok) setNodes(json2?.nodes || []);
+      } catch {
+        // ignore
+      }
+
+      setNodesStatus(t.tr("Deleted", "已删除"));
+      setTimeout(() => setNodesStatus(""), 900);
+    } catch (e: any) {
+      setNodesStatus(String(e?.message || e));
+    }
+  }
+
   function openAddNodeModal() {
     setCreatedNode(null);
     setNewNodeId("");
@@ -1747,6 +2112,29 @@ export default function HomePage() {
     });
   }
 
+  function toggleFavoriteInstance(instance: string) {
+    const inst = String(instance || "").trim();
+    if (!inst) return;
+    setFavoriteInstanceIds((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      if (list.includes(inst)) return list.filter((x) => x !== inst);
+      return [inst, ...list].slice(0, 200);
+    });
+  }
+
+  function updateInstanceNote(instance: string, note: string) {
+    const inst = String(instance || "").trim();
+    if (!inst) return;
+    const nextNote = String(note || "").slice(0, 4000);
+    setInstanceNotesById((prev) => {
+      const cur = prev || {};
+      const next = { ...cur };
+      if (!nextNote.trim()) delete next[inst];
+      else next[inst] = nextNote;
+      return next;
+    });
+  }
+
   async function refreshJarCandidates(instOverride?: string) {
     const inst = String(instOverride ?? instanceId).trim();
     if (!inst || !selectedDaemon?.connected) {
@@ -1786,25 +2174,138 @@ export default function HomePage() {
   async function writeInstanceConfig(inst: string, cfg: any) {
     const cleanInst = String(inst || "").trim();
     if (!cleanInst) throw new Error(t.tr("instance_id is required", "instance_id 不能为空"));
+    const path = joinRelPath(cleanInst, INSTANCE_CONFIG_NAME);
+
+    let prev: any = null;
+    try {
+      const out = await callOkCommand("fs_read", { path }, 10_000);
+      const raw = b64DecodeUtf8(String(out?.b64 || ""));
+      const parsed = raw ? JSON.parse(raw) : null;
+      prev = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+      prev = null;
+    }
+
     const jar = normalizeJarPath(cleanInst, String(cfg?.jar_path ?? jarPath));
     const java = String(cfg?.java_path ?? javaPath).trim();
     const gamePortRaw = Math.round(Number(cfg?.game_port ?? gamePort));
     const gamePortVal = Number.isFinite(gamePortRaw) && gamePortRaw >= 1 && gamePortRaw <= 65535 ? gamePortRaw : 25565;
     const frpRemoteRaw = Math.round(Number(cfg?.frp_remote_port ?? frpRemotePort));
     const frpRemoteVal = Number.isFinite(frpRemoteRaw) && frpRemoteRaw >= 0 && frpRemoteRaw <= 65535 ? frpRemoteRaw : 0;
-    const payload = {
+
+    const preset = normalizeJvmPreset(cfg?.jvm_args_preset ?? cfg?.jvmArgsPreset ?? jvmArgsPreset);
+    const extraText = String(cfg?.jvm_args_extra ?? cfg?.jvmArgsExtra ?? jvmArgsExtra ?? "");
+    const jvmArgs =
+      Array.isArray(cfg?.jvm_args) ? (cfg.jvm_args as any[]).map((s) => String(s || "").trim()).filter(Boolean).slice(0, 120) : computeJvmArgs(preset, extraText);
+
+    const payload: any = {
+      ...(prev || {}),
       jar_path: jar,
       ...(java ? { java_path: java } : {}),
       game_port: gamePortVal,
       xms: String(cfg?.xms ?? xms).trim(),
       xmx: String(cfg?.xmx ?? xmx).trim(),
+      jvm_args_preset: preset,
+      jvm_args_extra: extraText,
+      jvm_args: jvmArgs,
       enable_frp: !!(cfg?.enable_frp ?? enableFrp),
       frp_profile_id: String(cfg?.frp_profile_id ?? frpProfileId),
       frp_remote_port: frpRemoteVal,
       updated_at_unix: Math.floor(Date.now() / 1000),
     };
-    const path = joinRelPath(cleanInst, INSTANCE_CONFIG_NAME);
+    if (typeof cfg?.server_kind === "string") payload.server_kind = String(cfg.server_kind).trim();
+    if (typeof cfg?.server_version === "string") payload.server_version = String(cfg.server_version).trim();
+    if (cfg?.server_build != null && Number.isFinite(Number(cfg.server_build))) payload.server_build = Math.round(Number(cfg.server_build));
+    if (!java) delete payload.java_path;
     await callOkCommand("fs_write", { path, b64: b64EncodeUtf8(JSON.stringify(payload, null, 2) + "\n") }, 10_000);
+  }
+
+  async function writePackManifest(inst: string, payload: any) {
+    const cleanInst = String(inst || "").trim();
+    if (!cleanInst) throw new Error(t.tr("instance_id is required", "instance_id 不能为空"));
+    const path = joinRelPath(cleanInst, PACK_MANIFEST_NAME);
+    await callOkCommand("fs_write", { path, b64: b64EncodeUtf8(JSON.stringify(payload ?? null, null, 2) + "\n") }, 10_000);
+  }
+
+  async function readPackManifest(inst: string): Promise<any | null> {
+    const cleanInst = String(inst || "").trim();
+    if (!cleanInst) return null;
+    try {
+      const out = await callOkCommand("fs_read", { path: joinRelPath(cleanInst, PACK_MANIFEST_NAME) }, 10_000);
+      const raw = b64DecodeUtf8(String(out?.b64 || ""));
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  async function readInstanceConfigForStart(inst: string): Promise<StartOverride> {
+    const cleanInst = String(inst || "").trim();
+    if (!cleanInst) return {};
+    const defaults = {
+      jarPath: normalizeJarPath(cleanInst, "server.jar"),
+      javaPath: "",
+      gamePort: 25565,
+      xms: String(panelSettings?.defaults?.xms || "1G"),
+      xmx: String(panelSettings?.defaults?.xmx || "2G"),
+      enableFrp: false,
+      frpProfileId: "",
+      frpRemotePort: 0,
+    } satisfies StartOverride;
+
+    let cfg: any = null;
+    try {
+      const out = await callOkCommand("fs_read", { path: joinRelPath(cleanInst, INSTANCE_CONFIG_NAME) }, 10_000);
+      const raw = b64DecodeUtf8(String(out?.b64 || ""));
+      const parsed = raw ? JSON.parse(raw) : null;
+      cfg = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+      cfg = null;
+    }
+
+    const jarPathRaw = typeof cfg?.jar_path === "string" ? String(cfg.jar_path) : defaults.jarPath;
+    const jarPath = normalizeJarPath(cleanInst, jarPathRaw);
+    const javaPath = typeof cfg?.java_path === "string" ? String(cfg.java_path).trim() : defaults.javaPath;
+
+    let gamePort = defaults.gamePort;
+    const gamePortRaw = Math.round(Number(cfg?.game_port ?? 0));
+    if (Number.isFinite(gamePortRaw) && gamePortRaw >= 1 && gamePortRaw <= 65535) {
+      gamePort = gamePortRaw;
+    } else {
+      // Fallback: try server.properties
+      try {
+        const propsOut = await callOkCommand("fs_read", { path: joinRelPath(cleanInst, "server.properties") }, 10_000);
+        const text = b64DecodeUtf8(String(propsOut?.b64 || ""));
+        const v = getPropValue(text, "server-port");
+        const p = Math.round(Number(v || 0));
+        if (Number.isFinite(p) && p >= 1 && p <= 65535) gamePort = p;
+      } catch {
+        // ignore
+      }
+    }
+
+    const xms = typeof cfg?.xms === "string" && String(cfg.xms).trim() ? String(cfg.xms).trim() : defaults.xms;
+    const xmx = typeof cfg?.xmx === "string" && String(cfg.xmx).trim() ? String(cfg.xmx).trim() : defaults.xmx;
+
+    const jvmArgs = Array.isArray(cfg?.jvm_args)
+      ? cfg.jvm_args.map((s: any) => String(s || "").trim()).filter(Boolean).slice(0, 120)
+      : computeJvmArgs(cfg?.jvm_args_preset, cfg?.jvm_args_extra);
+
+    const enableFrp = typeof cfg?.enable_frp === "boolean" ? !!cfg.enable_frp : defaults.enableFrp;
+    const frpProfileId = typeof cfg?.frp_profile_id === "string" ? String(cfg.frp_profile_id) : defaults.frpProfileId;
+    const frpRemotePortRaw = Math.round(Number(cfg?.frp_remote_port ?? defaults.frpRemotePort));
+    const frpRemotePort = Number.isFinite(frpRemotePortRaw) && frpRemotePortRaw >= 0 && frpRemotePortRaw <= 65535 ? frpRemotePortRaw : 0;
+
+    return { jarPath, javaPath, gamePort, xms, xmx, jvmArgs, enableFrp, frpProfileId, frpRemotePort };
+  }
+
+  async function startServerFromSavedConfig(instanceOverride: string) {
+    const inst = String(instanceOverride || "").trim();
+    if (!inst) return;
+    const override = await readInstanceConfigForStart(inst);
+    await startServer(inst, override);
   }
 
   function closeConfirm(ok: boolean) {
@@ -1996,7 +2497,16 @@ export default function HomePage() {
         const json = await res.json();
         if (cancelled) return;
         if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
-        setDaemons(json.daemons || []);
+        const now = Math.floor(Date.now() / 1000);
+        const list = Array.isArray(json.daemons) ? json.daemons : [];
+        setDaemons(list);
+        setDaemonsCacheAtUnix(now);
+        try {
+          // Best-effort offline cache (avoid blank UI after refresh during disconnects).
+          localStorage.setItem(DAEMONS_CACHE_KEY, JSON.stringify({ at_unix: now, daemons: list }));
+        } catch {
+          // ignore
+        }
         if (!selected && (json.daemons || []).length > 0) setSelected(json.daemons[0].id);
         setError("");
       } catch (e: any) {
@@ -2011,6 +2521,22 @@ export default function HomePage() {
     };
   }, [selected, authed]);
 
+  // Offline cache for daemons list (best-effort).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DAEMONS_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed?.daemons) ? parsed.daemons : null;
+      const at = Math.round(Number(parsed?.at_unix || 0));
+      if (list) setDaemons(list);
+      if (Number.isFinite(at) && at > 0) setDaemonsCacheAtUnix(at);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // UI host (used for nicer socket display on local/LAN deployments).
   useEffect(() => {
     try {
@@ -2018,6 +2544,18 @@ export default function HomePage() {
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
       const wsUrl = `${proto}://${window.location.host}/ws/daemon`;
       setDeployPanelWsUrl((prev) => prev || wsUrl);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Updates cache (offline-friendly banner).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("elegantmc_updates_cache");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") setUpdateInfo(parsed);
     } catch {
       // ignore
     }
@@ -2140,6 +2678,14 @@ export default function HomePage() {
         if (typeof c.java_path === "string") setJavaPath(c.java_path);
         if (typeof c.xms === "string" && c.xms.trim()) setXms(c.xms);
         if (typeof c.xmx === "string" && c.xmx.trim()) setXmx(c.xmx);
+        if (typeof c.jvm_args_preset === "string") setJvmArgsPreset(normalizeJvmPreset(c.jvm_args_preset));
+        if (typeof c.jvm_args_extra === "string") setJvmArgsExtra(c.jvm_args_extra);
+        if (typeof c.server_kind === "string") {
+          const k = String(c.server_kind || "").trim().toLowerCase();
+          setInstalledServerKind(k === "vanilla" || k === "paper" || k === "purpur" ? (k as any) : "unknown");
+        }
+        if (typeof c.server_version === "string") setInstalledServerVersion(String(c.server_version || "").trim());
+        if (Number.isFinite(Number(c.server_build))) setInstalledServerBuild(Math.round(Number(c.server_build)));
         if (typeof c.enable_frp === "boolean") setEnableFrp(c.enable_frp);
         if (typeof c.frp_profile_id === "string") setFrpProfileId(c.frp_profile_id);
         if (Number.isFinite(Number(c.frp_remote_port))) setFrpRemotePort(Number(c.frp_remote_port));
@@ -2167,6 +2713,11 @@ export default function HomePage() {
     setGamePort(25565);
     setXms("1G");
     setXmx("2G");
+    setJvmArgsPreset("default");
+    setJvmArgsExtra("");
+    setInstalledServerKind("unknown");
+    setInstalledServerVersion("");
+    setInstalledServerBuild(0);
     setInstanceUsageBytes(null);
     setInstanceUsageStatus("");
     setInstanceUsageBusy(false);
@@ -2236,6 +2787,48 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [selected, tab, installOpen, authed]);
+
+  // Instance metrics history (for graphs).
+  useEffect(() => {
+    if (authed !== true) return;
+    let cancelled = false;
+    async function tick() {
+      const daemonId = String(selected || "").trim();
+      const inst = String(instanceId || "").trim();
+      if (!daemonId || !inst) {
+        setInstanceMetricsHistory([]);
+        setInstanceMetricsStatus("");
+        return;
+      }
+      try {
+        const rangeSec = 60 * 60; // 1h max stored, but default view.
+        const res = await apiFetch(
+          `/api/daemons/${encodeURIComponent(daemonId)}/instances/${encodeURIComponent(inst)}/history?range_sec=${encodeURIComponent(String(rangeSec))}`,
+          { cache: "no-store" }
+        );
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+        setInstanceMetricsHistory(Array.isArray(json?.history) ? json.history : []);
+        setInstanceMetricsStatus("");
+      } catch (e: any) {
+        if (cancelled) return;
+        setInstanceMetricsHistory([]);
+        setInstanceMetricsStatus(String(e?.message || e));
+      }
+    }
+    if (tab === "games") {
+      tick();
+      const tmr = setInterval(tick, 5000);
+      return () => {
+        cancelled = true;
+        clearInterval(tmr);
+      };
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, authed, selected, instanceId, apiFetch, t]);
 
   // Load Vanilla versions list (server-side fetch; avoids CORS)
   useEffect(() => {
@@ -2638,11 +3231,11 @@ export default function HomePage() {
     }
   }
 
-	  async function deleteFsEntry(entry: any) {
-	    const name = String(entry?.name || "");
-	    if (!name) return;
-	    const isDir = !!entry?.isDir;
-	    const target = joinRelPath(fsPath, name);
+		  async function deleteFsEntry(entry: any) {
+		    const name = String(entry?.name || "");
+		    if (!name) return;
+		    const isDir = !!entry?.isDir;
+		    const target = joinRelPath(fsPath, name);
 	    const label = isDir ? `folder ${target} (recursive)` : `file ${target}`;
 	    const ok = await confirmDialog(t.tr(`Delete ${label}?`, `删除 ${label}？`), {
 	      title: t.tr("Delete", "删除"),
@@ -2682,13 +3275,179 @@ export default function HomePage() {
       setTimeout(() => setFsStatus(""), 900);
     } catch (e: any) {
       setFsStatus(String(e?.message || e));
-    }
-  }
+	    }
+	  }
 
-  async function openEntry(entry: any) {
-    const name = entry?.name || "";
-    if (!name) return;
-    if (fsDirty) {
+	  async function bulkDeleteFsEntries(entries: any[]): Promise<boolean> {
+	    const list = (Array.isArray(entries) ? entries : [])
+	      .map((e) => ({ name: String(e?.name || "").trim(), isDir: !!e?.isDir }))
+	      .filter((e) => e.name && e.name !== "." && e.name !== "..");
+	    if (!list.length) return false;
+
+	    const targets = list.map((e) => joinRelPath(fsPath, e.name)).filter(Boolean);
+	    const shown = targets.slice(0, 8).map((p) => `- ${p}`).join("\n");
+	    const more = targets.length > 8 ? `\n… ${targets.length - 8} more` : "";
+	    const ok = await confirmDialog(
+	      t.tr(
+	        `Delete ${targets.length} item(s)?\n\n${shown}${more}`,
+	        `删除 ${targets.length} 个条目？\n\n${shown}${more}`
+	      ),
+	      {
+	        title: t.tr("Bulk Delete", "批量删除"),
+	        confirmLabel: t.tr("Delete", "删除"),
+	        cancelLabel: t.tr("Cancel", "取消"),
+	        danger: true,
+	      }
+	    );
+	    if (!ok) return false;
+
+	    setFsStatus(t.tr(`Deleting ${targets.length} item(s) ...`, `删除中：${targets.length} 个...`));
+	    let failed = 0;
+	    let movedToTrash = 0;
+	    let deleted = 0;
+	    let lastTrash: { trashId: string; trashPath: string; originalPath: string } | null = null;
+
+	    for (const target of targets) {
+	      const inTrash = target === "_trash" || target.startsWith("_trash/");
+	      try {
+	        if (inTrash) {
+	          await callOkCommand("fs_delete", { path: target }, 60_000);
+	          deleted++;
+	        } else {
+	          const out = await callOkCommand("fs_trash", { path: target }, 60_000);
+	          movedToTrash++;
+	          const trashId = String(out?.trash_id || "").trim();
+	          const trashPath = String(out?.trash_path || "").trim();
+	          if (trashId || trashPath) lastTrash = { trashId, trashPath, originalPath: target };
+	        }
+	        if (fsSelectedFile === target || fsSelectedFile.startsWith(`${target}/`)) {
+	          setFsSelectedFile("");
+	          setFsFileText("");
+	        }
+	      } catch {
+	        failed++;
+	      }
+	    }
+
+	    try {
+	      await refreshFsNow();
+	    } catch {
+	      // ignore
+	    }
+
+	    if (lastTrash) {
+	      const daemonId = String(selected || "").trim();
+	      if (daemonId) {
+	        setUndoTrash({
+	          daemonId,
+	          trashId: lastTrash.trashId,
+	          trashPath: lastTrash.trashPath,
+	          originalPath: lastTrash.originalPath,
+	          message: t.tr(
+	            `Moved ${movedToTrash} item(s) to trash`,
+	            `已移入回收站：${movedToTrash} 个`
+	          ),
+	          expiresAtMs: Date.now() + 9000,
+	        });
+	      }
+	    }
+
+	    if (failed) setFsStatus(t.tr(`Done (${failed} failed)`, `完成（失败 ${failed} 个）`));
+	    else if (movedToTrash && !deleted) setFsStatus(t.tr("Moved to trash", "已移入回收站"));
+	    else setFsStatus(t.tr("Deleted", "已删除"));
+	    setTimeout(() => setFsStatus(""), 1200);
+	    return true;
+	  }
+
+	  async function bulkMoveFsEntries(entries: any[]): Promise<boolean> {
+	    const list = (Array.isArray(entries) ? entries : [])
+	      .map((e) => ({ name: String(e?.name || "").trim(), isDir: !!e?.isDir }))
+	      .filter((e) => e.name && e.name !== "." && e.name !== "..");
+	    if (!list.length) return false;
+
+	    const preview = list
+	      .slice(0, 8)
+	      .map((e) => `- ${joinRelPath(fsPath, e.name)}`)
+	      .join("\n");
+	    const more = list.length > 8 ? `\n… ${list.length - 8} more` : "";
+	    const raw = await promptDialog({
+	      title: t.tr("Bulk Move", "批量移动"),
+	      message: t.tr(
+	        `Move ${list.length} item(s) to which folder?\n\n${preview}${more}\n\nTarget folder is relative to servers/ (use /). Leave empty for servers/ root.`,
+	        `将 ${list.length} 个条目移动到哪个文件夹？\n\n${preview}${more}\n\n目标文件夹为 servers/ 下的相对路径（使用 /）。留空表示 servers/ 根目录。`
+	      ),
+	      defaultValue: fsPath,
+	      placeholder: t.tr("target/folder (empty = servers/ root)", "目标/文件夹（留空=servers/根目录）"),
+	      okLabel: t.tr("Move", "移动"),
+	      cancelLabel: t.tr("Cancel", "取消"),
+	    });
+	    if (raw == null) return false;
+
+	    const rawTrim = String(raw || "").trim();
+	    const rawNorm = rawTrim.replace(/\\+/g, "/").replace(/\/+/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+	    let dir = "";
+	    if (!rawNorm || rawNorm === "." || rawNorm === "./") {
+	      dir = "";
+	    } else {
+	      dir = normalizeRelFilePath(rawNorm);
+	      if (!dir) {
+	        setFsStatus(t.tr("invalid target path", "目标路径无效"));
+	        return false;
+	      }
+	    }
+
+	    const ok = await confirmDialog(
+	      t.tr(
+	        `Move ${list.length} item(s) to ${dir ? `servers/${dir}/` : "servers/"} ?`,
+	        `将 ${list.length} 个条目移动到 ${dir ? `servers/${dir}/` : "servers/"} ？`
+	      ),
+	      { title: t.tr("Bulk Move", "批量移动"), confirmLabel: t.tr("Move", "移动"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+	    );
+	    if (!ok) return false;
+
+	    setFsStatus(t.tr(`Moving ${list.length} item(s) ...`, `移动中：${list.length} 个...`));
+	    let failed = 0;
+	    let moved = 0;
+
+	    for (const e of list) {
+	      const from = joinRelPath(fsPath, e.name);
+	      const to = joinRelPath(dir, e.name);
+	      if (!from || !to || from === to) continue;
+	      try {
+	        try {
+	          await callOkCommand("fs_stat", { path: to }, 10_000);
+	          failed++;
+	          continue;
+	        } catch {
+	          // ok: target not found
+	        }
+	        await callOkCommand("fs_move", { from, to }, 60_000);
+	        moved++;
+	        if (fsSelectedFile === from || fsSelectedFile.startsWith(`${from}/`)) {
+	          const suffix = fsSelectedFile.slice(from.length);
+	          setFsSelectedFile(`${to}${suffix}`);
+	        }
+	      } catch {
+	        failed++;
+	      }
+	    }
+
+	    try {
+	      await refreshFsNow();
+	    } catch {
+	      // ignore
+	    }
+
+	    if (failed) setFsStatus(t.tr(`Moved ${moved} (${failed} failed)`, `已移动 ${moved} 个（失败 ${failed} 个）`));
+	    else setFsStatus(t.tr("Moved", "已移动"));
+	    setTimeout(() => setFsStatus(""), 1200);
+	    return true;
+	  }
+
+	  async function openEntry(entry: any) {
+	    const name = entry?.name || "";
+	    if (!name) return;
+	    if (fsDirty) {
       const ok = await confirmDialog(`Discard unsaved changes in ${fsSelectedFile}?`, {
         title: t.tr("Unsaved Changes", "未保存更改"),
         confirmLabel: t.tr("Discard", "放弃"),
@@ -2988,6 +3747,19 @@ export default function HomePage() {
     return new TextDecoder().decode(bytes);
   }
 
+  async function fsWriteText(pathRaw: string, textRaw: string, timeoutMs = 30_000) {
+    const p = String(pathRaw || "")
+      .replace(/\\+/g, "/")
+      .replace(/\/+/g, "/")
+      .replace(/^\/+/, "")
+      .replace(/\/+$/, "");
+    if (!p) throw new Error(t.tr("path is required", "path 不能为空"));
+    if (!selected) throw new Error(t.tr("Select a daemon first", "请先选择 Daemon"));
+
+    const text = String(textRaw ?? "");
+    await callOkCommand("fs_write", { path: p, b64: b64EncodeUtf8(text) }, timeoutMs);
+  }
+
   async function setServerJarFromFile(filePath: string) {
     const inst = instanceId.trim();
     if (!inst) {
@@ -3247,7 +4019,7 @@ export default function HomePage() {
     return fb || "server.jar";
   }
 
-  async function installModrinthMrpack(inst: string, mrpackRel: string, jarRel: string) {
+  async function installModrinthMrpack(inst: string, mrpackRel: string, jarRel: string): Promise<any> {
     const tmpRoot = joinRelPath(inst, ".elegantmc_tmp");
     const tmpDir = joinRelPath(tmpRoot, "mrpack");
 
@@ -3279,12 +4051,37 @@ export default function HomePage() {
     const neoForge = String(deps.neoforge || deps["neo-forge"] || "").trim();
 
     if (!mc) throw new Error("mrpack missing dependencies.minecraft");
-    if (!fabricLoader && !quiltLoader) {
-      if (forge || neoForge) throw new Error("Forge/NeoForge mrpack is not supported yet (please use a server pack zip)");
-      throw new Error("mrpack missing supported loader dependency (fabric-loader/quilt-loader)");
+    let loaderKind = "";
+    let loaderVer = "";
+    if (fabricLoader || quiltLoader) {
+      loaderKind = fabricLoader ? "fabric" : "quilt";
+      loaderVer = fabricLoader || quiltLoader;
+    } else if (neoForge) {
+      loaderKind = "neoforge";
+      loaderVer = neoForge;
+    } else if (forge) {
+      loaderKind = "forge";
+      loaderVer = forge;
+    } else {
+      throw new Error("mrpack missing supported loader dependency (fabric-loader/quilt-loader/forge/neoforge)");
     }
-    const loaderKind = fabricLoader ? "fabric" : quiltLoader ? "quilt" : "";
-    const loaderVer = loaderKind === "fabric" ? fabricLoader : quiltLoader;
+
+    const manifest: any = {
+      schema: 1,
+      provider: "modrinth",
+      installed_at_unix: Math.floor(Date.now() / 1000),
+      source: { mrpack_path: mrpackRel },
+      mrpack: {
+        name: String(index?.name || "").trim(),
+        summary: String(index?.summary || "").trim(),
+        project_id: String(index?.projectId || index?.project_id || "").trim(),
+        version_id: String(index?.versionId || index?.version_id || "").trim(),
+      },
+      minecraft: { version: mc },
+      loader: { kind: loaderKind, version: loaderVer },
+      server: { jar_path: jarRel },
+      files: [],
+    };
 
     // Apply overrides -> instance root (if present).
     const overridesDir = joinRelPath(tmpDir, "overrides");
@@ -3321,9 +4118,13 @@ export default function HomePage() {
       })
       .filter(Boolean) as { rel: string; url: string; sha1: string }[];
 
+    const allItems = queue.slice();
+    manifest.files = allItems.map((it) => ({ path: it.rel, sha1: it.sha1 }));
+
     const total = queue.length;
     let done = 0;
     if (total) setServerOpStatus(t.tr(`Downloading mrpack files: 0/${total} ...`, `下载 mrpack 文件：0/${total} ...`));
+    if (total) setInstallProgress({ phase: t.tr("Downloading pack files", "下载整合包文件"), currentFile: "", done: 0, total });
 
     const concurrency = Math.max(1, Math.min(4, total));
     let failed: any = null;
@@ -3332,12 +4133,14 @@ export default function HomePage() {
         const item = queue.shift();
         if (!item) break;
         try {
+          setInstallProgress((p) => (p ? { ...p, currentFile: item.rel } : p));
           await callOkCommand(
             "fs_download",
             { path: joinRelPath(inst, item.rel), url: item.url, ...(isHex40(item.sha1) ? { sha1: item.sha1 } : {}), instance_id: inst },
             10 * 60_000
           );
           done++;
+          setInstallProgress((p) => (p ? { ...p, done: Math.min(p.total, p.done + 1) } : p));
           if (total) setServerOpStatus(t.tr(`Downloading mrpack files: ${done}/${total} ...`, `下载 mrpack 文件：${done}/${total} ...`));
         } catch (e) {
           failed = e || new Error(t.tr("download failed", "下载失败"));
@@ -3346,6 +4149,49 @@ export default function HomePage() {
       }
     });
     await Promise.all(workers);
+    setInstallProgress((p) => (p ? { ...p, currentFile: "" } : p));
+
+    if (loaderKind === "forge" || loaderKind === "neoforge") {
+      const docPath = joinRelPath(inst, "FORGE_SERVER_SETUP.txt");
+      const doc = [
+        `Forge/NeoForge mrpack detected`,
+        ``,
+        `Minecraft: ${mc}`,
+        `Loader: ${loaderKind} ${loaderVer}`,
+        ``,
+        `The pack files (mods/config/etc) have been downloaded into this instance folder.`,
+        `Forge/NeoForge server bootstrap is not automated yet.`,
+        ``,
+        `Recommended:`,
+        `1) Download the official ${loaderKind} server installer for Minecraft ${mc} / ${loaderVer}.`,
+        `2) Run it inside servers/${inst}/ to generate the server runtime.`,
+        `3) Then set the correct jar in Games → Settings, or run Games → More → Repair.`,
+        ``,
+        `检测到 Forge/NeoForge mrpack`,
+        ``,
+        `Minecraft：${mc}`,
+        `Loader：${loaderKind} ${loaderVer}`,
+        ``,
+        `已将整合包文件（mods/config 等）下载到此实例目录。`,
+        `Forge/NeoForge 服务端引导暂未自动化。`,
+        ``,
+        `建议：`,
+        `1）下载对应版本的 ${loaderKind} 服务端 installer（Minecraft ${mc} / ${loaderVer}）。`,
+        `2）在 servers/${inst}/ 内运行 installer 生成可运行的服务端。`,
+        `3）然后在 Games → Settings 选择正确 jar，或用 Games → More → 修复。`,
+        ``,
+      ].join("\n");
+      await callOkCommand("fs_write", { path: docPath, b64: b64EncodeUtf8(doc) }, 10_000);
+      setServerOpStatus(t.tr(`mrpack installed (Forge/NeoForge). See ${docPath}`, `mrpack 已安装（Forge/NeoForge）。见 ${docPath}`));
+
+      // Best-effort cleanup (keep tmpRoot for debugging if deletion fails).
+      try {
+        await callOkCommand("fs_delete", { path: tmpRoot }, 60_000);
+      } catch {
+        // ignore
+      }
+      return manifest;
+    }
 
     // Install loader server launcher jar.
     if (loaderKind === "quilt") {
@@ -3380,6 +4226,7 @@ export default function HomePage() {
     } catch {
       // ignore
     }
+    return manifest;
   }
 
   function pickModrinthVersion(versionId: string, listOverride?: any[]) {
@@ -3491,12 +4338,12 @@ export default function HomePage() {
 	      Number.isFinite(defaultFrpRemoteRaw) && defaultFrpRemoteRaw >= 0 && defaultFrpRemoteRaw <= 65535 ? defaultFrpRemoteRaw : frpRemotePort;
 	    const profileId =
 	      profiles.find((p) => p.id === frpProfileId)?.id || profiles[0]?.id || "";
-		    setInstallForm((prev) => {
-		      const isKind = (k: any): k is InstallForm["kind"] =>
-		        k === "paper" || k === "zip" || k === "zip_url" || k === "modrinth" || k === "curseforge" || k === "vanilla";
-		      const chosenKind = isKind(preferredKind) ? preferredKind : isKind(prev?.kind) ? prev.kind : "vanilla";
-		      const relJar =
-		        chosenKind === "zip" || chosenKind === "zip_url" || chosenKind === "modrinth" || chosenKind === "curseforge" ? jarRel : jarNameOnly;
+			    setInstallForm((prev) => {
+			      const isKind = (k: any): k is InstallForm["kind"] =>
+			        k === "paper" || k === "purpur" || k === "zip" || k === "zip_url" || k === "modrinth" || k === "curseforge" || k === "vanilla";
+			      const chosenKind = isKind(preferredKind) ? preferredKind : isKind(prev?.kind) ? prev.kind : "vanilla";
+			      const relJar =
+			        chosenKind === "zip" || chosenKind === "zip_url" || chosenKind === "modrinth" || chosenKind === "curseforge" ? jarRel : jarNameOnly;
 	      return {
 	        instanceId: suggested,
 	        kind: chosenKind,
@@ -3519,6 +4366,7 @@ export default function HomePage() {
 	    setInstallZipInputKey((k) => k + 1);
 	    setInstallStartUnix(0);
 	    setInstallInstance("");
+	    setInstallProgress(null);
 	    setInstallStep(1);
 	    setInstallOpen(true);
 	  }
@@ -3536,31 +4384,67 @@ export default function HomePage() {
 	    }
 	    const kind = installForm.kind;
 	    const ver = String(installForm.version || "").trim();
-	    if ((kind === "vanilla" || kind === "paper") && !ver) {
-	      setServerOpStatus(t.tr("version is required", "version 不能为空"));
-	      return;
-	    }
+		    if ((kind === "vanilla" || kind === "paper" || kind === "purpur") && !ver) {
+		      setServerOpStatus(t.tr("version is required", "version 不能为空"));
+		      return;
+		    }
 	    const jarErr =
 	      kind === "zip" || kind === "zip_url" || kind === "modrinth" || kind === "curseforge"
 	        ? validateJarPathUI(installForm.jarName, t.tr)
 	        : validateJarNameUI(installForm.jarName, t.tr);
-	    if (jarErr) {
-	      setServerOpStatus(jarErr);
-	      return;
-	    }
+		    if (jarErr) {
+		      setServerOpStatus(jarErr);
+		      return;
+		    }
 
-	    setInstallInstance(inst);
-	    setInstallStartUnix(Math.floor(Date.now() / 1000));
-	    setInstallRunning(true);
+        // Preflight: disk + port checks before install/start.
+        const disk = selectedDaemon?.heartbeat?.disk || {};
+        const freeBytes = Number((disk as any)?.free_bytes || 0);
+        if (freeBytes > 0 && freeBytes < 2 * 1024 * 1024 * 1024) {
+          const ok = await confirmDialog(
+            t.tr(
+              `Low disk space: only ${fmtBytes(freeBytes)} free.\n\nContinue anyway?`,
+              `磁盘空间偏低：仅剩 ${fmtBytes(freeBytes)} 可用。\n\n仍要继续吗？`
+            ),
+            { title: t.tr("Preflight", "预检"), confirmLabel: t.tr("Continue", "继续"), cancelLabel: t.tr("Cancel", "取消") }
+          );
+          if (!ok) return;
+        }
 
-	    try {
-	      const jarInput = String(installForm.jarName || "").trim();
-	      const jarRel =
-	        kind === "vanilla" || kind === "paper" ? normalizeJarName(jarInput) : normalizeJarPath(inst, jarInput);
-	      let installedJar = jarRel;
-	      if (kind === "zip") {
-	        const file = installZipFile;
-	        if (!file) throw new Error(t.tr("zip/mrpack file is required", "需要选择 zip/mrpack 文件"));
+        try {
+          const p = Math.round(Number(installForm.gamePort || 0));
+          if (Number.isFinite(p) && p > 0) {
+            const port = await callOkCommand("net_check_port", { port: p }, 10_000);
+            if (port?.available === false) {
+              const ok = await confirmDialog(
+                t.tr(
+                  `Port ${p} appears to be in use (${String(port?.error || "in use")}).\n\nContinue anyway?`,
+                  `端口 ${p} 可能已被占用（${String(port?.error || "已占用")}）。\n\n仍要继续吗？`
+                ),
+                { title: t.tr("Port Check", "端口检查"), confirmLabel: t.tr("Continue", "继续"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+              );
+              if (!ok) return;
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+		    setInstallInstance(inst);
+		    setInstallStartUnix(Math.floor(Date.now() / 1000));
+		    setInstallRunning(true);
+		    setInstallProgress(null);
+
+		    try {
+			      const jarInput = String(installForm.jarName || "").trim();
+			      const jarRel =
+			        kind === "vanilla" || kind === "paper" || kind === "purpur" ? normalizeJarName(jarInput) : normalizeJarPath(inst, jarInput);
+			      let installedJar = jarRel;
+			      let build = 0;
+			      let packManifest: any | null = null;
+		      if (kind === "zip") {
+		        const file = installZipFile;
+		        if (!file) throw new Error(t.tr("zip/mrpack file is required", "需要选择 zip/mrpack 文件"));
 
 	        // Ensure instance dir exists, then upload + extract.
 	        await callOkCommand("fs_mkdir", { path: inst }, 30_000);
@@ -3595,18 +4479,26 @@ export default function HomePage() {
 	          throw e;
 	        }
 
-	        if (uploadName.toLowerCase().endsWith(".mrpack")) {
-	          setServerOpStatus(t.tr(`Installing ${uploadName} (.mrpack) ...`, `安装中 ${uploadName}（.mrpack）...`));
-	          await installModrinthMrpack(inst, zipRel, jarRel);
-	        } else {
-	          setServerOpStatus(t.tr(`Extracting ${uploadName} ...`, `解压中 ${uploadName} ...`));
-	          await callOkCommand(
-	            "fs_unzip",
-	            { zip_path: zipRel, dest_dir: inst, instance_id: inst, strip_top_level: true },
-	            10 * 60_000
-	          );
-	          installedJar = await pickJarFromInstanceRoot(inst, installedJar);
-	        }
+		        if (uploadName.toLowerCase().endsWith(".mrpack")) {
+		          setServerOpStatus(t.tr(`Installing ${uploadName} (.mrpack) ...`, `安装中 ${uploadName}（.mrpack）...`));
+		          const mr = await installModrinthMrpack(inst, zipRel, jarRel);
+		          packManifest = { ...mr, source: { ...(mr?.source || {}), kind: "upload", file_name: uploadName } };
+		        } else {
+		          setServerOpStatus(t.tr(`Extracting ${uploadName} ...`, `解压中 ${uploadName} ...`));
+		          await callOkCommand(
+		            "fs_unzip",
+		            { zip_path: zipRel, dest_dir: inst, instance_id: inst, strip_top_level: true },
+		            10 * 60_000
+		          );
+		          installedJar = await pickJarFromInstanceRoot(inst, installedJar);
+		          packManifest = {
+		            schema: 1,
+		            provider: "zip",
+		            installed_at_unix: Math.floor(Date.now() / 1000),
+		            source: { kind: "upload", file_name: uploadName },
+		            server: { jar_path: installedJar },
+		          };
+		        }
 	        try {
 	          await callOkCommand("fs_delete", { path: zipRel }, 30_000);
 	        } catch {
@@ -3637,7 +4529,32 @@ export default function HomePage() {
 
 		        if ((kind === "modrinth" || kind === "zip_url") && fileName.toLowerCase().endsWith(".mrpack")) {
 		          setServerOpStatus(t.tr(`Installing ${fileName} (.mrpack) ...`, `安装中 ${fileName}（.mrpack）...`));
-		          await installModrinthMrpack(inst, zipRel, jarRel);
+		          const mr = await installModrinthMrpack(inst, zipRel, jarRel);
+		          if (kind === "modrinth") {
+		            const srcProject = String(marketSelected?.id || mr?.mrpack?.project_id || "").trim();
+		            const srcVersion = String(marketSelectedVersionId || mr?.mrpack?.version_id || "").trim();
+		            const srcTitle = String(marketSelected?.title || marketSelected?.name || mr?.mrpack?.name || "").trim();
+		            const vnum = String(marketSelectedVersion?.version_number || "").trim();
+		            const vname = String(marketSelectedVersion?.name || "").trim();
+		            packManifest = {
+		              ...mr,
+		              source: {
+		                ...(mr?.source || {}),
+		                kind: "modrinth",
+		                project_id: srcProject,
+		                version_id: srcVersion,
+		                title: srcTitle,
+		                version_number: vnum,
+		                version_name: vname,
+		                url: remoteUrl,
+		                file_name: fileName,
+		              },
+		            };
+		            if (packManifest?.mrpack && !packManifest.mrpack.project_id && srcProject) packManifest.mrpack.project_id = srcProject;
+		            if (packManifest?.mrpack && !packManifest.mrpack.version_id && srcVersion) packManifest.mrpack.version_id = srcVersion;
+		          } else {
+		            packManifest = { ...mr, source: { ...(mr?.source || {}), kind: "zip_url", url: remoteUrl, file_name: fileName } };
+		          }
 		        } else {
 		          setServerOpStatus(t.tr(`Extracting ${fileName} ...`, `解压中 ${fileName} ...`));
 		          await callOkCommand(
@@ -3646,35 +4563,103 @@ export default function HomePage() {
 		            10 * 60_000
 		          );
 		          installedJar = await pickJarFromInstanceRoot(inst, installedJar);
+		          packManifest =
+		            kind === "curseforge"
+		              ? {
+		                  schema: 1,
+		                  provider: "curseforge",
+		                  installed_at_unix: Math.floor(Date.now() / 1000),
+		                  source: {
+		                    kind: "curseforge",
+		                    project_id: String(marketSelected?.id || "").trim(),
+		                    file_id: String(marketSelectedVersionId || "").trim(),
+		                    title: String(marketSelected?.name || marketSelected?.title || "").trim(),
+		                    url: remoteUrl,
+		                    file_name: fileName,
+		                  },
+		                  server: { jar_path: installedJar },
+		                }
+		              : kind === "modrinth"
+		                ? {
+		                    schema: 1,
+		                    provider: "modrinth",
+		                    installed_at_unix: Math.floor(Date.now() / 1000),
+		                    source: {
+		                      kind: "modrinth",
+		                      project_id: String(marketSelected?.id || "").trim(),
+		                      version_id: String(marketSelectedVersionId || "").trim(),
+		                      title: String(marketSelected?.title || marketSelected?.name || "").trim(),
+		                      version_number: String(marketSelectedVersion?.version_number || "").trim(),
+		                      version_name: String(marketSelectedVersion?.name || "").trim(),
+		                      url: remoteUrl,
+		                      file_name: fileName,
+		                    },
+		                    server: { jar_path: installedJar },
+		                  }
+		                : {
+		                    schema: 1,
+		                    provider: "zip_url",
+		                    installed_at_unix: Math.floor(Date.now() / 1000),
+		                    source: { kind: "zip_url", url: remoteUrl, file_name: fileName },
+		                    server: { jar_path: installedJar },
+		                  };
 		        }
 		        try {
 		          await callOkCommand("fs_delete", { path: zipRel }, 30_000);
 		        } catch {
 		          // ignore
 		        }
-		      } else {
-		        const build = Math.round(Number(installForm.paperBuild || 0));
-		        const cmdName = kind === "paper" ? "mc_install_paper" : "mc_install_vanilla";
-		        setServerOpStatus(
-		          kind === "paper" && build > 0
-		            ? t.tr(`Installing Paper ${ver} (build ${build}) ...`, `正在安装 Paper ${ver}（build ${build}）...`)
-		            : t.tr(
-		              `Installing ${kind === "paper" ? "Paper" : "Vanilla"} ${ver} ...`,
-		              `正在安装 ${kind === "paper" ? "Paper" : "原版"} ${ver} ...`
-		            )
-		        );
-	        const out = await callOkCommand(
-	          cmdName,
-	          {
-	            instance_id: inst,
-	            version: ver,
-	            ...(kind === "paper" ? { build: Number.isFinite(build) ? build : 0 } : {}),
-	            jar_name: jarRel,
-	            accept_eula: !!installForm.acceptEula,
-	          },
-	          10 * 60_000
-	        );
-	        installedJar = String(out.jar_path || jarRel);
+			      } else {
+			        build = Math.round(Number(installForm.paperBuild || 0));
+			        if (kind === "purpur") {
+			          setServerOpStatus(
+			            build > 0
+			              ? t.tr(`Installing Purpur ${ver} (build ${build}) ...`, `正在安装 Purpur ${ver}（build ${build}）...`)
+		              : t.tr(`Installing Purpur ${ver} ...`, `正在安装 Purpur ${ver} ...`)
+		          );
+		          const res = await apiFetch(`/api/mc/purpur/jar?mc=${encodeURIComponent(ver)}&build=${encodeURIComponent(String(build || 0))}`, {
+		            cache: "no-store",
+		          });
+		          const resolved = await res.json().catch(() => null);
+		          if (!res.ok) throw new Error(resolved?.error || t.tr("failed to resolve Purpur jar", "解析 Purpur Jar 失败"));
+		          const serverJarUrl = String(resolved?.url || "").trim();
+		          const sha256 = String(resolved?.sha256 || "").trim();
+		          if (!serverJarUrl) throw new Error(t.tr("purpur jar url missing", "Purpur Jar URL 缺失"));
+		          if (!sha256) throw new Error(t.tr("purpur sha256 missing", "Purpur sha256 缺失"));
+
+		          await callOkCommand("fs_mkdir", { path: inst }, 30_000);
+		          await callOkCommand(
+		            "fs_download",
+		            { path: joinRelPath(inst, jarRel), url: serverJarUrl, sha256, instance_id: inst },
+		            10 * 60_000
+		          );
+		          installedJar = jarRel;
+		          if (installForm.acceptEula) {
+		            await callOkCommand("fs_write", { path: joinRelPath(inst, "eula.txt"), b64: b64EncodeUtf8("eula=true\n") }, 10_000);
+		          }
+		        } else {
+		          const cmdName = kind === "paper" ? "mc_install_paper" : "mc_install_vanilla";
+		          setServerOpStatus(
+		            kind === "paper" && build > 0
+		              ? t.tr(`Installing Paper ${ver} (build ${build}) ...`, `正在安装 Paper ${ver}（build ${build}）...`)
+		              : t.tr(
+		                `Installing ${kind === "paper" ? "Paper" : "Vanilla"} ${ver} ...`,
+		                `正在安装 ${kind === "paper" ? "Paper" : "原版"} ${ver} ...`
+		              )
+		          );
+		          const out = await callOkCommand(
+		            cmdName,
+		            {
+		              instance_id: inst,
+		              version: ver,
+		              ...(kind === "paper" ? { build: Number.isFinite(build) ? build : 0 } : {}),
+		              jar_name: jarRel,
+		              accept_eula: !!installForm.acceptEula,
+		            },
+		            10 * 60_000
+		          );
+		          installedJar = String(out.jar_path || jarRel);
+		        }
 	      }
 
 	      if ((kind === "zip" || kind === "zip_url" || kind === "modrinth" || kind === "curseforge") && installForm.acceptEula) {
@@ -3686,8 +4671,12 @@ export default function HomePage() {
 	        );
 	      }
 
-	      // Apply port right after install so the server listens on the expected port.
-	      await applyServerPort(inst, installForm.gamePort);
+		      // Apply port right after install so the server listens on the expected port.
+		      await applyServerPort(inst, installForm.gamePort);
+
+		      if (packManifest) {
+		        await writePackManifest(inst, packManifest);
+		      }
 
       // Refresh installed games list.
       await refreshServerDirs();
@@ -3698,6 +4687,11 @@ export default function HomePage() {
       setGamePort(installForm.gamePort);
       setXms(installForm.xms);
       setXmx(installForm.xmx);
+      const installedKind =
+        kind === "vanilla" || kind === "paper" || kind === "purpur" ? (kind as "vanilla" | "paper" | "purpur") : ("unknown" as const);
+      setInstalledServerKind(installedKind);
+      setInstalledServerVersion(typeof ver === "string" ? String(ver || "").trim() : "");
+      setInstalledServerBuild(build > 0 ? build : 0);
       setEnableFrp(!!installForm.enableFrp);
       setFrpProfileId(installForm.frpProfileId);
       setFrpRemotePort(installForm.frpRemotePort);
@@ -3709,24 +4703,46 @@ export default function HomePage() {
         game_port: installForm.gamePort,
         xms: installForm.xms,
         xmx: installForm.xmx,
+        ...(installedKind !== "unknown"
+          ? { server_kind: installedKind, server_version: String(ver || "").trim(), server_build: build > 0 ? build : 0 }
+          : {}),
         enable_frp: !!installForm.enableFrp,
         frp_profile_id: installForm.frpProfileId,
         frp_remote_port: installForm.frpRemotePort,
       });
 
-      setServerOpStatus(t.tr(`Installed: ${installedJar}`, `已安装：${installedJar}`));
-      if (andStart) {
-        await startServer(inst, {
-          jarPath: installedJar,
-          javaPath: String(installForm.javaPath || "").trim(),
-          gamePort: installForm.gamePort,
-          xms: installForm.xms,
-          xmx: installForm.xmx,
-          enableFrp: !!installForm.enableFrp,
-          frpProfileId: installForm.frpProfileId,
-          frpRemotePort: installForm.frpRemotePort,
-        });
-      }
+	      setServerOpStatus(t.tr(`Installed: ${installedJar}`, `已安装：${installedJar}`));
+	      if (andStart) {
+	        try {
+	          const r = await callOkCommand("mc_required_java", { instance_id: inst, jar_path: installedJar }, 30_000);
+	          const required = Math.round(Number(r?.required_java_major || 0));
+	          if (Number.isFinite(required) && required > 0) {
+	            setServerOpStatus(t.tr(`Java required: >=${required}`, `需要 Java：>=${required}`));
+	          }
+	        } catch {
+	          // ignore
+	        }
+	        const loaderKind = String(packManifest?.loader?.kind || "").trim().toLowerCase();
+	        if (packManifest?.provider === "modrinth" && (loaderKind === "forge" || loaderKind === "neoforge")) {
+	          setServerOpStatus(
+	            t.tr(
+	              "Installed Forge/NeoForge pack, but auto-start is not supported yet. See FORGE_SERVER_SETUP.txt in the instance folder.",
+	              "已安装 Forge/NeoForge 整合包，但暂不支持自动启动。请查看实例目录下的 FORGE_SERVER_SETUP.txt。"
+	            )
+	          );
+	        } else {
+	          await startServer(inst, {
+	            jarPath: installedJar,
+	            javaPath: String(installForm.javaPath || "").trim(),
+	            gamePort: installForm.gamePort,
+	            xms: installForm.xms,
+	            xmx: installForm.xmx,
+	            enableFrp: !!installForm.enableFrp,
+	            frpProfileId: installForm.frpProfileId,
+	            frpRemotePort: installForm.frpRemotePort,
+	          });
+	        }
+	      }
 
       // Refresh list + focus the newly installed instance.
       setInstanceId(inst);
@@ -3735,12 +4751,302 @@ export default function HomePage() {
       } catch {
         // ignore
       }
-    } catch (e: any) {
-      setServerOpStatus(String(e?.message || e));
-    } finally {
-      setInstallRunning(false);
+
+      // Auto size scan after install (best-effort).
+      computeInstanceUsage(inst).catch(() => {});
+	    } catch (e: any) {
+	      setServerOpStatus(String(e?.message || e));
+	    } finally {
+	      setInstallRunning(false);
+	      setInstallProgress(null);
+	    }
+	  }
+
+    async function updateModrinthPack(instanceOverride?: string) {
+      if (gameActionBusy) return;
+      setGameActionBusy(true);
+      setServerOpStatus("");
+      setInstallProgress(null);
+      try {
+        if (!selectedDaemon?.connected) {
+          setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
+          return;
+        }
+        const inst = String(instanceOverride ?? instanceId).trim();
+        if (!inst) {
+          setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
+          return;
+        }
+
+        const cur = await readPackManifest(inst);
+        if (!cur || String(cur?.provider || "").trim() !== "modrinth") {
+          setServerOpStatus(t.tr("No Modrinth pack manifest found for this instance", "该实例未找到 Modrinth 整合包 manifest"));
+          return;
+        }
+
+        const projectId = String(cur?.source?.project_id || cur?.mrpack?.project_id || "").trim();
+        if (!projectId) {
+          setServerOpStatus(t.tr("Modrinth project_id missing in manifest", "manifest 中缺少 Modrinth project_id"));
+          return;
+        }
+        const currentVersionId = String(cur?.source?.version_id || cur?.mrpack?.version_id || "").trim();
+
+        setServerOpStatus(t.tr("Checking Modrinth versions...", "检查 Modrinth 版本中..."));
+        const res = await apiFetch(`/api/modpacks/modrinth/${encodeURIComponent(projectId)}/versions`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error || t.tr(`fetch failed: ${res.status}`, `获取失败：${res.status}`));
+        const versions = Array.isArray(json?.versions) ? json.versions : [];
+        if (!versions.length) throw new Error(t.tr("No versions found", "未找到版本"));
+
+        const latest = versions[0];
+        const latestId = String(latest?.id || "").trim();
+        if (latestId && currentVersionId && latestId === currentVersionId) {
+          setServerOpStatus(t.tr("Already up to date", "已是最新"));
+          return;
+        }
+
+        const files = Array.isArray(latest?.files) ? latest.files : [];
+        const file = files.find((f: any) => !!f?.primary) || files[0] || null;
+        const mrUrl = String(file?.url || "").trim();
+        const mrName = String(file?.filename || "modpack.mrpack").trim() || "modpack.mrpack";
+        if (!mrUrl) throw new Error(t.tr("No downloadable mrpack for latest version", "最新版本没有可下载的 mrpack"));
+
+        const tmpRoot = joinRelPath(inst, ".elegantmc_tmp");
+        const tmpDir = joinRelPath(tmpRoot, "pack_update");
+        const unpackDir = joinRelPath(tmpDir, "mrpack");
+        try {
+          await callOkCommand("fs_delete", { path: tmpDir }, 30_000);
+        } catch {
+          // ignore
+        }
+        await callOkCommand("fs_mkdir", { path: unpackDir }, 30_000);
+
+        const mrpackRel = joinRelPath(tmpDir, "update.mrpack");
+        setServerOpStatus(t.tr(`Downloading ${mrName} ...`, `下载中 ${mrName} ...`));
+        await callOkCommand("fs_download", { path: mrpackRel, url: mrUrl, instance_id: inst }, 10 * 60_000);
+
+        await callOkCommand("fs_unzip", { zip_path: mrpackRel, dest_dir: unpackDir, instance_id: inst, strip_top_level: true }, 10 * 60_000);
+
+        const idxOut = await callOkCommand("fs_read", { path: joinRelPath(unpackDir, "modrinth.index.json") }, 20_000);
+        const idxText = b64DecodeUtf8(String(idxOut?.b64 || ""));
+        let index: any = null;
+        try {
+          index = JSON.parse(idxText);
+        } catch {
+          throw new Error("invalid modrinth.index.json");
+        }
+
+        const deps = index?.dependencies || {};
+        const mc = String(deps.minecraft || "").trim();
+        const fabricLoader = String(deps["fabric-loader"] || "").trim();
+        const quiltLoader = String(deps["quilt-loader"] || "").trim();
+        const forge = String(deps.forge || "").trim();
+        const neoForge = String(deps.neoforge || deps["neo-forge"] || "").trim();
+        if (!mc) throw new Error("mrpack missing dependencies.minecraft");
+
+        let loaderKind = "";
+        let loaderVer = "";
+        if (fabricLoader || quiltLoader) {
+          loaderKind = fabricLoader ? "fabric" : "quilt";
+          loaderVer = fabricLoader || quiltLoader;
+        } else if (neoForge) {
+          loaderKind = "neoforge";
+          loaderVer = neoForge;
+        } else if (forge) {
+          loaderKind = "forge";
+          loaderVer = forge;
+        } else {
+          throw new Error("mrpack missing supported loader dependency (fabric-loader/quilt-loader/forge/neoforge)");
+        }
+
+        // Apply overrides (best-effort; skip existing to preserve configs).
+        const overridesDir = joinRelPath(unpackDir, "overrides");
+        try {
+          const ls = await callOkCommand("fs_list", { path: overridesDir }, 20_000);
+          const entries = Array.isArray(ls?.entries) ? ls.entries : [];
+          for (const ent of entries) {
+            const name = String(ent?.name || "").trim();
+            if (!name || name === "." || name === "..") continue;
+            try {
+              await callOkCommand("fs_move", { from: joinRelPath(overridesDir, name), to: joinRelPath(inst, name) }, 60_000);
+            } catch (e: any) {
+              const msg = String(e?.message || e);
+              if (/destination exists/i.test(msg)) continue;
+              throw e;
+            }
+          }
+        } catch {
+          // overrides are optional
+        }
+
+        const filesIndex = Array.isArray(index?.files) ? index.files : [];
+        const newItems = filesIndex
+          .map((f: any) => {
+            const envServer = String(f?.env?.server || "").trim().toLowerCase();
+            if (envServer === "unsupported") return null;
+            const rel = normalizeRelFilePath(String(f?.path || ""));
+            if (!rel) return null;
+            const downloads = Array.isArray(f?.downloads) ? f.downloads : [];
+            const url = String(downloads[0] || "").trim();
+            if (!url) throw new Error(t.tr(`mrpack file missing download url: ${rel}`, `mrpack 文件缺少下载链接：${rel}`));
+            const sha1 = String(f?.hashes?.sha1 || "").trim();
+            return { rel, url, sha1 };
+          })
+          .filter(Boolean) as { rel: string; url: string; sha1: string }[];
+
+        const oldFiles = Array.isArray(cur?.files) ? cur.files : [];
+        const oldByRel = new Map<string, string>();
+        for (const f of oldFiles) {
+          const rel = String((f as any)?.path || (f as any)?.rel || "").trim();
+          const sha1 = String((f as any)?.sha1 || "").trim();
+          if (rel) oldByRel.set(rel, sha1);
+        }
+
+        const newByRel = new Map<string, string>();
+        for (const it of newItems) {
+          newByRel.set(it.rel, String(it.sha1 || ""));
+        }
+
+        // Remove old mods that no longer exist in the pack (safe subset).
+        const toRemove = Array.from(oldByRel.keys()).filter((rel) => rel.startsWith("mods/") && !newByRel.has(rel));
+        if (toRemove.length) {
+          setServerOpStatus(t.tr(`Removing ${toRemove.length} old mod(s) ...`, `移除旧 mod：${toRemove.length} 个...`));
+          for (const rel of toRemove) {
+            try {
+              await callOkCommand("fs_delete", { path: joinRelPath(inst, rel) }, 60_000);
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        const shouldSkipOverwrite = async (rel: string) => {
+          if (rel.startsWith("world/") || rel.startsWith("saves/")) return true;
+          if (rel.startsWith("config/") || rel.startsWith("defaultconfigs/")) {
+            try {
+              await callOkCommand("fs_stat", { path: joinRelPath(inst, rel) }, 10_000);
+              return true; // exists -> keep user config
+            } catch {
+              return false; // missing -> safe to write
+            }
+          }
+          return false;
+        };
+
+        const queue = newItems.filter((it) => {
+          const prev = oldByRel.get(it.rel) || "";
+          if (isHex40(prev) && isHex40(it.sha1) && prev.toLowerCase() === it.sha1.toLowerCase()) return false;
+          return true;
+        });
+
+        const dl: { rel: string; url: string; sha1: string }[] = [];
+        for (const it of queue) {
+          if (await shouldSkipOverwrite(it.rel)) continue;
+          dl.push(it);
+        }
+
+        const total = dl.length;
+        let done = 0;
+        if (total) {
+          setInstallProgress({ phase: t.tr("Updating pack files", "更新整合包文件"), currentFile: "", done: 0, total });
+          setServerOpStatus(t.tr(`Updating pack files: 0/${total} ...`, `更新整合包文件：0/${total} ...`));
+        }
+        const work = dl.slice();
+        const concurrency = Math.max(1, Math.min(4, total));
+        let failed: any = null;
+        const workers = Array.from({ length: concurrency }).map(async () => {
+          while (work.length && !failed) {
+            const item = work.shift();
+            if (!item) break;
+            try {
+              setInstallProgress((p) => (p ? { ...p, currentFile: item.rel } : p));
+              await callOkCommand(
+                "fs_download",
+                { path: joinRelPath(inst, item.rel), url: item.url, ...(isHex40(item.sha1) ? { sha1: item.sha1 } : {}), instance_id: inst },
+                10 * 60_000
+              );
+              done++;
+              setInstallProgress((p) => (p ? { ...p, done: Math.min(p.total, p.done + 1) } : p));
+              if (total) setServerOpStatus(t.tr(`Updating pack files: ${done}/${total} ...`, `更新整合包文件：${done}/${total} ...`));
+            } catch (e) {
+              failed = e || new Error(t.tr("download failed", "下载失败"));
+              throw failed;
+            }
+          }
+        });
+        await Promise.all(workers);
+        setInstallProgress(null);
+
+        // Update loader server jar if applicable.
+        const jarRel = String(cur?.server?.jar_path || jarPath || "server.jar").trim() || "server.jar";
+        const jarSafe = normalizeJarPath(inst, jarRel);
+        if (loaderKind === "quilt") {
+          setServerOpStatus(t.tr(`Updating Quilt server (${mc} / loader ${loaderVer}) ...`, `更新 Quilt 服务端（${mc} / loader ${loaderVer}）...`));
+          const r = await apiFetch(`/api/mc/quilt/server-jar?mc=${encodeURIComponent(mc)}&loader=${encodeURIComponent(loaderVer)}`, { cache: "no-store" });
+          const j = await r.json().catch(() => null);
+          if (!r.ok) throw new Error(j?.error || t.tr("failed to resolve Quilt server jar", "解析 Quilt 服务端 Jar 失败"));
+          const serverJarUrl = String(j?.url || "").trim();
+          if (!serverJarUrl) throw new Error(t.tr("quilt server jar url missing", "Quilt 服务端 Jar URL 缺失"));
+          await callOkCommand("fs_download", { path: joinRelPath(inst, jarSafe), url: serverJarUrl, instance_id: inst }, 10 * 60_000);
+        } else if (loaderKind === "fabric") {
+          setServerOpStatus(t.tr(`Updating Fabric server (${mc} / loader ${loaderVer}) ...`, `更新 Fabric 服务端（${mc} / loader ${loaderVer}）...`));
+          const r = await apiFetch(`/api/mc/fabric/server-jar?mc=${encodeURIComponent(mc)}&loader=${encodeURIComponent(loaderVer)}`, { cache: "no-store" });
+          const j = await r.json().catch(() => null);
+          if (!r.ok) throw new Error(j?.error || t.tr("failed to resolve Fabric server jar", "解析 Fabric 服务端 Jar 失败"));
+          const serverJarUrl = String(j?.url || "").trim();
+          if (!serverJarUrl) throw new Error(t.tr("fabric server jar url missing", "Fabric 服务端 Jar URL 缺失"));
+          await callOkCommand("fs_download", { path: joinRelPath(inst, jarSafe), url: serverJarUrl, instance_id: inst }, 10 * 60_000);
+        } else {
+          setServerOpStatus(
+            t.tr(
+              "Pack files updated. Forge/NeoForge loader updates are not automated yet.",
+              "已更新整合包文件。Forge/NeoForge loader 更新暂未自动化。"
+            )
+          );
+        }
+
+        const nextManifest: any = {
+          ...cur,
+          installed_at_unix: Math.floor(Date.now() / 1000),
+          minecraft: { version: mc },
+          loader: { kind: loaderKind, version: loaderVer },
+          server: { ...(cur?.server || {}), jar_path: jarRel },
+          files: newItems.map((it) => ({ path: it.rel, sha1: it.sha1 })),
+          mrpack: {
+            ...(cur?.mrpack || {}),
+            name: String(index?.name || cur?.mrpack?.name || "").trim(),
+            summary: String(index?.summary || cur?.mrpack?.summary || "").trim(),
+            project_id: String(cur?.mrpack?.project_id || projectId).trim(),
+            version_id: String(index?.versionId || latestId).trim(),
+          },
+          source: {
+            ...(cur?.source || {}),
+            project_id: projectId,
+            version_id: latestId,
+            version_number: String(latest?.version_number || "").trim(),
+            version_name: String(latest?.name || "").trim(),
+            url: mrUrl,
+            file_name: mrName,
+          },
+        };
+
+        await writePackManifest(inst, nextManifest);
+
+        // Best-effort cleanup.
+        try {
+          await callOkCommand("fs_delete", { path: tmpDir }, 60_000);
+        } catch {
+          // ignore
+        }
+
+        setServerOpStatus(t.tr("Modrinth pack updated", "Modrinth 整合包已更新"));
+      } catch (e: any) {
+        setServerOpStatus(String(e?.message || e));
+      } finally {
+        setGameActionBusy(false);
+        setInstallProgress(null);
+      }
     }
-  }
 
 	  function openSettingsModal() {
 	    if (!instanceId.trim()) return;
@@ -3750,6 +5056,8 @@ export default function HomePage() {
       gamePort,
       xms,
       xmx,
+      jvmArgsPreset,
+      jvmArgsExtra,
       enableFrp,
       frpProfileId,
       frpRemotePort,
@@ -3766,6 +5074,8 @@ export default function HomePage() {
       setGamePort(settingsSnapshot.gamePort);
       setXms(settingsSnapshot.xms);
       setXmx(settingsSnapshot.xmx);
+      setJvmArgsPreset(settingsSnapshot.jvmArgsPreset);
+      setJvmArgsExtra(settingsSnapshot.jvmArgsExtra);
       setEnableFrp(settingsSnapshot.enableFrp);
       setFrpProfileId(settingsSnapshot.frpProfileId);
       setFrpRemotePort(settingsSnapshot.frpRemotePort);
@@ -3813,6 +5123,7 @@ export default function HomePage() {
       const jar = normalizeJarPath(inst, String(override?.jarPath ?? jarPath));
       const xmsVal = String(override?.xms ?? xms);
       const xmxVal = String(override?.xmx ?? xmx);
+      const jvmArgsVal = Array.isArray(override?.jvmArgs) ? override!.jvmArgs : jvmArgsComputed;
       const java = String(override?.javaPath ?? javaPath).trim();
       const enable = !!(override?.enableFrp ?? enableFrp);
       const pid = String(override?.frpProfileId ?? frpProfileId);
@@ -3824,6 +5135,7 @@ export default function HomePage() {
         game_port: port,
         xms: xmsVal,
         xmx: xmxVal,
+        jvm_args: jvmArgsVal,
         enable_frp: enable,
         frp_profile_id: pid,
         frp_remote_port: Number.isFinite(remotePort) ? remotePort : 0,
@@ -3867,7 +5179,7 @@ export default function HomePage() {
 
       await callOkCommand(
         "mc_start",
-        { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms: xmsVal, xmx: xmxVal },
+        { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms: xmsVal, xmx: xmxVal, jvm_args: jvmArgsVal },
         10 * 60_000
       );
       setServerOpStatus(t.tr("MC started", "MC 已启动"));
@@ -3927,27 +5239,46 @@ export default function HomePage() {
     }
   }
 
-	  async function deleteServer(instanceOverride?: string) {
-	    if (gameActionBusy) return;
-	    setGameActionBusy(true);
-	    setServerOpStatus("");
-	    try {
-	      const id = String(instanceOverride ?? instanceId).trim();
+		  async function deleteServer(instanceOverride?: string) {
+		    if (gameActionBusy) return;
+		    setGameActionBusy(true);
+		    setServerOpStatus("");
+		    try {
+		      const id = String(instanceOverride ?? instanceId).trim();
 	      if (!id) {
 	        setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
 	        return;
 	      }
-	      const ok = await confirmDialog(t.tr(`Delete server ${id}? This will remove its folder under servers/`, `删除服务器 ${id}？这将移除 servers/ 下的目录。`), {
-	        title: t.tr("Delete Server", "删除服务器"),
-	        confirmLabel: t.tr("Delete", "删除"),
-	        danger: true,
-	      });
-	      if (!ok) return;
+		      const ok = await confirmDialog(
+		        t.tr(
+		          `Move server ${id} to trash?\n\nThis will move servers/${id}/ into servers/_trash/.`,
+		          `将服务器 ${id} 移入回收站？\n\n这将把 servers/${id}/ 移到 servers/_trash/。`
+		        ),
+		        {
+		          title: t.tr("Move to Trash", "移入回收站"),
+		          confirmLabel: t.tr("Continue", "继续"),
+		          cancelLabel: t.tr("Cancel", "取消"),
+		          danger: true,
+		        }
+		      );
+		      if (!ok) return;
 
-	      try {
-	        await callOkCommand("frp_stop", { instance_id: id }, 30_000);
-	        setFrpOpStatus(t.tr("FRP stopped", "FRP 已停止"));
-      } catch {
+		      const typed = await promptDialog({
+		        title: t.tr("Confirm", "确认"),
+		        message: t.tr(`Type "${id}" to confirm.`, `输入 “${id}” 以确认。`),
+		        placeholder: id,
+		        okLabel: t.tr("Move", "移入"),
+		        cancelLabel: t.tr("Cancel", "取消"),
+		      });
+		      if (typed !== id) {
+		        setServerOpStatus(t.tr("Cancelled", "已取消"));
+		        return;
+		      }
+
+		      try {
+		        await callOkCommand("frp_stop", { instance_id: id }, 30_000);
+		        setFrpOpStatus(t.tr("FRP stopped", "FRP 已停止"));
+	      } catch {
         // ignore
       }
 	      try {
@@ -4003,7 +5334,11 @@ export default function HomePage() {
       const jar = normalizeJarPath(inst, jarPath);
       const java = String(javaPath || "").trim();
       await writeInstanceConfig(inst, { jar_path: jar, ...(java ? { java_path: java } : {}), game_port: gamePort });
-      await callOkCommand("mc_restart", { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms, xmx }, 10 * 60_000);
+      await callOkCommand(
+        "mc_restart",
+        { instance_id: inst, jar_path: jar, ...(java ? { java_path: java } : {}), xms, xmx, jvm_args: jvmArgsComputed },
+        10 * 60_000
+      );
       setServerOpStatus(t.tr("MC restarted", "MC 已重启"));
 
       if (enableFrp) {
@@ -4033,6 +5368,132 @@ export default function HomePage() {
         );
         setFrpOpStatus(t.tr("FRP started", "FRP 已启动"));
       }
+    } catch (e: any) {
+      setServerOpStatus(String(e?.message || e));
+    } finally {
+      setGameActionBusy(false);
+    }
+  }
+
+  async function startFrpProxyNow(instanceOverride?: string) {
+    if (gameActionBusy) return;
+    setGameActionBusy(true);
+    setFrpOpStatus("");
+    try {
+      if (!selectedDaemon?.connected) {
+        setFrpOpStatus(t.tr("daemon offline", "daemon 离线"));
+        return;
+      }
+      const inst = String(instanceOverride ?? instanceId).trim();
+      if (!inst) {
+        setFrpOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
+        return;
+      }
+
+      const profile = profiles.find((p) => p.id === frpProfileId) || null;
+      if (!profile) {
+        setFrpOpStatus(t.tr("No FRP profile selected", "未选择 FRP 配置"));
+        return;
+      }
+
+      let token = "";
+      try {
+        token = profile?.has_token ? await fetchFrpProfileToken(profile.id) : "";
+      } catch (e: any) {
+        throw new Error(`FRP token: ${String(e?.message || e)}`);
+      }
+
+      const port = Math.round(Number(gamePort || 25565));
+      const remotePort = Math.round(Number(frpRemotePort ?? 0));
+
+      await callOkCommand(
+        "frp_start",
+        {
+          instance_id: inst,
+          server_addr: profile.server_addr,
+          server_port: Number(profile.server_port),
+          token,
+          local_port: port,
+          remote_port: Number.isFinite(remotePort) ? remotePort : 0,
+        },
+        30_000
+      );
+      setFrpOpStatus(t.tr("FRP started", "FRP 已启动"));
+    } catch (e: any) {
+      setFrpOpStatus(String(e?.message || e));
+    } finally {
+      setGameActionBusy(false);
+    }
+  }
+
+  async function repairInstance(instanceOverride?: string) {
+    if (gameActionBusy) return;
+    setGameActionBusy(true);
+    setServerOpStatus("");
+    try {
+      if (!selectedDaemon?.connected) {
+        setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
+        return;
+      }
+
+      const inst = String(instanceOverride ?? instanceId).trim();
+      if (!inst) {
+        setServerOpStatus(t.tr("instance_id is required", "instance_id 不能为空"));
+        return;
+      }
+
+      setServerOpStatus(t.tr("Repairing...", "修复中..."));
+
+      // 1) Detect jar.
+      const detected = await callOkCommand("mc_detect_jar", { instance_id: inst }, 30_000);
+      const best = String(detected?.best || "").trim();
+      if (!best) {
+        setServerOpStatus(t.tr("No .jar files found under this instance", "该实例下未找到 .jar 文件"));
+        return;
+      }
+      setJarPath(best);
+
+      // 2) Ensure server.properties has the selected port (creates the file if missing).
+      await applyServerPort(inst, gamePort);
+
+      // 3) Best-effort EULA check (optional).
+      const eulaPath = joinRelPath(inst, "eula.txt");
+      try {
+        const out = await callOkCommand("fs_read", { path: eulaPath }, 10_000);
+        const text = b64DecodeUtf8(String(out?.b64 || ""));
+        const v = String(getPropValue(text, "eula") || "").trim().toLowerCase();
+        if (v !== "true") {
+          const ok = await confirmDialog(
+            t.tr(
+              `Minecraft requires accepting the Mojang EULA.\n\nWrite servers/${inst}/eula.txt with eula=true?`,
+              `Minecraft 需要接受 Mojang EULA。\n\n是否写入 servers/${inst}/eula.txt 为 eula=true？`
+            ),
+            { title: t.tr("Accept EULA", "接受 EULA"), confirmLabel: t.tr("Accept", "接受"), cancelLabel: t.tr("Skip", "跳过") }
+          );
+          if (ok) {
+            await callOkCommand("fs_write", { path: eulaPath, b64: b64EncodeUtf8("eula=true\n") }, 10_000);
+          }
+        }
+      } catch {
+        // ignore if not present
+      }
+
+      // 4) Persist config (jar + port + memory + frp desired state).
+      await writeInstanceConfig(inst, { jar_path: best, game_port: gamePort });
+
+      let requiredMajor: number | null = null;
+      try {
+        const res = await callOkCommand("mc_required_java", { instance_id: inst, jar_path: best }, 30_000);
+        const n = Math.round(Number(res?.required_java_major || 0));
+        requiredMajor = Number.isFinite(n) && n > 0 ? n : null;
+      } catch {
+        requiredMajor = null;
+      }
+
+      const msg = requiredMajor
+        ? t.tr(`Repair done (jar=${best}, Java>=${requiredMajor})`, `修复完成（jar=${best}，Java>=${requiredMajor}）`)
+        : t.tr(`Repair done (jar=${best})`, `修复完成（jar=${best}）`);
+      setServerOpStatus(msg);
     } catch (e: any) {
       setServerOpStatus(String(e?.message || e));
     } finally {
@@ -4200,6 +5661,25 @@ export default function HomePage() {
     setInstanceUsageBytes(null);
     setInstanceUsageStatus(t.tr("Scanning...", "扫描中..."));
     try {
+      // Prefer daemon-side du (cached).
+      try {
+        const out = await callOkCommand("fs_du", { path: inst, ttl_sec: 60 }, 60_000);
+        const bytes = Math.max(0, Number(out?.bytes || 0));
+        const entries = Math.max(0, Math.round(Number(out?.entries || 0) || 0));
+        const cached = !!out?.cached;
+        setInstanceUsageBytes(Number.isFinite(bytes) ? bytes : null);
+        setInstanceUsageStatus(
+          cached
+            ? t.tr(`cached · files=${entries}`, `缓存 · 文件=${entries}`)
+            : entries
+              ? t.tr(`files=${entries}`, `文件=${entries}`)
+              : ""
+        );
+        return;
+      } catch {
+        // Fallback for old daemons: DFS list (slow).
+      }
+
       const maxEntries = 25_000;
       let total = 0;
       let scanned = 0;
@@ -4219,7 +5699,7 @@ export default function HomePage() {
       }
 
       setInstanceUsageBytes(total);
-      setInstanceUsageStatus("");
+      setInstanceUsageStatus(t.tr("computed (fallback)", "已计算（fallback）"));
     } catch (e: any) {
       setInstanceUsageBytes(null);
       setInstanceUsageStatus(String(e?.message || e));
@@ -4228,7 +5708,73 @@ export default function HomePage() {
     }
   }
 
-  async function backupServer(instanceOverride?: string) {
+  async function computeNodeInstanceUsage(daemonIdRaw: string, instanceIdRaw: string) {
+    const daemonId = String(daemonIdRaw || "").trim();
+    const inst = String(instanceIdRaw || "").trim();
+    if (!daemonId || !inst) return;
+    const key = `${daemonId}:${inst}`;
+
+    const cur = nodeInstanceUsageByKey[key];
+    if (cur?.busy) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    setNodeInstanceUsageByKey((prev) => ({
+      ...(prev || {}),
+      [key]: { bytes: null, status: t.tr("Scanning...", "扫描中..."), busy: true, updatedAtUnix: now },
+    }));
+
+    try {
+      // Prefer daemon-side du (cached).
+      try {
+        const out = await callOkCommandForDaemon(daemonId, "fs_du", { path: inst, ttl_sec: 60 }, 60_000);
+        const bytes = Math.max(0, Number(out?.bytes || 0));
+        const entries = Math.max(0, Math.round(Number(out?.entries || 0) || 0));
+        const cached = !!out?.cached;
+        setNodeInstanceUsageByKey((prev) => ({
+          ...(prev || {}),
+          [key]: {
+            bytes: Number.isFinite(bytes) ? bytes : null,
+            status: cached ? t.tr(`cached · files=${entries}`, `缓存 · 文件=${entries}`) : entries ? t.tr(`files=${entries}`, `文件=${entries}`) : "",
+            busy: false,
+            updatedAtUnix: Math.floor(Date.now() / 1000),
+          },
+        }));
+        return;
+      } catch {
+        // fallback
+      }
+
+      const maxEntries = 25_000;
+      let total = 0;
+      let scanned = 0;
+      const stack: string[] = [inst];
+
+      while (stack.length) {
+        const dir = stack.pop()!;
+        const out = await callOkCommandForDaemon(daemonId, "fs_list", { path: dir }, 30_000);
+        for (const e of out.entries || []) {
+          scanned++;
+          if (scanned > maxEntries) throw new Error(t.tr(`too many entries (> ${maxEntries}), abort`, `文件项过多（> ${maxEntries}），已中止`));
+          const name = String(e?.name || "").trim();
+          if (!name || name === "." || name === "..") continue;
+          if (e?.isDir) stack.push(joinRelPath(dir, name));
+          else total += Math.max(0, Number(e?.size || 0));
+        }
+      }
+
+      setNodeInstanceUsageByKey((prev) => ({
+        ...(prev || {}),
+        [key]: { bytes: total, status: t.tr("computed (fallback)", "已计算（fallback）"), busy: false, updatedAtUnix: Math.floor(Date.now() / 1000) },
+      }));
+    } catch (e: any) {
+      setNodeInstanceUsageByKey((prev) => ({
+        ...(prev || {}),
+        [key]: { bytes: null, status: String(e?.message || e), busy: false, updatedAtUnix: Math.floor(Date.now() / 1000) },
+      }));
+    }
+  }
+
+  async function backupServer(instanceOverride?: string, opts?: any) {
     if (gameActionBusy) return;
     setGameActionBusy(true);
     setServerOpStatus("");
@@ -4236,8 +5782,24 @@ export default function HomePage() {
       if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
       const inst = String(instanceOverride ?? instanceId).trim();
       if (!inst) throw new Error(t.tr("instance_id is required", "instance_id 不能为空"));
+      const formatRaw = String(opts?.format || "").trim().toLowerCase();
+      const format = formatRaw === "zip" ? "zip" : formatRaw === "tar.gz" || formatRaw === "tgz" ? "tar.gz" : "";
+      const stop = typeof opts?.stop === "boolean" ? !!opts.stop : true;
+      const keepLast = Math.max(0, Math.min(1000, Math.round(Number(opts?.keep_last ?? opts?.keepLast ?? 0) || 0)));
+      const comment = String(opts?.comment || "").trim();
+
       setServerOpStatus(t.tr("Creating backup...", "创建备份中..."));
-      const out = await callOkCommand("mc_backup", { instance_id: inst, stop: true }, 10 * 60_000);
+      const out = await callOkCommand(
+        "mc_backup",
+        {
+          instance_id: inst,
+          stop,
+          ...(format ? { format } : {}),
+          ...(keepLast > 0 ? { keep_last: keepLast } : {}),
+          ...(comment ? { comment } : {}),
+        },
+        10 * 60_000
+      );
       const path = String(out?.path || "").trim();
       setServerOpStatus(path ? t.tr(`Backup created: ${path}`, `备份已创建：${path}`) : t.tr("Backup created", "备份已创建"));
       await refreshBackupZips(inst);
@@ -4317,7 +5879,11 @@ export default function HomePage() {
       const base = joinRelPath("_backups", id);
       const out = await callOkCommand("fs_list", { path: base }, 30_000);
       const list = (out.entries || [])
-        .filter((e: any) => !e?.isDir && e?.name && String(e.name).toLowerCase().endsWith(".zip"))
+        .filter((e: any) => {
+          if (e?.isDir || !e?.name) return false;
+          const lower = String(e.name).toLowerCase();
+          return lower.endsWith(".zip") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz");
+        })
         .map((e: any) => joinRelPath(base, String(e.name)));
       list.sort((a: string, b: string) => b.localeCompare(a));
       setRestoreCandidates(list);
@@ -4353,14 +5919,14 @@ export default function HomePage() {
     await refreshBackupZips(inst);
   }
 
-  async function restoreFromBackup() {
-    if (gameActionBusy) return;
-    const inst = instanceId.trim();
-    const zip = String(restoreZipPath || "").trim();
-    if (!inst) {
-      setRestoreStatus(t.tr("instance_id is required", "instance_id 不能为空"));
-      return;
-    }
+	  async function restoreBackupNow(zipPathOverride?: string) {
+	    if (gameActionBusy) return;
+	    const inst = instanceId.trim();
+	    const zip = String(zipPathOverride ?? restoreZipPath ?? "").trim();
+	    if (!inst) {
+	      setRestoreStatus(t.tr("instance_id is required", "instance_id 不能为空"));
+	      return;
+	    }
     if (!zip) {
       setRestoreStatus(t.tr("Select a backup first", "请先选择备份"));
       return;
@@ -4455,6 +6021,374 @@ export default function HomePage() {
     await refreshTrashItems(showAll);
   }
 
+  function openDatapackModal() {
+    setDatapackWorld("world");
+    setDatapackUrl("");
+    setDatapackFile(null);
+    setDatapackInputKey((k) => k + 1);
+    setDatapackStatus("");
+    setDatapackBusy(false);
+    setDatapackOpen(true);
+  }
+
+  async function installDatapack() {
+    if (datapackBusy) return;
+    setDatapackBusy(true);
+    setDatapackStatus("");
+    try {
+      if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
+      const inst = instanceId.trim();
+      if (!inst) throw new Error(t.tr("Select a game first", "请先选择游戏实例"));
+
+      const world = String(datapackWorld || "").trim() || "world";
+      const worldErr = validateFsNameSegment(world);
+      if (worldErr) throw new Error(worldErr);
+
+      const destDir = joinRelPath(inst, joinRelPath(world, "datapacks"));
+      await callOkCommand("fs_mkdir", { path: destDir }, 30_000);
+
+      const tmpRoot = joinRelPath(inst, ".elegantmc_tmp");
+      const tmpDir = joinRelPath(tmpRoot, "datapacks");
+      await callOkCommand("fs_mkdir", { path: tmpDir }, 30_000);
+      const zipRel = joinRelPath(tmpDir, `datapack-${Math.floor(Date.now() / 1000)}.zip`);
+
+      const url = String(datapackUrl || "").trim();
+      const file = datapackFile;
+
+      if (file) {
+        const name = String(file.name || "").toLowerCase();
+        if (!name.endsWith(".zip")) throw new Error(t.tr("Only .zip files are supported", "只支持 .zip 文件"));
+
+        const chunkSize = 256 * 1024;
+        let uploadID = "";
+        setDatapackStatus(t.tr(`Uploading ${file.name} ...`, `上传中 ${file.name} ...`));
+        try {
+          const begin = await callOkCommand("fs_upload_begin", { path: zipRel }, 30_000);
+          uploadID = String(begin.upload_id || "");
+          if (!uploadID) throw new Error(t.tr("upload_id missing", "upload_id 缺失"));
+
+          for (let off = 0; off < file.size; off += chunkSize) {
+            const end = Math.min(off + chunkSize, file.size);
+            const ab = await file.slice(off, end).arrayBuffer();
+            const b64 = b64EncodeBytes(new Uint8Array(ab));
+            await callOkCommand("fs_upload_chunk", { upload_id: uploadID, b64 }, 60_000);
+            setDatapackStatus(t.tr(`Uploading ${file.name}: ${end}/${file.size} bytes`, `上传中 ${file.name}: ${end}/${file.size} bytes`));
+          }
+          await callOkCommand("fs_upload_commit", { upload_id: uploadID }, 60_000);
+        } catch (e) {
+          if (uploadID) {
+            try {
+              await callOkCommand("fs_upload_abort", { upload_id: uploadID }, 10_000);
+            } catch {
+              // ignore
+            }
+          }
+          throw e;
+        }
+      } else if (url) {
+        setDatapackStatus(t.tr("Downloading datapack ...", "下载 datapack 中..."));
+        await callOkCommand("fs_download", { path: zipRel, url, instance_id: inst }, 10 * 60_000);
+      } else {
+        throw new Error(t.tr("Choose a zip file or enter a URL", "请选择 zip 文件或填写 URL"));
+      }
+
+      setDatapackStatus(t.tr("Extracting...", "解压中..."));
+      await callOkCommand("fs_unzip", { zip_path: zipRel, dest_dir: destDir, instance_id: inst, strip_top_level: false }, 10 * 60_000);
+      try {
+        await callOkCommand("fs_delete", { path: zipRel }, 30_000);
+      } catch {
+        // ignore
+      }
+      setDatapackStatus(t.tr(`Installed into ${destDir}`, `已安装到 ${destDir}`));
+      setDatapackFile(null);
+      setDatapackInputKey((k) => k + 1);
+    } catch (e: any) {
+      setDatapackStatus(String(e?.message || e));
+    } finally {
+      setDatapackBusy(false);
+    }
+  }
+
+  function openResourcePackModal() {
+    setResPackUrl("");
+    setResPackSha1("");
+    setResPackFile(null);
+    setResPackInputKey((k) => k + 1);
+    setResPackStatus("");
+    setResPackBusy(false);
+    setResPackOpen(true);
+  }
+
+	  async function openJarUpdateModal() {
+    if (!selectedDaemon?.connected) {
+      setServerOpStatus(t.tr("daemon offline", "daemon 离线"));
+      return;
+    }
+    const inst = instanceId.trim();
+    if (!inst) {
+      setServerOpStatus(t.tr("Select a game first", "请先选择游戏实例"));
+      return;
+    }
+
+	    const kind = installedServerKind !== "unknown" ? installedServerKind : jarUpdateType;
+	    setJarUpdateType(kind);
+	    if (installedServerVersion) setJarUpdateVersion(installedServerVersion);
+	    setJarUpdateBuild(installedServerBuild || 0);
+	    setJarUpdateJarName(String(jarPath || "server.jar").trim() || "server.jar");
+	    setJarUpdateBackup(true);
+    setJarUpdateStatus("");
+    setJarUpdateBusy(false);
+    setJarUpdateOpen(true);
+  }
+
+  async function checkJarUpdateLatest() {
+    if (jarUpdateBusy) return;
+    setJarUpdateBusy(true);
+    setJarUpdateStatus(t.tr("Checking...", "检查中..."));
+    try {
+      const kind = jarUpdateType;
+      const ver = String(jarUpdateVersion || "").trim();
+      const build = Math.max(0, Math.round(Number(jarUpdateBuild || 0) || 0));
+
+      if (kind === "paper") {
+        const res = await apiFetch(`/api/mc/paper/jar?mc=${encodeURIComponent(ver)}&build=0`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+        const latestBuild = Math.round(Number(json?.build || 0));
+        if (Number.isFinite(latestBuild) && latestBuild > 0) {
+          setJarUpdateBuild(latestBuild);
+          setJarUpdateStatus(build > 0 && latestBuild === build ? t.tr("Already latest build", "已是最新 build") : t.tr(`Latest build: ${latestBuild}`, `最新 build：${latestBuild}`));
+        } else {
+          setJarUpdateStatus(t.tr("No builds found", "未找到 build"));
+        }
+        return;
+      }
+
+      if (kind === "purpur") {
+        const res = await apiFetch(`/api/mc/purpur/jar?mc=${encodeURIComponent(ver)}&build=0`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+        const latestBuild = Math.round(Number(json?.build || 0));
+        if (Number.isFinite(latestBuild) && latestBuild > 0) {
+          setJarUpdateBuild(latestBuild);
+          setJarUpdateStatus(build > 0 && latestBuild === build ? t.tr("Already latest build", "已是最新 build") : t.tr(`Latest build: ${latestBuild}`, `最新 build：${latestBuild}`));
+        } else {
+          setJarUpdateStatus(t.tr("No builds found", "未找到 build"));
+        }
+        return;
+      }
+
+      // vanilla: prefer the latest release from cached versions list
+      const releaseList = (Array.isArray(versions) ? versions : []).filter((v: any) => String(v?.type || "").trim() === "release");
+      const latest = releaseList[0] || null;
+      const latestID = String(latest?.id || "").trim();
+      if (!latestID) {
+        setJarUpdateStatus(t.tr("No version list available", "无版本列表"));
+        return;
+      }
+      if (ver && ver === latestID) {
+        setJarUpdateStatus(t.tr("Already latest release", "已是最新正式版"));
+      } else {
+        setJarUpdateVersion(latestID);
+        setJarUpdateStatus(t.tr(`Latest release: ${latestID}`, `最新正式版：${latestID}`));
+      }
+    } catch (e: any) {
+      setJarUpdateStatus(String(e?.message || e));
+    } finally {
+      setJarUpdateBusy(false);
+    }
+  }
+
+  async function applyJarUpdate() {
+    if (jarUpdateBusy || gameActionBusy) return;
+    setJarUpdateBusy(true);
+    setJarUpdateStatus("");
+    try {
+      if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
+      const inst = instanceId.trim();
+      if (!inst) throw new Error(t.tr("Select a game first", "请先选择游戏实例"));
+
+      const kind = jarUpdateType;
+      const ver = String(jarUpdateVersion || "").trim();
+	      const build = Math.max(0, Math.round(Number(jarUpdateBuild || 0) || 0));
+	      const jarName = String(jarUpdateJarName || "").trim() || "server.jar";
+	      const jarErr = validateJarNameUI(jarName, t.tr);
+	      if (jarErr) throw new Error(jarErr);
+
+	      const target = kind === "vanilla" ? `${ver || "-"}` : `${ver || "-"}${build ? ` (build ${build})` : ""}`;
+	      const ok = await confirmDialog(
+	        t.tr(
+	          `Update server jar for ${inst}?\n\nTarget: ${kind} ${target}\nJar: ${jarName}\n\nThis will stop the server and overwrite the jar file.`,
+	          `更新 ${inst} 的服务端 Jar？\n\n目标：${kind} ${target}\nJar：${jarName}\n\n这将停止服务器并覆盖 Jar 文件。`
+	        ),
+	        {
+	          title: t.tr("Update Jar", "更新 Jar"),
+	          confirmLabel: t.tr("Continue", "继续"),
+	          cancelLabel: t.tr("Cancel", "取消"),
+	          danger: true,
+	        }
+	      );
+	      if (!ok) return;
+
+	      const typed = await promptDialog({
+	        title: t.tr("Confirm", "确认"),
+	        message: t.tr(`Type "${inst}" to confirm.`, `输入 “${inst}” 以确认。`),
+	        placeholder: inst,
+	        okLabel: t.tr("Update", "更新"),
+	        cancelLabel: t.tr("Cancel", "取消"),
+	      });
+	      if (typed !== inst) {
+	        setJarUpdateStatus(t.tr("Cancelled", "已取消"));
+	        return;
+	      }
+
+	      // Stop server (best-effort).
+	      setJarUpdateStatus(t.tr("Stopping server...", "停止服务器中..."));
+	      try {
+	        await callOkCommand("frp_stop", { instance_id: inst }, 30_000);
+      } catch {
+        // ignore
+      }
+      try {
+        await callOkCommand("mc_stop", { instance_id: inst }, 30_000);
+      } catch {
+        // ignore
+      }
+
+      // Backup first (optional).
+      if (jarUpdateBackup) {
+        const comment = `before jar update: ${kind} ${ver}${build ? ` (build ${build})` : ""}`;
+        setJarUpdateStatus(t.tr("Creating backup...", "创建备份中..."));
+        await callOkCommand("mc_backup", { instance_id: inst, stop: false, format: "tar.gz", comment }, 10 * 60_000);
+      }
+
+      // Install/download jar.
+      setJarUpdateStatus(t.tr("Downloading jar...", "下载 jar 中..."));
+      let usedBuild = build;
+      if (kind === "paper") {
+        const res = await apiFetch(`/api/mc/paper/jar?mc=${encodeURIComponent(ver)}&build=${encodeURIComponent(String(build || 0))}`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error || t.tr("failed to resolve Paper jar", "解析 Paper Jar 失败"));
+        const url = String(json?.url || "").trim();
+        const sha256 = String(json?.sha256 || "").trim();
+        usedBuild = Math.max(0, Math.round(Number(json?.build || 0) || 0)) || build;
+        if (!url || !sha256) throw new Error(t.tr("paper jar resolve incomplete", "Paper Jar 解析不完整"));
+        await callOkCommand("fs_download", { path: joinRelPath(inst, jarName), url, sha256, instance_id: inst }, 10 * 60_000);
+      } else if (kind === "purpur") {
+        const res = await apiFetch(`/api/mc/purpur/jar?mc=${encodeURIComponent(ver)}&build=${encodeURIComponent(String(build || 0))}`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error || t.tr("failed to resolve Purpur jar", "解析 Purpur Jar 失败"));
+        const url = String(json?.url || "").trim();
+        const sha256 = String(json?.sha256 || "").trim();
+        usedBuild = Math.max(0, Math.round(Number(json?.build || 0) || 0)) || build;
+        if (!url || !sha256) throw new Error(t.tr("purpur jar resolve incomplete", "Purpur Jar 解析不完整"));
+        await callOkCommand("fs_download", { path: joinRelPath(inst, jarName), url, sha256, instance_id: inst }, 10 * 60_000);
+      } else {
+        await callOkCommand("mc_install_vanilla", { instance_id: inst, version: ver, jar_name: jarName, accept_eula: false }, 10 * 60_000);
+      }
+
+      setJarPath(jarName);
+      setInstalledServerKind(kind);
+      setInstalledServerVersion(ver);
+      setInstalledServerBuild(usedBuild);
+      await writeInstanceConfig(inst, { jar_path: jarName, server_kind: kind, server_version: ver, server_build: usedBuild });
+
+      setJarUpdateStatus(t.tr("Updated. Start the server to apply.", "已更新。请启动服务器以生效。"));
+      setJarUpdateOpen(false);
+    } catch (e: any) {
+      setJarUpdateStatus(String(e?.message || e));
+    } finally {
+      setJarUpdateBusy(false);
+    }
+  }
+
+  async function uploadResourcePackZip() {
+    if (resPackBusy) return;
+    setResPackBusy(true);
+    setResPackStatus("");
+    try {
+      if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
+      const inst = instanceId.trim();
+      if (!inst) throw new Error(t.tr("Select a game first", "请先选择游戏实例"));
+      const file = resPackFile;
+      if (!file) throw new Error(t.tr("Select a zip file first", "请先选择 zip 文件"));
+      const lower = String(file.name || "").toLowerCase();
+      if (!lower.endsWith(".zip")) throw new Error(t.tr("Only .zip files are supported", "只支持 .zip 文件"));
+      const name = normalizeDownloadName(String(file.name || "").trim(), "resourcepack.zip");
+      const destDir = joinRelPath(inst, "resourcepacks");
+      await callOkCommand("fs_mkdir", { path: destDir }, 30_000);
+      const destPath = joinRelPath(destDir, name);
+
+      const chunkSize = 256 * 1024;
+      let uploadID = "";
+      setResPackStatus(t.tr(`Uploading ${name} ...`, `上传中 ${name} ...`));
+      try {
+        const begin = await callOkCommand("fs_upload_begin", { path: destPath }, 30_000);
+        uploadID = String(begin.upload_id || "");
+        if (!uploadID) throw new Error(t.tr("upload_id missing", "upload_id 缺失"));
+        for (let off = 0; off < file.size; off += chunkSize) {
+          const end = Math.min(off + chunkSize, file.size);
+          const ab = await file.slice(off, end).arrayBuffer();
+          const b64 = b64EncodeBytes(new Uint8Array(ab));
+          await callOkCommand("fs_upload_chunk", { upload_id: uploadID, b64 }, 60_000);
+          setResPackStatus(t.tr(`Uploading ${name}: ${end}/${file.size} bytes`, `上传中 ${name}: ${end}/${file.size} bytes`));
+        }
+        await callOkCommand("fs_upload_commit", { upload_id: uploadID }, 60_000);
+      } catch (e) {
+        if (uploadID) {
+          try {
+            await callOkCommand("fs_upload_abort", { upload_id: uploadID }, 10_000);
+          } catch {
+            // ignore
+          }
+        }
+        throw e;
+      }
+
+      setResPackStatus(t.tr(`Uploaded: ${destPath}`, `已上传：${destPath}`));
+      setResPackFile(null);
+      setResPackInputKey((k) => k + 1);
+    } catch (e: any) {
+      setResPackStatus(String(e?.message || e));
+    } finally {
+      setResPackBusy(false);
+    }
+  }
+
+  async function applyResourcePackSettings() {
+    if (resPackBusy) return;
+    setResPackBusy(true);
+    setResPackStatus("");
+    try {
+      if (!selectedDaemon?.connected) throw new Error(t.tr("daemon offline", "daemon 离线"));
+      const inst = instanceId.trim();
+      if (!inst) throw new Error(t.tr("Select a game first", "请先选择游戏实例"));
+
+      const url = String(resPackUrl || "").trim();
+      const sha1 = String(resPackSha1 || "").trim().toLowerCase();
+      if (sha1 && !isHex40(sha1)) throw new Error(t.tr("sha1 must be 40 hex chars", "sha1 必须为 40 位 hex"));
+
+      const path = joinRelPath(inst, "server.properties");
+      let cur = "";
+      try {
+        const out = await callOkCommand("fs_read", { path }, 10_000);
+        cur = b64DecodeUtf8(String(out?.b64 || ""));
+      } catch {
+        cur = "";
+      }
+      let next = String(cur || "");
+      next = upsertProp(next, "resource-pack", url);
+      if (sha1) next = upsertProp(next, "resource-pack-sha1", sha1);
+      await callOkCommand("fs_write", { path, b64: b64EncodeUtf8(next) }, 10_000);
+      setResPackStatus(t.tr("Saved to server.properties", "已写入 server.properties"));
+      setTimeout(() => setResPackStatus(""), 1000);
+    } catch (e: any) {
+      setResPackStatus(String(e?.message || e));
+    } finally {
+      setResPackBusy(false);
+    }
+  }
+
   async function restoreTrashItem(it: any) {
     const trashPath = String(it?.trash_path || "").trim();
     const info = it?.info || {};
@@ -4506,6 +6440,18 @@ export default function HomePage() {
       }
     );
     if (!ok) return;
+
+    const typed = await promptDialog({
+      title: t.tr("Confirm Delete", "确认删除"),
+      message: t.tr('Type "DELETE" to permanently delete from trash.', "输入 “DELETE” 以确认永久删除回收站内容。"),
+      placeholder: "DELETE",
+      okLabel: t.tr("Delete", "删除"),
+      cancelLabel: t.tr("Cancel", "取消"),
+    });
+    if (String(typed || "").trim().toUpperCase() !== "DELETE") {
+      setTrashStatus(t.tr("Cancelled", "已取消"));
+      return;
+    }
 
     setTrashStatus(t.tr("Deleting...", "删除中..."));
     try {
@@ -4857,26 +6803,17 @@ export default function HomePage() {
             await restartServer(inst);
           },
         },
-        {
-          id: "game:backup",
-          title: t.tr("Game: Backup", "游戏：备份"),
-          disabled: !canGame,
-          run: async () => {
-            close();
-            await backupServer(inst);
-          },
-        },
-        {
-          id: "game:restore",
-          title: t.tr("Game: Restore…", "游戏：恢复…"),
-          disabled: !canGame,
-          run: async () => {
-            close();
-            await openRestoreModal();
-          },
-        }
-      );
-    }
+	        {
+	          id: "game:backup",
+	          title: t.tr("Game: Backup", "游戏：备份"),
+	          disabled: !canGame,
+	          run: async () => {
+	            close();
+	            await backupServer(inst);
+	          },
+	        }
+	      );
+	    }
 
     return out;
   }, [
@@ -4886,12 +6823,11 @@ export default function HomePage() {
     instanceStatus?.running,
     selectedDaemon?.connected,
     t,
-    openInstallModal,
-    openSettingsModal,
-    openRestoreModal,
-    setFsPath,
-    setTab,
-    setSidebarOpen,
+	    openInstallModal,
+	    openSettingsModal,
+	    setFsPath,
+	    setTab,
+	    setSidebarOpen,
     startServer,
     stopServer,
     restartServer,
@@ -4914,6 +6850,7 @@ export default function HomePage() {
     locale,
     setLocale,
     t,
+    authMe,
     daemons,
     selected,
     setSelected,
@@ -4925,6 +6862,10 @@ export default function HomePage() {
     panelSettingsStatus,
     refreshPanelSettings,
     savePanelSettings,
+    updateInfo,
+    updateStatus,
+    updateBusy,
+    checkUpdates,
     loadSchedule,
     saveScheduleJson,
     runScheduleTask,
@@ -4946,17 +6887,24 @@ export default function HomePage() {
     refreshServerDirs,
     instanceTagsById,
     updateInstanceTags,
+    favoriteInstanceIds,
+    toggleFavoriteInstance,
+    instanceNotesById,
+    updateInstanceNote,
     instanceId,
 	    setInstanceId,
 	    openSettingsModal,
+      openJarUpdateModal,
 	    openInstallModal,
 	    startServer,
+      startServerFromSavedConfig,
 	    stopServer,
-    restartServer,
-    deleteServer,
-    backupServer,
-    openRestoreModal,
-    openTrashModal,
+	    restartServer,
+	    deleteServer,
+	    backupServer,
+	    openTrashModal,
+	    openDatapackModal,
+	    openResourcePackModal,
     exportInstanceZip,
     openServerPropertiesEditor,
     renameInstance,
@@ -4965,9 +6913,12 @@ export default function HomePage() {
     instanceUsageStatus,
     instanceUsageBusy,
     computeInstanceUsage,
+    instanceMetricsHistory,
+    instanceMetricsStatus,
     backupZips: restoreCandidates,
     backupZipsStatus: restoreStatus,
     refreshBackupZips,
+    restoreBackupNow,
     frpOpStatus,
     serverOpStatus,
     gameActionBusy,
@@ -5008,10 +6959,11 @@ export default function HomePage() {
 	    fsSelectedFileMode,
 	    fsFileText,
 	    setFsFileText,
-	    fsPreviewUrl,
-	    openEntry,
-	    openFileByPath,
+    fsPreviewUrl,
+    openEntry,
+    openFileByPath,
 	    fsReadText,
+      fsWriteText,
 	    setServerJarFromFile,
     saveFile,
     uploadInputKey,
@@ -5024,15 +6976,17 @@ export default function HomePage() {
     refreshFsNow,
     mkdirFsHere,
     createFileHere,
-    renameFsEntry,
-    moveFsEntry,
-    downloadFsEntry,
-    downloadFsFolderAsZip,
-    deleteFsEntry,
+	    renameFsEntry,
+	    moveFsEntry,
+	    downloadFsEntry,
+	    downloadFsFolderAsZip,
+	    deleteFsEntry,
+	    bulkDeleteFsEntries,
+	    bulkMoveFsEntries,
 
-    // Advanced
-    cmdName,
-    setCmdName,
+	    // Advanced
+	    cmdName,
+	    setCmdName,
     cmdArgs,
     setCmdArgs,
     cmdResult,
@@ -5042,6 +6996,7 @@ export default function HomePage() {
 	    apiFetch,
 	    copyText,
 	    confirmDialog,
+      promptDialog,
 	    makeDeployComposeYml,
 	    maskToken,
 	    pct,
@@ -5050,6 +7005,11 @@ export default function HomePage() {
 	    fmtBytes,
 	    joinRelPath,
 	    parentRelPath,
+
+      // Game helpers
+      startFrpProxyNow,
+      repairInstance,
+      updateModrinthPack,
 	  };
 
   return (
@@ -5086,6 +7046,12 @@ export default function HomePage() {
               style={{ alignItems: "end" }}
             >
               <div className="field" style={{ gridColumn: "1 / -1" }}>
+                <label>{t.tr("Username", "用户名")}</label>
+                <input value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="admin" autoCapitalize="none" autoCorrect="off" />
+                <div className="hint">{t.tr("Default: admin", "默认：admin")}</div>
+              </div>
+
+              <div className="field" style={{ gridColumn: "1 / -1" }}>
                 <label>{t.tr("Password", "密码")}</label>
                 <input
                   type="password"
@@ -5101,8 +7067,24 @@ export default function HomePage() {
                 ) : null}
               </div>
 
+              {loginNeeds2fa ? (
+                <div className="field" style={{ gridColumn: "1 / -1" }}>
+                  <label>{t.tr("2FA code / recovery code", "2FA 验证码 / 恢复码")}</label>
+                  <input
+                    value={loginOtp}
+                    onChange={(e) => setLoginOtp(e.target.value)}
+                    placeholder={t.tr("123456 or ABCD-EFGH-IJKL-MNOP", "123456 或 ABCD-EFGH-IJKL-MNOP")}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                  <div className="hint">
+                    {t.tr("Enter a 6-digit authenticator code, or a recovery code.", "输入 6 位动态码，或恢复码。")}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="btnGroup" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
-                <button className="primary" type="submit" disabled={!loginPassword.trim()}>
+                <button className="primary" type="submit" disabled={!loginUsername.trim() || !loginPassword.trim() || (loginNeeds2fa && !loginOtp.trim())}>
                   {t.tr("Login", "登录")}
                 </button>
               </div>
@@ -5625,10 +7607,48 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        <div className="content">
-          {error ? (
-            <div className="card danger">
-              <b>{t.tr("Error:", "错误：")}</b> {error}
+	        {authed === true && updateInfo && (updateInfo?.panel?.update_available || Number(updateInfo?.daemons?.outdated_count || 0) > 0) ? (
+	          <div className="offlineBanner">
+	            <b>{t.tr("Update available.", "有可用更新。")}</b>{" "}
+            <span className="muted">
+              {t.tr("latest", "最新")}: <code>{String(updateInfo?.latest?.version || "-")}</code>
+              {updateInfo?.panel?.update_available ? (
+                <>
+                  {" "}
+                  · {t.tr("panel", "面板")}: <code>{String(updateInfo?.panel?.current || "-")}</code> →{" "}
+                  <code>{String(updateInfo?.latest?.version || "-")}</code>
+                </>
+              ) : null}
+              {Number(updateInfo?.daemons?.outdated_count || 0) > 0 ? (
+                <>
+                  {" "}
+                  · {t.tr("daemons outdated", "Daemon 过期")}:{" "}
+                  <code>{String(updateInfo?.daemons?.outdated_count || 0)}</code>
+                </>
+              ) : null}
+            </span>
+            <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="iconBtn" onClick={() => checkUpdates({ force: true })} disabled={updateBusy}>
+                <Icon name="refresh" /> {t.tr("Re-check", "重新检查")}
+              </button>
+              <button type="button" onClick={() => setTab("panel")}>
+                {t.tr("Open Panel tab", "打开 Panel 标签")}
+              </button>
+            </div>
+	          </div>
+	        ) : null}
+
+	        {authed === true && error && daemons.length && daemonsCacheAtUnix > 0 ? (
+	          <div className="offlineBanner">
+	            <b>{t.tr("Offline mode.", "离线模式。")}</b> {t.tr("Showing cached state from", "正在显示缓存数据，时间")}:{" "}
+	            <code>{fmtUnix(daemonsCacheAtUnix)}</code>.
+	          </div>
+	        ) : null}
+
+	        <div className="content">
+	          {error ? (
+	            <div className="card danger">
+	              <b>{t.tr("Error:", "错误：")}</b> {error}
             </div>
           ) : null}
 
@@ -5696,14 +7716,15 @@ export default function HomePage() {
 			                        setMarketVersions([]);
 			                        setMarketSelectedVersionId("");
 			                      }}
-			                      options={[
-			                        { value: "vanilla", label: t.tr("Vanilla", "原版") },
-			                        { value: "paper", label: t.tr("Paper", "Paper") },
-			                        { value: "modrinth", label: t.tr("Modrinth (Search)", "Modrinth（搜索）") },
-			                        { value: "curseforge", label: t.tr("CurseForge (Search)", "CurseForge（搜索）"), disabled: !curseforgeEnabled },
-			                        { value: "zip", label: t.tr("Server Pack ZIP (Upload)", "服务器包 ZIP（上传）") },
-			                        { value: "zip_url", label: t.tr("Server Pack ZIP/MRPACK (URL)", "服务器包 ZIP/MRPACK（URL）") },
-			                      ]}
+				                      options={[
+				                        { value: "vanilla", label: t.tr("Vanilla", "原版") },
+				                        { value: "paper", label: t.tr("Paper", "Paper") },
+				                        { value: "purpur", label: t.tr("Purpur", "Purpur") },
+				                        { value: "modrinth", label: t.tr("Modrinth (Search)", "Modrinth（搜索）") },
+				                        { value: "curseforge", label: t.tr("CurseForge (Search)", "CurseForge（搜索）"), disabled: !curseforgeEnabled },
+				                        { value: "zip", label: t.tr("Server Pack ZIP (Upload)", "服务器包 ZIP（上传）") },
+				                        { value: "zip_url", label: t.tr("Server Pack ZIP/MRPACK (URL)", "服务器包 ZIP/MRPACK（URL）") },
+				                      ]}
 			                    />
 			                    {installValidation.kindErr ? (
 			                      <div className="hint" style={{ color: "var(--danger)" }}>
@@ -5711,19 +7732,19 @@ export default function HomePage() {
 			                      </div>
 			                    ) : (
 			                      <div className="hint">
-			                        {locale === "zh" ? (
-			                          <>
-			                            Vanilla/Paper：自动下载服务端；Modrinth：支持 Fabric/Quilt mrpack；CurseForge：需要 API Key；ZIP：用于服务器包（Forge/NeoForge
-			                            建议用 server pack zip）
-			                          </>
-			                        ) : (
-			                          <>
-			                            Vanilla/Paper: download the server automatically. Modrinth: supports Fabric/Quilt mrpack. CurseForge: requires an API key. ZIP:
-			                            for server packs (Forge/NeoForge: use the server pack zip).
-			                          </>
-			                        )}
-			                      </div>
-			                    )}
+				                        {locale === "zh" ? (
+				                          <>
+				                            Vanilla/Paper/Purpur：自动下载服务端；Modrinth：支持 Fabric/Quilt/Forge/NeoForge mrpack；CurseForge：需要 API Key；ZIP：用于服务器包（Forge/NeoForge
+				                            建议用 server pack zip）
+				                          </>
+				                        ) : (
+				                          <>
+				                            Vanilla/Paper/Purpur: download the server automatically. Modrinth: supports Fabric/Quilt/Forge/NeoForge mrpack. CurseForge: requires an API
+				                            key. ZIP: for server packs (Forge/NeoForge: use the server pack zip).
+				                          </>
+				                        )}
+				                      </div>
+				                    )}
 			                  </div>
 
 			                  {installForm.kind === "zip" ? (
@@ -5999,8 +8020,8 @@ export default function HomePage() {
 			                    </div>
 			                  ) : (
 			                    <>
-			                      <div className="field" style={{ gridColumn: installForm.kind === "paper" ? undefined : "1 / -1" }}>
-			                        <label>{t.tr("Version", "版本")}</label>
+				                      <div className="field" style={{ gridColumn: installForm.kind === "paper" || installForm.kind === "purpur" ? undefined : "1 / -1" }}>
+				                        <label>{t.tr("Version", "版本")}</label>
 		                        <input
 		                          value={installForm.version}
 		                          onChange={(e) => setInstallForm((f) => ({ ...f, version: e.target.value }))}
@@ -6022,19 +8043,23 @@ export default function HomePage() {
 		                          <div className="hint">{t.tr("You can type any version string.", "可直接手输任意版本号")}</div>
 		                        )}
 		                      </div>
-		                      {installForm.kind === "paper" ? (
-		                        <div className="field">
-		                          <label>{t.tr("Paper Build (optional)", "Paper Build（可选）")}</label>
-		                          <input
-		                            type="number"
-		                            value={Number.isFinite(installForm.paperBuild) ? installForm.paperBuild : 0}
-		                            onChange={(e) => setInstallForm((f) => ({ ...f, paperBuild: Number(e.target.value) }))}
-		                            placeholder={t.tr("0 (latest)", "0（最新）")}
-		                            min={0}
-		                          />
-		                          <div className="hint">{t.tr("Use 0 to download the latest build.", "填 0 表示下载最新 build")}</div>
-		                        </div>
-		                      ) : null}
+			                      {installForm.kind === "paper" || installForm.kind === "purpur" ? (
+			                        <div className="field">
+			                          <label>
+			                            {installForm.kind === "paper"
+			                              ? t.tr("Paper Build (optional)", "Paper Build（可选）")
+			                              : t.tr("Purpur Build (optional)", "Purpur Build（可选）")}
+			                          </label>
+			                          <input
+			                            type="number"
+			                            value={Number.isFinite(installForm.paperBuild) ? installForm.paperBuild : 0}
+			                            onChange={(e) => setInstallForm((f) => ({ ...f, paperBuild: Number(e.target.value) }))}
+			                            placeholder={t.tr("0 (latest)", "0（最新）")}
+			                            min={0}
+			                          />
+			                          <div className="hint">{t.tr("Use 0 to download the latest build.", "填 0 表示下载最新 build")}</div>
+			                        </div>
+			                      ) : null}
 		                    </>
 		                  )}
 
@@ -6263,24 +8288,38 @@ export default function HomePage() {
                     )}
                   </div>
 
-                  <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInstallStartUnix(0);
-                        setInstallInstance(installForm.instanceId.trim());
-                      }}
-                      disabled={installRunning}
-                    >
-                      {t.tr("Reset Logs", "重置日志")}
-                    </button>
-                    {installRunning ? <span className="badge">{t.tr("installing…", "安装中…")}</span> : null}
-                    {serverOpStatus ? <span className="muted">{serverOpStatus}</span> : null}
-                  </div>
-                </div>
+	                  <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+	                    <button
+	                      type="button"
+	                      onClick={() => {
+	                        setInstallStartUnix(0);
+	                        setInstallInstance(installForm.instanceId.trim());
+	                      }}
+	                      disabled={installRunning}
+	                    >
+	                      {t.tr("Reset Logs", "重置日志")}
+	                    </button>
+	                    {installRunning ? <span className="badge">{t.tr("installing…", "安装中…")}</span> : null}
+	                    {serverOpStatus ? <span className="muted">{serverOpStatus}</span> : null}
+	                  </div>
+	                </div>
 
-                <h3 style={{ marginTop: 12 }}>{t.tr("Install Logs", "安装日志")}</h3>
-                <pre style={{ maxHeight: 360, overflow: "auto" }}>
+                  {installProgress && installProgress.total > 0 ? (
+                    <div className="itemCard" style={{ marginTop: 12 }}>
+                      <div className="hint">
+                        {installProgress.phase} · {installProgress.done}/{installProgress.total}
+                      </div>
+                      {installProgress.currentFile ? (
+                        <div className="hint" style={{ marginTop: 6 }}>
+                          <span className="muted">{t.tr("file", "文件")}:</span> <code>{installProgress.currentFile}</code>
+                        </div>
+                      ) : null}
+                      <progress value={installProgress.done} max={installProgress.total} style={{ width: "100%", height: 14, marginTop: 8 }} />
+                    </div>
+                  ) : null}
+
+	                <h3 style={{ marginTop: 12 }}>{t.tr("Install Logs", "安装日志")}</h3>
+	                <pre style={{ maxHeight: 360, overflow: "auto" }}>
                   {logs
                     .filter((l) => {
                       if (l.source !== "install") return false;
@@ -6297,11 +8336,139 @@ export default function HomePage() {
                 </pre>
               </div>
             </div>
+	          ) : null}
+
+          {datapackOpen ? (
+            <div className="modalOverlay" onClick={() => (!datapackBusy ? setDatapackOpen(false) : null)}>
+              <div className="modal" style={{ width: "min(820px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+                <div className="modalHeader">
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{t.tr("Datapack installer", "Datapack 安装器")}</div>
+                    <div className="hint">
+                      {t.tr("game", "游戏")}: <code>{instanceId.trim() || "-"}</code>
+                      {" · "}
+                      {t.tr("target", "目标")}: <code>servers/{instanceId.trim() || "instance"}/{datapackWorld || "world"}/datapacks/</code>
+                    </div>
+                    {datapackStatus ? <div className="hint">{datapackStatus}</div> : null}
+                  </div>
+                  <button type="button" onClick={() => setDatapackOpen(false)} disabled={datapackBusy}>
+                    {t.tr("Close", "关闭")}
+                  </button>
+                </div>
+
+                <div className="grid2" style={{ alignItems: "start" }}>
+                  <div className="field">
+                    <label>{t.tr("World folder", "世界目录")}</label>
+                    <input value={datapackWorld} onChange={(e) => setDatapackWorld(e.target.value)} placeholder="world" />
+                    <div className="hint">{t.tr("Usually 'world'. Datapacks go to <world>/datapacks/.", "一般是 world。datapack 会安装到 <world>/datapacks/。")}</div>
+                  </div>
+                  <div className="field">
+                    <label>{t.tr("Datapack URL (zip)", "Datapack URL（zip）")}</label>
+                    <input value={datapackUrl} onChange={(e) => setDatapackUrl(e.target.value)} placeholder="https://..." />
+                    <div className="hint">{t.tr("Optional. If provided, Panel will download and extract it.", "可选。填写后将下载并解压。")}</div>
+                  </div>
+                </div>
+
+                <div className="field" style={{ marginTop: 10 }}>
+                  <label>{t.tr("Or upload a zip", "或上传 zip")}</label>
+                  <input
+                    key={datapackInputKey}
+                    type="file"
+                    accept=".zip"
+                    onChange={(e) => setDatapackFile(e.target.files?.[0] || null)}
+                    disabled={datapackBusy}
+                  />
+                  <div className="hint">{t.tr("Supports standard datapack zips.", "支持标准 datapack zip。")}</div>
+                </div>
+
+                <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
+                    {datapackBusy ? <span className="badge">{t.tr("working…", "处理中…")}</span> : null}
+                  </div>
+                  <button type="button" className="primary" onClick={installDatapack} disabled={datapackBusy || !selectedDaemon?.connected || !instanceId.trim()}>
+                    {t.tr("Install", "安装")}
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : null}
 
-          {settingsOpen ? (
-            <div className="modalOverlay" onClick={cancelEditSettings}>
-              <div className="modal" onClick={(e) => e.stopPropagation()}>
+          {resPackOpen ? (
+            <div className="modalOverlay" onClick={() => (!resPackBusy ? setResPackOpen(false) : null)}>
+              <div className="modal" style={{ width: "min(920px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+                <div className="modalHeader">
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{t.tr("Resource pack helper", "资源包助手")}</div>
+                    <div className="hint">
+                      {t.tr("game", "游戏")}: <code>{instanceId.trim() || "-"}</code>
+                    </div>
+                    {resPackStatus ? <div className="hint">{resPackStatus}</div> : null}
+                  </div>
+                  <button type="button" onClick={() => setResPackOpen(false)} disabled={resPackBusy}>
+                    {t.tr("Close", "关闭")}
+                  </button>
+                </div>
+
+                <div className="hint">
+                  {locale === "zh" ? (
+                    <>
+                      服务器资源包需要一个可公开访问的 URL。你可以把 zip 放到任意静态文件托管（CDN/GitHub Pages/对象存储等），然后在 <code>server.properties</code> 里设置{" "}
+                      <code>resource-pack</code> 与可选的 <code>resource-pack-sha1</code>。
+                    </>
+                  ) : (
+                    <>
+                      Server resource packs require a publicly reachable URL. Host the zip on any static hosting (CDN/GitHub Pages/object storage), then set{" "}
+                      <code>resource-pack</code> and optionally <code>resource-pack-sha1</code> in <code>server.properties</code>.
+                    </>
+                  )}
+                </div>
+
+                <div className="grid2" style={{ alignItems: "start", marginTop: 12 }}>
+                  <div className="field">
+                    <label>resource-pack</label>
+                    <input value={resPackUrl} onChange={(e) => setResPackUrl(e.target.value)} placeholder="https://..." />
+                  </div>
+                  <div className="field">
+                    <label>resource-pack-sha1 (optional)</label>
+                    <input value={resPackSha1} onChange={(e) => setResPackSha1(e.target.value)} placeholder="40-hex sha1" />
+                    <div className="hint">{t.tr("If provided, clients can validate the download.", "填写后客户端可校验下载。")}</div>
+                  </div>
+                </div>
+
+                <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
+                    <button type="button" onClick={openServerPropertiesEditor} disabled={!selectedDaemon?.connected || !instanceId.trim() || resPackBusy}>
+                      server.properties…
+                    </button>
+                  </div>
+                  <button type="button" className="primary" onClick={applyResourcePackSettings} disabled={!selectedDaemon?.connected || !instanceId.trim() || resPackBusy}>
+                    {t.tr("Save", "保存")}
+                  </button>
+                </div>
+
+                <h3 style={{ marginTop: 14 }}>{t.tr("Upload (optional)", "上传（可选）")}</h3>
+                <div className="hint">
+                  {t.tr("This only stores the zip under servers/<instance>/resourcepacks/. You still need external hosting for clients to download.", "这只会把 zip 存到 servers/<instance>/resourcepacks/。客户端仍需要外部可访问 URL。")}
+                </div>
+                <div className="row" style={{ marginTop: 10, gap: 10, alignItems: "center" }}>
+                  <input
+                    key={resPackInputKey}
+                    type="file"
+                    accept=".zip"
+                    onChange={(e) => setResPackFile(e.target.files?.[0] || null)}
+                    disabled={resPackBusy}
+                  />
+                  <button type="button" onClick={uploadResourcePackZip} disabled={!resPackFile || resPackBusy || !selectedDaemon?.connected || !instanceId.trim()}>
+                    {t.tr("Upload", "上传")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+	          {settingsOpen ? (
+	            <div className="modalOverlay" onClick={cancelEditSettings}>
+	              <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modalHeader">
                   <div>
                     <div style={{ fontWeight: 700 }}>{t.tr("Settings", "设置")}</div>
@@ -6389,13 +8556,88 @@ export default function HomePage() {
                       <div className="hint">{t.tr("Leave blank to let the daemon pick automatically (recommended).", "留空则由 Daemon 自动选择（推荐）")}</div>
                     </div>
                   ) : null}
+                  {showSettingsField("jvm", "args", "aikar", "gc") ? (
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
+                      <label>{t.tr("JVM args", "JVM 参数")}</label>
+                      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <div style={{ width: 260 }}>
+                          <Select
+                            value={jvmArgsPreset}
+                            onChange={(v) => setJvmArgsPreset(normalizeJvmPreset(v))}
+                            options={[
+                              { value: "default", label: t.tr("Default (none)", "默认（无）") },
+                              { value: "conservative", label: t.tr("Conservative", "保守") },
+                              { value: "aikar", label: "Aikar" },
+                            ]}
+                          />
+                        </div>
+                        <button type="button" className="iconBtn" onClick={() => copyText(jvmArgsComputed.join("\n") || "<empty>")} disabled={!jvmArgsComputed.length}>
+                          <Icon name="copy" />
+                          {t.tr("Copy", "复制")}
+                        </button>
+                      </div>
+                      <textarea
+                        value={jvmArgsExtra}
+                        onChange={(e) => setJvmArgsExtra(e.target.value)}
+                        placeholder={t.tr("Extra JVM args (one per line). Lines starting with # are ignored.", "额外 JVM 参数（每行一个）。以 # 开头的行会被忽略。")}
+                        rows={3}
+                        style={{ width: "100%", marginTop: 8 }}
+                      />
+                      <div className="hint" style={{ marginTop: 6 }}>
+                        {t.tr("These args are placed before -jar. Xms/Xmx are added automatically.", "这些参数会放在 -jar 前。Xms/Xmx 会自动追加。")}
+                      </div>
+                      <div className="hint" style={{ marginTop: 6 }}>
+                        {t.tr("Resulting JVM args:", "最终 JVM 参数：")}
+                      </div>
+                      <pre style={{ marginTop: 6, maxHeight: 160, overflow: "auto" }}>
+                        {jvmArgsComputed.length ? jvmArgsComputed.join("\n") : t.tr("<none>", "<无>")}
+                      </pre>
+                    </div>
+                  ) : null}
                   {showSettingsField("memory", "xms", "xmx") ? (
-                    <div className="field">
+                    <div className="field" style={{ gridColumn: "1 / -1" }}>
                       <label>{t.tr("Memory", "内存")}</label>
                       <div className="row">
                         <input value={xms} onChange={(e) => setXms(e.target.value)} placeholder={t.tr("Xms (e.g. 1G)", "Xms（例如 1G）")} />
                         <input value={xmx} onChange={(e) => setXmx(e.target.value)} placeholder={t.tr("Xmx (e.g. 2G)", "Xmx（例如 2G）")} />
                       </div>
+                      <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                        {memoryPresets.map((b) => {
+                          const label = fmtMemPreset(b);
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={() => {
+                                setXms(label);
+                                setXmx(label);
+                              }}
+                              disabled={!instanceId.trim()}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                        <button type="button" onClick={() => setXms(String(xmx || "").trim())} disabled={!instanceId.trim() || !String(xmx || "").trim()}>
+                          {t.tr("Xms = Xmx", "Xms = Xmx")}
+                        </button>
+                      </div>
+                      <div className="hint" style={{ marginTop: 6 }}>
+                        {t.tr("node memory", "节点内存")}: <code>{memoryInfo.totalBytes > 0 ? fmtBytes(memoryInfo.totalBytes) : "-"}</code>
+                        {" · "}
+                        Xms: <code>{memoryInfo.xmsBytes != null ? fmtBytes(memoryInfo.xmsBytes) : String(xms || "").trim() || "-"}</code>
+                        {" · "}
+                        Xmx: <code>{memoryInfo.xmxBytes != null ? fmtBytes(memoryInfo.xmxBytes) : String(xmx || "").trim() || "-"}</code>
+                      </div>
+                      {memoryInfo.warnings.length ? (
+                        <div className="hint" style={{ marginTop: 6 }}>
+                          {memoryInfo.warnings.map((w, i) => (
+                            <div key={i} style={{ color: w.kind === "danger" ? "var(--danger)" : "var(--warn)" }}>
+                              {w.text}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {showSettingsField("port", "game port", "25565") ? (
@@ -6483,6 +8725,112 @@ export default function HomePage() {
             </div>
 	          ) : null}
 
+          {jarUpdateOpen ? (
+            <div className="modalOverlay" onClick={() => (!jarUpdateBusy ? setJarUpdateOpen(false) : null)}>
+              <div className="modal" style={{ width: "min(760px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+                <div className="modalHeader">
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{t.tr("Update server jar", "更新服务端 Jar")}</div>
+                    <div className="hint">
+                      {t.tr("game", "游戏")}: <code>{instanceId.trim() || "-"}</code>
+                      {" · "}
+                      {t.tr("current", "当前")}: <code>{jarPath || "server.jar"}</code>
+                    </div>
+                    {jarUpdateStatus ? <div className="hint">{jarUpdateStatus}</div> : null}
+                  </div>
+                  <button type="button" onClick={() => setJarUpdateOpen(false)} disabled={jarUpdateBusy}>
+                    {t.tr("Close", "关闭")}
+                  </button>
+                </div>
+
+                <div className="grid2" style={{ alignItems: "start" }}>
+                  <div className="field">
+                    <label>{t.tr("Server type", "服务端类型")}</label>
+                    <Select
+                      value={jarUpdateType}
+                      onChange={(v) => setJarUpdateType((v as any) === "vanilla" ? "vanilla" : (v as any) === "purpur" ? "purpur" : "paper")}
+                      options={[
+                        { value: "paper", label: "Paper" },
+                        { value: "purpur", label: "Purpur" },
+                        { value: "vanilla", label: t.tr("Vanilla", "原版") },
+                      ]}
+                    />
+                    <div className="hint">{t.tr("Used to resolve download URL safely.", "用于安全解析下载 URL。")}</div>
+                  </div>
+
+                  <div className="field">
+                    <label>{t.tr("Version", "版本")}</label>
+                    <input
+                      value={jarUpdateVersion}
+                      onChange={(e) => setJarUpdateVersion(e.target.value)}
+                      placeholder="1.20.1"
+                    />
+                    <div className="hint">{t.tr("For Vanilla: Minecraft version (e.g. 1.20.1).", "Vanilla：Minecraft 版本（例如 1.20.1）。")}</div>
+                  </div>
+
+                  {jarUpdateType === "paper" || jarUpdateType === "purpur" ? (
+                    <div className="field">
+                      <label>{t.tr("Build (optional)", "Build（可选）")}</label>
+                      <input
+                        type="number"
+                        value={Number.isFinite(jarUpdateBuild) ? jarUpdateBuild : 0}
+                        onChange={(e) => setJarUpdateBuild(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                        min={0}
+                      />
+                      <div className="hint">{t.tr("0 = latest build.", "0 = 最新 build。")}</div>
+                    </div>
+                  ) : (
+                    <div className="field">
+                      <label>{t.tr("Build", "Build")}</label>
+                      <input value="-" disabled />
+                      <div className="hint">{t.tr("Not applicable for Vanilla.", "原版不使用 build。")}</div>
+                    </div>
+                  )}
+
+                  <div className="field">
+                    <label>{t.tr("Jar name", "Jar 文件名")}</label>
+                    <input value={jarUpdateJarName} onChange={(e) => setJarUpdateJarName(e.target.value)} placeholder="server.jar" />
+                    <div className="hint">
+                      {t.tr("Saved as servers/<instance>/", "会保存到 servers/<instance>/ 下：")} <code>{jarUpdateJarName || "server.jar"}</code>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label>{t.tr("Backup before update", "更新前备份")}</label>
+                    <label className="checkRow">
+                      <input type="checkbox" checked={jarUpdateBackup} onChange={(e) => setJarUpdateBackup(e.target.checked)} />{" "}
+                      {t.tr("Create a tar.gz backup before downloading.", "下载前创建 tar.gz 备份。")}
+                    </label>
+                  </div>
+                </div>
+
+                <div className="row" style={{ marginTop: 12, justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div className="btnGroup" style={{ justifyContent: "flex-start" }}>
+                    <button type="button" className="iconBtn" onClick={checkJarUpdateLatest} disabled={jarUpdateBusy}>
+                      <Icon name="search" />
+                      {t.tr("Check latest", "检查最新")}
+                    </button>
+                    {jarUpdateBusy ? <span className="badge">{t.tr("working…", "处理中…")}</span> : null}
+                  </div>
+                  <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                    <button type="button" onClick={() => setJarUpdateOpen(false)} disabled={jarUpdateBusy}>
+                      {t.tr("Cancel", "取消")}
+                    </button>
+                    <button type="button" className="dangerBtn" onClick={applyJarUpdate} disabled={jarUpdateBusy || !instanceId.trim()}>
+                      {t.tr("Update", "更新")}
+                    </button>
+                  </div>
+                </div>
+                <div className="hint" style={{ marginTop: 10 }}>
+                  {t.tr(
+                    "Tip: use 'Repair…' after updating if the jar path is wrong, then restart.",
+                    "提示：更新后如果 jar 路径不对，可用“修复…”自动识别 jar，再重启。"
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {restoreOpen ? (
             <div className="modalOverlay" onClick={() => (!gameActionBusy ? setRestoreOpen(false) : null)}>
               <div className="modal" style={{ width: "min(680px, 100%)" }} onClick={(e) => e.stopPropagation()}>
@@ -6499,7 +8847,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="field">
-                  <label>{t.tr("Backup zip", "备份 zip")}</label>
+                  <label>{t.tr("Backup archive", "备份文件")}</label>
                   <Select
                     value={restoreZipPath}
                     onChange={(v) => setRestoreZipPath(v)}
@@ -6520,7 +8868,7 @@ export default function HomePage() {
                     </button>
                     {gameActionBusy ? <span className="badge">{t.tr("working…", "处理中…")}</span> : null}
                   </div>
-                  <button type="button" className="dangerBtn" onClick={restoreFromBackup} disabled={!restoreZipPath || gameActionBusy}>
+                  <button type="button" className="dangerBtn" onClick={() => restoreBackupNow()} disabled={!restoreZipPath || gameActionBusy}>
                     {t.tr("Restore", "恢复")}
                   </button>
                 </div>
@@ -6748,6 +9096,58 @@ export default function HomePage() {
                       {nodeDetailsNode.hello?.os ? `${t.tr("os", "系统")}: ${nodeDetailsNode.hello.os}` : ""}
                       {nodeDetailsNode.hello?.arch ? ` · ${t.tr("arch", "架构")}: ${nodeDetailsNode.hello.arch}` : ""}
                     </div>
+                    {nodeDetailsNode.hello?.version ? (
+                      <div className="hint" style={{ marginTop: 8 }}>
+                        {t.tr("version", "版本")}: <code>{String(nodeDetailsNode.hello.version)}</code>{" "}
+                        {nodeDetailsUpdate?.outdated ? <span className="badge warn">{t.tr("outdated", "可更新")}</span> : null}
+                      </div>
+                    ) : null}
+                    {nodeDetailsUpdate?.outdated ? (
+                      <div className="btnGroup" style={{ marginTop: 8, justifyContent: "flex-start" }}>
+                        <button
+                          type="button"
+                          className="iconBtn"
+                          onClick={async () => {
+                            const latest = String((updateInfo as any)?.latest?.version || "").trim();
+                            const releaseUrl = String((updateInfo as any)?.latest?.url || "").trim();
+                            const assets = Array.isArray((updateInfo as any)?.latest?.assets) ? (updateInfo as any).latest.assets : [];
+                            const os = String(nodeDetailsNode?.hello?.os || "").trim().toLowerCase();
+                            const arch = String(nodeDetailsNode?.hello?.arch || "").trim().toLowerCase();
+                            const osAlts = os === "darwin" ? ["darwin", "macos", "osx"] : os ? [os] : [];
+                            const archAlts =
+                              arch === "amd64"
+                                ? ["amd64", "x86_64"]
+                                : arch === "arm64"
+                                  ? ["arm64", "aarch64"]
+                                  : arch
+                                    ? [arch]
+                                    : [];
+                            let daemonAssetUrl = "";
+                            for (const a of assets) {
+                              const name = String(a?.name || "").toLowerCase();
+                              if (!name.includes("daemon")) continue;
+                              if (osAlts.length && !osAlts.some((x) => name.includes(x))) continue;
+                              if (archAlts.length && !archAlts.some((x) => name.includes(x))) continue;
+                              daemonAssetUrl = String(a?.url || "").trim();
+                              if (daemonAssetUrl) break;
+                            }
+
+                            const lines: string[] = [];
+                            if (latest) lines.push(`# Update ElegantMC Daemon to ${latest}`);
+                            lines.push(`# Option A (docker compose): docker compose pull daemon && docker compose up -d daemon`);
+                            if (daemonAssetUrl) {
+                              lines.push(`# Option B (binary):`);
+                              lines.push(`curl -fL '${daemonAssetUrl}' -o elegantmc-daemon && chmod +x elegantmc-daemon`);
+                            } else if (releaseUrl) {
+                              lines.push(`# Release: ${releaseUrl}`);
+                            }
+                            await copyText(lines.join("\n") + "\n");
+                          }}
+                        >
+                          <Icon name="copy" /> {t.tr("Copy update commands", "复制更新命令")}
+                        </button>
+                      </div>
+                    ) : null}
 	                    <div className="hint" style={{ marginTop: 8 }}>
 	                      {t.tr("CPU", "CPU")}:{" "}
 	                      {typeof nodeDetailsNode.heartbeat?.cpu?.usage_percent === "number"
@@ -6841,32 +9241,89 @@ export default function HomePage() {
 	                      <tr>
 	                        <th>ID</th>
 	                        <th>{t.tr("Status", "状态")}</th>
+	                        <th>{t.tr("Size", "大小")}</th>
+	                        <th />
 	                      </tr>
 	                    </thead>
 	                    <tbody>
-	                      {(nodeDetailsNode.heartbeat?.instances || []).map((i: any) => (
-	                        <tr key={i.id}>
-	                          <td style={{ fontWeight: 650 }}>{i.id}</td>
-	                          <td>
-	                            {i.running ? (
-	                              <span className="badge ok">
-	                                {t.tr(`running (pid ${i.pid || "-"})`, `运行中（pid ${i.pid || "-"}）`)}
-	                              </span>
-	                            ) : (
-	                              <span className="badge">{t.tr("stopped", "已停止")}</span>
-	                            )}
-	                          </td>
-	                        </tr>
-	                      ))}
+	                      {(nodeDetailsNode.heartbeat?.instances || []).map((i: any) => {
+	                        const key = `${nodeDetailsId}:${String(i?.id || "").trim()}`;
+	                        const usage = nodeInstanceUsageByKey[key];
+	                        const busy = !!usage?.busy;
+	                        const bytes = usage?.bytes;
+	                        const status = String(usage?.status || "").trim();
+	                        return (
+	                          <tr key={i.id}>
+	                            <td style={{ fontWeight: 650 }}>{i.id}</td>
+	                            <td>
+	                              {i.running ? (
+	                                <span className="badge ok">
+	                                  {t.tr(`running (pid ${i.pid || "-"})`, `运行中（pid ${i.pid || "-"}）`)}
+	                                </span>
+	                              ) : (
+	                                <span className="badge">{t.tr("stopped", "已停止")}</span>
+	                              )}
+	                            </td>
+	                            <td>
+	                              {busy ? (
+	                                <span className="badge">{t.tr("Scanning...", "扫描中...")}</span>
+	                              ) : bytes != null ? (
+	                                <code title={status || ""}>{fmtBytes(bytes)}</code>
+	                              ) : status ? (
+	                                <span className="badge warn" title={status}>
+	                                  {t.tr("error", "错误")}
+	                                </span>
+	                              ) : (
+	                                <span className="muted">-</span>
+	                              )}
+	                            </td>
+	                            <td style={{ textAlign: "right" }}>
+	                              <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+	                                <button
+	                                  type="button"
+	                                  className="iconBtn"
+	                                  onClick={() => computeNodeInstanceUsage(nodeDetailsId, String(i?.id || ""))}
+	                                  disabled={!nodeDetailsNode.connected || busy}
+	                                >
+	                                  <Icon name="search" />
+	                                  {t.tr("Scan", "扫描")}
+	                                </button>
+	                              </div>
+	                            </td>
+	                          </tr>
+	                        );
+	                      })}
 	                      {!(nodeDetailsNode.heartbeat?.instances || []).length ? (
 	                        <tr>
-	                          <td colSpan={2} className="muted">
+	                          <td colSpan={4} className="muted">
 	                            {t.tr("No instances reported yet", "暂无实例上报")}
 	                          </td>
 	                        </tr>
 	                      ) : null}
 	                    </tbody>
 	                  </table>
+	                </div>
+
+	                <div className="card">
+	                  <h3>{t.tr("Danger Zone", "危险区")}</h3>
+	                  <DangerZone
+	                    title={t.tr("Danger Zone", "危险区")}
+	                    hint={t.tr(
+	                      "Deleting a node removes its token mapping; the daemon will not be able to reconnect until re-added.",
+	                      "删除节点会移除 token 映射；daemon 将无法再次连接（除非重新添加）。"
+	                    )}
+	                  >
+	                    <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+	                      <button
+	                        type="button"
+	                        className="dangerBtn"
+	                        onClick={() => deleteNodeNow(nodeDetailsId)}
+	                        disabled={!String(nodeDetailsId || "").trim()}
+	                      >
+	                        {t.tr("Delete node…", "删除节点…")}
+	                      </button>
+	                    </div>
+	                  </DangerZone>
 	                </div>
 	              </>
 	            ) : (

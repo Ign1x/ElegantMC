@@ -2,7 +2,7 @@ import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import next from "next";
 import { WebSocketServer } from "ws";
@@ -105,6 +105,10 @@ function maskToken(token) {
   return `${stars}${t.slice(-4)}`;
 }
 
+function sessionID(token) {
+  return createHash("sha256").update(String(token ?? "")).digest("hex");
+}
+
 function extractLatestChangelogSection(md) {
   const raw = String(md || "").replace(/\r\n/g, "\n");
   const lines = raw.split("\n");
@@ -187,6 +191,15 @@ const secureCookie = String(process.env.ELEGANTMC_PANEL_SECURE_COOKIE || "").tri
 const enableAdvanced = truthy(process.env.ELEGANTMC_ENABLE_ADVANCED);
 const enableHSTS = truthy(process.env.ELEGANTMC_PANEL_HSTS);
 
+const updateCheckEnabled = truthy(process.env.ELEGANTMC_UPDATE_CHECK_ENABLED ?? "1");
+const updateRepo = String(process.env.ELEGANTMC_UPDATE_REPO || process.env.ELEGANTMC_UPDATE_GITHUB_REPO || "").trim();
+const updateCheckURL = String(
+  process.env.ELEGANTMC_UPDATE_CHECK_URL ||
+    (updateRepo ? `https://api.github.com/repos/${updateRepo}/releases/latest` : "")
+).trim();
+const UPDATE_CACHE_TTL_SEC = 10 * 60;
+let updateCache = { atUnix: 0, result: null, error: "" };
+
 function parseCmdList(v) {
   return String(v || "")
     .split(",")
@@ -223,9 +236,26 @@ function isAllowedAdvancedCommand(name) {
 
 const SESSION_COOKIE = "elegantmc_session";
 const SESSION_TTL_SEC = 60 * 60 * 24 * 7;
-const sessions = new Map(); // token -> { expiresAtUnix }
+const sessions = new Map(); // token -> { expiresAtUnix, createdAtUnix? }
 const SESSIONS_PATH = path.join(PANEL_DATA_DIR, "sessions.json");
 let sessionsWriteChain = Promise.resolve();
+
+const PANEL_SECRET_PATH = path.join(PANEL_DATA_DIR, "panel_secret.json");
+let panelSecretLoaded = false;
+let panelSecretManagedByEnv = false;
+let panelSecretB64 = "";
+let panelSecret = Buffer.alloc(0);
+
+const USERS_PATH = path.join(PANEL_DATA_DIR, "users.json");
+let usersLoaded = false;
+let users = []; // [{ id, username, pw_salt_b64, pw_hash_b64, created_at_unix, updated_at_unix, totp?: {...} }]
+let usersWriteChain = Promise.resolve();
+
+const API_TOKENS_PATH = path.join(PANEL_DATA_DIR, "api_tokens.json");
+let apiTokensLoaded = false;
+let apiTokens = []; // [{ id, user_id, name, token_hash_b64, created_at_unix, last_used_at_unix }]
+let apiTokensWriteChain = Promise.resolve();
+let apiTokenByHash = new Map(); // token_hash_b64 -> token record
 
 const UI_PREFS_PATH = path.join(PANEL_DATA_DIR, "ui_prefs.json");
 let uiPrefs = { theme_mode: "auto" };
@@ -320,12 +350,15 @@ function sanitizeForAudit(v, depth = 0) {
 
 function appendAudit(req, action, detail = {}) {
   try {
-    const session = getSession(req);
+    const auth = getAuth(req);
     const entry = {
       ts_unix: nowUnix(),
       ip: getClientIP(req) || "",
       action: String(action || "").trim(),
-      session: session?.token ? maskToken(session.token) : "",
+      user: auth?.username ? String(auth.username) : "",
+      auth: auth?.kind ? String(auth.kind) : "",
+      session: auth?.kind === "session" && auth?.token ? maskToken(auth.token) : "",
+      token_id: auth?.kind === "api_token" && auth?.token_id ? String(auth.token_id) : "",
       detail: sanitizeForAudit(detail),
     };
     const line = `${JSON.stringify(entry)}\n`;
@@ -341,7 +374,15 @@ function serializeSessions() {
     if (!token || typeof token !== "string") continue;
     const expiresAtUnix = Number(s?.expiresAtUnix || 0);
     if (!Number.isFinite(expiresAtUnix) || expiresAtUnix <= 0) continue;
-    out[token] = { expiresAtUnix };
+    const createdAtUnix = Number(s?.createdAtUnix || 0);
+    const user_id = String(s?.user_id || "").trim();
+    const username = String(s?.username || "").trim();
+    out[token] = {
+      expiresAtUnix,
+      ...(Number.isFinite(createdAtUnix) && createdAtUnix > 0 ? { createdAtUnix } : {}),
+      ...(user_id ? { user_id } : {}),
+      ...(username ? { username } : {}),
+    };
   }
   return { updated_at_unix: nowUnix(), sessions: out };
 }
@@ -360,6 +401,16 @@ function queueSessionsSave() {
 }
 
 async function loadSessionsFromDisk() {
+  await loadUsersFromDisk();
+  let admin = getUserByUsername("admin");
+  if (!admin) {
+    try {
+      admin = ensureDefaultAdminUser(bootstrapAdminPassword);
+    } catch {
+      admin = null;
+    }
+  }
+
   try {
     const raw = await fs.readFile(SESSIONS_PATH, "utf8");
     const parsed = JSON.parse(raw);
@@ -367,9 +418,19 @@ async function loadSessionsFromDisk() {
     const now = nowUnix();
     for (const [token, s] of Object.entries(obj)) {
       const expiresAtUnix = Number(s?.expiresAtUnix || 0);
+      const createdAtUnix = Number(s?.createdAtUnix || 0);
+      const user_id = String(s?.user_id || "").trim() || (admin?.id ? String(admin.id) : "");
+      const username =
+        String(s?.username || "").trim() ||
+        (user_id && admin?.id && user_id === admin.id ? "admin" : getUserByID(user_id)?.username || "");
       if (!token || typeof token !== "string") continue;
       if (!Number.isFinite(expiresAtUnix) || expiresAtUnix <= now) continue;
-      sessions.set(token, { expiresAtUnix });
+      sessions.set(token, {
+        expiresAtUnix,
+        ...(Number.isFinite(createdAtUnix) && createdAtUnix > 0 ? { createdAtUnix } : {}),
+        ...(user_id ? { user_id } : {}),
+        ...(username ? { username } : {}),
+      });
     }
   } catch (e) {
     if (e?.code !== "ENOENT") {
@@ -379,17 +440,420 @@ async function loadSessionsFromDisk() {
   }
 }
 
+const USERNAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function parseSemverLike(raw) {
+  const v = String(raw || "").trim().replace(/^v/i, "");
+  const m = v.match(/^(\d+)\.(\d+)\.(\d+)(?:[+-].*)?$/);
+  if (!m) return null;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  const c = Number(m[3]);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c)) return null;
+  return [a, b, c];
+}
+
+function compareSemverLike(aRaw, bRaw) {
+  const a = parseSemverLike(aRaw);
+  const b = parseSemverLike(bRaw);
+  if (!a || !b) return null;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+function normalizeUsername(raw) {
+  const v = String(raw || "").trim();
+  if (!v) throw new Error("username is required");
+  if (!USERNAME_RE.test(v)) throw new Error("invalid username (allowed: [A-Za-z0-9][A-Za-z0-9._-]{0,31})");
+  return v;
+}
+
+function normalizeTokenName(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "token";
+  if (v.length > 64) return v.slice(0, 64);
+  return v;
+}
+
+function hashPassword(password, saltB64 = "") {
+  const pwd = String(password ?? "");
+  if (!pwd) throw new Error("password is required");
+  if (pwd.length > 256) throw new Error("password too long");
+  const salt = saltB64 ? Buffer.from(String(saltB64 || ""), "base64") : randomBytes(16);
+  const key = scryptSync(pwd, salt, 64);
+  return { pw_salt_b64: salt.toString("base64"), pw_hash_b64: key.toString("base64") };
+}
+
+function verifyPassword(password, saltB64, hashB64) {
+  try {
+    const next = hashPassword(password, saltB64);
+    const aa = Buffer.from(String(next.pw_hash_b64 || ""), "base64");
+    const bb = Buffer.from(String(hashB64 || ""), "base64");
+    if (!aa.length || !bb.length || aa.length !== bb.length) return false;
+    return timingSafeEqual(aa, bb);
+  } catch {
+    return false;
+  }
+}
+
+const B32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const B32_LOOKUP = new Map(Array.from(B32_ALPHABET).map((c, i) => [c, i]));
+
+function base32Encode(buf) {
+  const bytes = Buffer.isBuffer(buf) ? buf : Buffer.from(buf || []);
+  let out = "";
+  let bits = 0;
+  let value = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    value = (value << 8) | bytes[i];
+    bits += 8;
+    while (bits >= 5) {
+      out += B32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += B32_ALPHABET[(value << (5 - bits)) & 31];
+  return out;
+}
+
+function base32Decode(raw) {
+  const clean = String(raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z2-7]/g, "");
+  if (!clean) return null;
+  let bits = 0;
+  let value = 0;
+  const out = [];
+  for (let i = 0; i < clean.length; i++) {
+    const v = B32_LOOKUP.get(clean[i]);
+    if (v == null) return null;
+    value = (value << 5) | v;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
+
+function normalizeTotpCode(raw) {
+  const v = String(raw || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[^0-9]/g, "");
+  return v;
+}
+
+function hotp(secretBytes, counter, digits = 6) {
+  const c = BigInt(Math.max(0, Math.floor(Number(counter || 0))));
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(c, 0);
+  const h = createHmac("sha1", secretBytes).update(msg).digest();
+  const offset = h[h.length - 1] & 0x0f;
+  const code =
+    ((h[offset] & 0x7f) << 24) |
+    ((h[offset + 1] & 0xff) << 16) |
+    ((h[offset + 2] & 0xff) << 8) |
+    (h[offset + 3] & 0xff);
+  const mod = 10 ** Math.max(1, Math.min(10, Math.floor(digits)));
+  return String(code % mod).padStart(digits, "0");
+}
+
+function totpVerify(secretB32, codeRaw, { window = 1, stepSec = 30, digits = 6 } = {}) {
+  const secretBytes = base32Decode(secretB32);
+  if (!secretBytes || !secretBytes.length) return false;
+  const code = normalizeTotpCode(codeRaw);
+  if (!code || code.length !== digits) return false;
+  const now = nowUnix();
+  const counter = Math.floor(now / Math.max(1, Math.floor(stepSec)));
+  const w = Math.max(0, Math.min(4, Math.floor(window)));
+  for (let i = -w; i <= w; i++) {
+    const cur = hotp(secretBytes, counter + i, digits);
+    if (safeEqual(cur, code)) return true;
+  }
+  return false;
+}
+
+function normalizeRecoveryCode(raw) {
+  return String(raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function hashRecoveryCode(code) {
+  const c = normalizeRecoveryCode(code);
+  if (!c) return "";
+  return createHash("sha256").update(c).digest("base64");
+}
+
+function generateRecoveryCodes(count = 10) {
+  const n = Math.max(1, Math.min(20, Math.floor(count)));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const raw = base32Encode(randomBytes(10)).slice(0, 16);
+    const grouped = raw.match(/.{1,4}/g)?.join("-") || raw;
+    out.push(grouped);
+  }
+  return out;
+}
+
+function makeOtpAuthURI({ username, issuer, secretB32 }) {
+  const u = String(username || "").trim();
+  const iss = String(issuer || "ElegantMC").trim() || "ElegantMC";
+  const sec = String(secretB32 || "").trim().toUpperCase();
+  const label = encodeURIComponent(`${iss}:${u}`);
+  const params = new URLSearchParams({ secret: sec, issuer: iss, algorithm: "SHA1", digits: "6", period: "30" });
+  return `otpauth://totp/${label}?${params.toString()}`;
+}
+
+function normalizeTotpForSave(raw) {
+  const t = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
+  if (!t) return null;
+  const enabled = typeof t.enabled === "boolean" ? !!t.enabled : false;
+  const secret_b32 = String(t.secret_b32 || "").trim().toUpperCase().replace(/[^A-Z2-7]/g, "");
+  if (!enabled) return null;
+  if (!secret_b32 || secret_b32.length > 128) return null;
+  const secretBytes = base32Decode(secret_b32);
+  if (!secretBytes || !secretBytes.length) return null;
+  const createdAt = Number(t.created_at_unix || 0);
+  const updatedAt = Number(t.updated_at_unix || 0);
+  const recoveryIn = Array.isArray(t.recovery) ? t.recovery : [];
+  const recovery = recoveryIn
+    .map((r) => {
+      const hash_b64 = String(r?.hash_b64 || r?.hash || "").trim();
+      const used_at_unix = Number(r?.used_at_unix || 0);
+      if (!hash_b64) return null;
+      return {
+        hash_b64,
+        used_at_unix: Number.isFinite(used_at_unix) && used_at_unix > 0 ? used_at_unix : 0,
+      };
+    })
+    .filter(Boolean);
+  return {
+    enabled: true,
+    secret_b32,
+    created_at_unix: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : null,
+    updated_at_unix: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : null,
+    recovery,
+  };
+}
+
+function serializeUsers() {
+  const out = (Array.isArray(users) ? users : [])
+    .map((u) => {
+      const id = String(u?.id || "").trim();
+      const username = String(u?.username || "").trim();
+      const pw_salt_b64 = String(u?.pw_salt_b64 || "").trim();
+      const pw_hash_b64 = String(u?.pw_hash_b64 || "").trim();
+      const created_at_unix = Number(u?.created_at_unix || 0);
+      const updated_at_unix = Number(u?.updated_at_unix || 0);
+      const totp = normalizeTotpForSave(u?.totp);
+      if (!id || !username || !pw_salt_b64 || !pw_hash_b64) return null;
+      return {
+        id,
+        username,
+        pw_salt_b64,
+        pw_hash_b64,
+        created_at_unix: Number.isFinite(created_at_unix) && created_at_unix > 0 ? created_at_unix : null,
+        updated_at_unix: Number.isFinite(updated_at_unix) && updated_at_unix > 0 ? updated_at_unix : null,
+        ...(totp ? { totp } : {}),
+      };
+    })
+    .filter(Boolean);
+  return { updated_at_unix: nowUnix(), users: out };
+}
+
+function queueUsersSave() {
+  usersWriteChain = usersWriteChain
+    .then(async () => {
+      const payload = JSON.stringify(serializeUsers(), null, 2);
+      await writeFileAtomic(USERS_PATH, payload);
+    })
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] users save failed:", e?.message || e);
+    });
+  return usersWriteChain;
+}
+
+async function loadUsersFromDisk() {
+  if (usersLoaded) return;
+  try {
+    const raw = await fs.readFile(USERS_PATH, "utf8");
+    const parsed = safeJsonParse(raw);
+    const list = Array.isArray(parsed?.users) ? parsed.users : [];
+    users = list
+      .map((u) => {
+        try {
+          const id = String(u?.id || "").trim();
+          const username = normalizeUsername(u?.username || "");
+          const pw_salt_b64 = String(u?.pw_salt_b64 || "").trim();
+          const pw_hash_b64 = String(u?.pw_hash_b64 || "").trim();
+          if (!id || !pw_salt_b64 || !pw_hash_b64) return null;
+          return {
+            id,
+            username,
+            pw_salt_b64,
+            pw_hash_b64,
+            created_at_unix: Number(u?.created_at_unix || 0) || 0,
+            updated_at_unix: Number(u?.updated_at_unix || 0) || 0,
+            totp: normalizeTotpForSave(u?.totp) || undefined,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch (e) {
+    if (e?.code !== "ENOENT") {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] failed to load users:", e?.message || e);
+    }
+    users = [];
+  } finally {
+    usersLoaded = true;
+  }
+}
+
+function getUserByUsername(username) {
+  const u = String(username || "").trim();
+  return (Array.isArray(users) ? users : []).find((x) => String(x?.username || "").trim() === u) || null;
+}
+
+function getUserByID(id) {
+  const uid = String(id || "").trim();
+  return (Array.isArray(users) ? users : []).find((x) => String(x?.id || "").trim() === uid) || null;
+}
+
+function ensureDefaultAdminUser(bootstrapPassword) {
+  const now = nowUnix();
+  const existing = getUserByUsername("admin");
+  if (existing) return existing;
+  const pwd = String(bootstrapPassword || "").trim();
+  if (!pwd) throw new Error("bootstrap admin password missing");
+  const id = randomBytes(12).toString("base64url");
+  const h = hashPassword(pwd);
+  const u = { id, username: "admin", ...h, created_at_unix: now, updated_at_unix: now };
+  users = [...(Array.isArray(users) ? users : []), u];
+  queueUsersSave();
+  return u;
+}
+
+function normalizeApiTokenValue(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  if (v.length > 256) return "";
+  return v;
+}
+
+function hashApiTokenValue(tokenValue) {
+  const v = normalizeApiTokenValue(tokenValue);
+  if (!v) return "";
+  return createHash("sha256").update(v).digest("base64");
+}
+
+function rebuildApiTokenIndex() {
+  apiTokenByHash = new Map();
+  for (const t of Array.isArray(apiTokens) ? apiTokens : []) {
+    const h = String(t?.token_hash_b64 || "").trim();
+    if (!h) continue;
+    apiTokenByHash.set(h, t);
+  }
+}
+
+function serializeApiTokens() {
+  const list = (Array.isArray(apiTokens) ? apiTokens : [])
+    .map((t) => {
+      const id = String(t?.id || "").trim();
+      const user_id = String(t?.user_id || "").trim();
+      const name = String(t?.name || "").trim();
+      const token_hash_b64 = String(t?.token_hash_b64 || "").trim();
+      const created_at_unix = Number(t?.created_at_unix || 0);
+      const last_used_at_unix = Number(t?.last_used_at_unix || 0);
+      if (!id || !user_id || !token_hash_b64) return null;
+      return {
+        id,
+        user_id,
+        name,
+        token_hash_b64,
+        created_at_unix: Number.isFinite(created_at_unix) && created_at_unix > 0 ? created_at_unix : null,
+        last_used_at_unix: Number.isFinite(last_used_at_unix) && last_used_at_unix > 0 ? last_used_at_unix : null,
+      };
+    })
+    .filter(Boolean);
+  return { updated_at_unix: nowUnix(), tokens: list };
+}
+
+function queueApiTokensSave() {
+  apiTokensWriteChain = apiTokensWriteChain
+    .then(async () => {
+      const payload = JSON.stringify(serializeApiTokens(), null, 2);
+      await writeFileAtomic(API_TOKENS_PATH, payload);
+    })
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] api_tokens save failed:", e?.message || e);
+    });
+  return apiTokensWriteChain;
+}
+
+async function loadApiTokensFromDisk() {
+  if (apiTokensLoaded) return;
+  try {
+    const raw = await fs.readFile(API_TOKENS_PATH, "utf8");
+    const parsed = safeJsonParse(raw);
+    const list = Array.isArray(parsed?.tokens) ? parsed.tokens : [];
+    apiTokens = list
+      .map((t) => {
+        const id = String(t?.id || "").trim();
+        const user_id = String(t?.user_id || "").trim();
+        const name = normalizeTokenName(t?.name || "");
+        const token_hash_b64 = String(t?.token_hash_b64 || "").trim();
+        if (!id || !user_id || !token_hash_b64) return null;
+        return {
+          id,
+          user_id,
+          name,
+          token_hash_b64,
+          created_at_unix: Number(t?.created_at_unix || 0) || 0,
+          last_used_at_unix: Number(t?.last_used_at_unix || 0) || 0,
+        };
+      })
+      .filter(Boolean);
+  } catch (e) {
+    if (e?.code !== "ENOENT") {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] failed to load api tokens:", e?.message || e);
+    }
+    apiTokens = [];
+  } finally {
+    apiTokensLoaded = true;
+    rebuildApiTokenIndex();
+  }
+}
+
 const LOGIN_WINDOW_SEC = 5 * 60;
 const LOGIN_MAX_ATTEMPTS = 8;
 const loginAttempts = new Map(); // ip -> { count, resetAtUnix }
 
-let adminPassword = String(process.env.ELEGANTMC_PANEL_ADMIN_PASSWORD || "").trim();
-if (!adminPassword) {
-  adminPassword = randomBytes(9).toString("base64url");
+let bootstrapAdminPassword = String(process.env.ELEGANTMC_PANEL_ADMIN_PASSWORD || "").trim();
+if (!bootstrapAdminPassword) {
+  bootstrapAdminPassword = randomBytes(9).toString("base64url");
   // eslint-disable-next-line no-console
-  console.log(
-    `[panel] generated admin password: ${adminPassword} (set ELEGANTMC_PANEL_ADMIN_PASSWORD to override)`
-  );
+  console.log(`[panel] generated admin password: ${bootstrapAdminPassword} (set ELEGANTMC_PANEL_ADMIN_PASSWORD to override)`);
 }
 
 function safeEqual(a, b) {
@@ -401,6 +865,77 @@ function safeEqual(a, b) {
 
 function nowUnix() {
   return Math.floor(Date.now() / 1000);
+}
+
+function setPanelSecretFromB64(secretB64, { managedByEnv } = {}) {
+  const b64 = String(secretB64 || "").trim();
+  if (!b64) throw new Error("secret is empty");
+  const bytes = Buffer.from(b64, "base64");
+  if (!bytes.length || bytes.length < 16) throw new Error("secret too short");
+  panelSecretB64 = b64;
+  panelSecret = bytes;
+  panelSecretLoaded = true;
+  panelSecretManagedByEnv = !!managedByEnv;
+}
+
+async function ensurePanelSecret() {
+  if (panelSecretLoaded && panelSecret.length) return;
+
+  const envRaw = String(process.env.ELEGANTMC_PANEL_SECRET_B64 || process.env.ELEGANTMC_PANEL_SECRET || "").trim();
+  if (envRaw) {
+    setPanelSecretFromB64(envRaw, { managedByEnv: true });
+    return;
+  }
+
+  try {
+    const raw = await fs.readFile(PANEL_SECRET_PATH, "utf8");
+    const parsed = safeJsonParse(raw);
+    const b64 = String(parsed?.secret_b64 || parsed?.secret || "").trim();
+    if (b64) {
+      setPanelSecretFromB64(b64, { managedByEnv: false });
+      return;
+    }
+  } catch (e) {
+    if (e?.code !== "ENOENT") {
+      // eslint-disable-next-line no-console
+      console.warn("[panel] failed to load panel secret:", e?.message || e);
+    }
+  }
+
+  const b64 = randomBytes(32).toString("base64");
+  setPanelSecretFromB64(b64, { managedByEnv: false });
+  const payload = JSON.stringify({ created_at_unix: nowUnix(), updated_at_unix: nowUnix(), secret_b64: b64 }, null, 2);
+  await writeFileAtomic(PANEL_SECRET_PATH, payload);
+}
+
+function signSessionToken(token) {
+  if (!panelSecret || !panelSecret.length) return "";
+  const t = String(token || "").trim();
+  if (!t) return "";
+  return createHmac("sha256", panelSecret).update(t).digest("base64url");
+}
+
+function encodeSessionCookieValue(token) {
+  const t = String(token || "").trim();
+  if (!t) return "";
+  const sig = signSessionToken(t);
+  if (!sig) return "";
+  return `${t}.${sig}`;
+}
+
+function parseSessionCookieValue(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return null;
+  if (!v.includes(".")) return { token: v, legacy: true };
+  const idx = v.lastIndexOf(".");
+  if (idx <= 0) return null;
+  const token = v.slice(0, idx).trim();
+  const sig = v.slice(idx + 1).trim();
+  if (!token || !sig) return null;
+  const expected = signSessionToken(token);
+  if (!expected) return null;
+  if (!safeEqual(expected, sig)) return null;
+  return { token, legacy: false };
 }
 
 function getClientIP(req) {
@@ -432,8 +967,9 @@ function checkLoginRateLimit(req, res) {
 
 function getSession(req) {
   const cookies = parseCookies(req);
-  const token = String(cookies?.[SESSION_COOKIE] || "").trim();
-  if (!token) return null;
+  const parsed = parseSessionCookieValue(cookies?.[SESSION_COOKIE] || "");
+  if (!parsed?.token) return null;
+  const token = parsed.token;
   const session = sessions.get(token);
   if (!session) return null;
   const now = nowUnix();
@@ -445,7 +981,35 @@ function getSession(req) {
   return { token, ...session };
 }
 
+function getAuth(req) {
+  const session = getSession(req);
+  if (session) return { kind: "session", user_id: String(session?.user_id || ""), username: String(session?.username || ""), ...session };
+
+  const tokenValue = normalizeApiTokenValue(getAuthToken(req));
+  if (!tokenValue) return null;
+  const hashB64 = hashApiTokenValue(tokenValue);
+  if (!hashB64) return null;
+  const rec = apiTokenByHash.get(hashB64) || null;
+  if (!rec) return null;
+  const u = getUserByID(String(rec?.user_id || "").trim());
+  if (!u) return null;
+
+  const now = nowUnix();
+  const last = Number(rec?.last_used_at_unix || 0);
+  if (!Number.isFinite(last) || now-last >= 15) {
+    rec.last_used_at_unix = now;
+    queueApiTokensSave();
+  }
+  return { kind: "api_token", token_id: String(rec?.id || ""), user_id: String(u.id || ""), username: String(u.username || "") };
+}
+
 function requireAdmin(req, res) {
+  if (getAuth(req)) return true;
+  json(res, 401, { error: "unauthorized" });
+  return false;
+}
+
+function requireSessionAdmin(req, res) {
   if (getSession(req)) return true;
   json(res, 401, { error: "unauthorized" });
   return false;
@@ -487,6 +1051,14 @@ const nextHandle = nextApp.getRequestHandler();
 
 await nextApp.prepare();
 await ensureReady();
+await ensurePanelSecret();
+await loadUsersFromDisk();
+try {
+  if (!getUserByUsername("admin")) ensureDefaultAdminUser(bootstrapAdminPassword);
+} catch {
+  // ignore
+}
+await loadApiTokensFromDisk();
 await loadSessionsFromDisk();
 await loadUiPrefsFromDisk();
 
@@ -606,6 +1178,8 @@ const MODRINTH_BASE_URL = String(process.env.ELEGANTMC_MODRINTH_BASE_URL || "htt
 const CURSEFORGE_BASE_URL = String(process.env.ELEGANTMC_CURSEFORGE_BASE_URL || "https://api.curseforge.com").replace(/\/+$/, "");
 const FABRIC_META_BASE_URL = String(process.env.ELEGANTMC_FABRIC_META_BASE_URL || "https://meta.fabricmc.net").replace(/\/+$/, "");
 const QUILT_META_BASE_URL = String(process.env.ELEGANTMC_QUILT_META_BASE_URL || "https://meta.quiltmc.org").replace(/\/+$/, "");
+const PAPER_API_BASE_URL = String(process.env.ELEGANTMC_PAPER_API_BASE_URL || "https://api.papermc.io").replace(/\/+$/, "");
+const PURPUR_API_BASE_URL = String(process.env.ELEGANTMC_PURPUR_API_BASE_URL || "https://api.purpurmc.org").replace(/\/+$/, "");
 
 function getCurseForgeApiKey() {
   const fromSettings = String(state?.panelSettings?.curseforge_api_key || "").trim();
@@ -649,6 +1223,68 @@ async function quiltResolveServerJar(minecraftVersion, loaderVersion) {
 
   const jarUrl = `${QUILT_META_BASE_URL}/v3/versions/loader/${encodeURIComponent(mc)}/${encodeURIComponent(loader)}/${encodeURIComponent(installer)}/server/jar`;
   return { mc, loader, installer, url: jarUrl };
+}
+
+async function purpurResolveJar(minecraftVersion, buildRaw) {
+  const mc = String(minecraftVersion || "").trim();
+  let build = Math.max(0, Math.round(Number(buildRaw || 0) || 0));
+  if (!mc) throw new Error("mc is required");
+  if (mc.length > 64) throw new Error("mc too long");
+
+  const metaUrl = `${PURPUR_API_BASE_URL}/v2/purpur/${encodeURIComponent(mc)}`;
+  const { res, json } = await fetchJsonWithTimeout(metaUrl, { headers: { "User-Agent": "ElegantMC Panel" } }, 15_000);
+  if (!res.ok) throw new Error(json?.error || `fetch failed: ${res.status}`);
+
+  if (!build) {
+    const latest = Number(json?.builds?.latest || 0);
+    if (Number.isFinite(latest) && latest > 0) build = Math.round(latest);
+    else if (Array.isArray(json?.builds) && json.builds.length) {
+      const nums = json.builds.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
+      build = nums.length ? Math.max(...nums) : 0;
+    }
+  }
+  if (!build) throw new Error("no purpur builds");
+
+  const buildUrl = `${PURPUR_API_BASE_URL}/v2/purpur/${encodeURIComponent(mc)}/${encodeURIComponent(String(build))}`;
+  const { res: res2, json: json2 } = await fetchJsonWithTimeout(buildUrl, { headers: { "User-Agent": "ElegantMC Panel" } }, 15_000);
+  if (!res2.ok) throw new Error(json2?.error || `fetch failed: ${res2.status}`);
+
+  const sha256 = String(json2?.sha256 || json2?.checksums?.sha256 || json2?.sha256_hash || "").trim().toLowerCase();
+  if (!sha256 || !/^[0-9a-f]{64}$/.test(sha256)) {
+    throw new Error("purpur sha256 missing");
+  }
+  const jarUrl = `${PURPUR_API_BASE_URL}/v2/purpur/${encodeURIComponent(mc)}/${encodeURIComponent(String(build))}/download`;
+  return { mc, build, url: jarUrl, sha256 };
+}
+
+async function paperResolveJar(minecraftVersion, buildRaw) {
+  const mc = String(minecraftVersion || "").trim();
+  let build = Math.max(0, Math.round(Number(buildRaw || 0) || 0));
+  if (!mc) throw new Error("mc is required");
+  if (mc.length > 64) throw new Error("mc too long");
+
+  const verUrl = `${PAPER_API_BASE_URL}/v2/projects/paper/versions/${encodeURIComponent(mc)}`;
+  const { res, json } = await fetchJsonWithTimeout(verUrl, { headers: { "User-Agent": "ElegantMC Panel" } }, 15_000);
+  if (!res.ok) throw new Error(json?.error || json?.message || `fetch failed: ${res.status}`);
+
+  const builds = Array.isArray(json?.builds) ? json.builds : [];
+  if (!build) {
+    const nums = builds.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
+    build = nums.length ? Math.max(...nums) : 0;
+  }
+  if (!build) throw new Error("no paper builds");
+
+  const buildUrl = `${PAPER_API_BASE_URL}/v2/projects/paper/versions/${encodeURIComponent(mc)}/builds/${encodeURIComponent(String(build))}`;
+  const { res: res2, json: json2 } = await fetchJsonWithTimeout(buildUrl, { headers: { "User-Agent": "ElegantMC Panel" } }, 15_000);
+  if (!res2.ok) throw new Error(json2?.error || json2?.message || `fetch failed: ${res2.status}`);
+
+  const name = String(json2?.downloads?.application?.name || "").trim();
+  const sha256 = String(json2?.downloads?.application?.sha256 || "").trim().toLowerCase();
+  if (!name) throw new Error("paper download name missing");
+  if (!sha256 || !/^[0-9a-f]{64}$/.test(sha256)) throw new Error("paper sha256 missing");
+
+  const jarUrl = `${PAPER_API_BASE_URL}/v2/projects/paper/versions/${encodeURIComponent(mc)}/builds/${encodeURIComponent(String(build))}/downloads/${encodeURIComponent(name)}`;
+  return { mc, build, name, url: jarUrl, sha256 };
 }
 
 async function modrinthSearchModpacks(query, limit = 12, offset = 0) {
@@ -888,28 +1524,173 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (url.pathname === "/api/updates/check" && req.method === "GET") {
+      if (!requireAdmin(req, res)) return;
+      if (!updateCheckEnabled) return json(res, 400, { error: "update check disabled" });
+      if (!updateCheckURL) return json(res, 400, { error: "update check not configured" });
+
+      const force = String(url.searchParams.get("force") || "").trim() === "1";
+      const now = nowUnix();
+      if (!force && updateCache.result && now - (updateCache.atUnix || 0) < UPDATE_CACHE_TTL_SEC) {
+        return json(res, 200, updateCache.result);
+      }
+
+      try {
+        const { res: upRes, json: upJson } = await fetchJsonWithTimeout(
+          updateCheckURL,
+          { headers: { "User-Agent": "ElegantMC Panel", Accept: "application/vnd.github+json" } },
+          12_000
+        );
+        if (!upRes.ok) throw new Error(upJson?.message || `fetch failed: ${upRes.status}`);
+        const latest = String(upJson?.tag_name || upJson?.name || "").trim();
+        const releaseUrl = String(upJson?.html_url || upJson?.url || "").trim();
+        if (!latest) throw new Error("latest version missing");
+
+        const assets = Array.isArray(upJson?.assets)
+          ? upJson.assets
+              .slice(0, 60)
+              .map((a) => ({
+                name: String(a?.name || ""),
+                url: String(a?.browser_download_url || ""),
+                size: Number(a?.size || 0) || null,
+              }))
+              .filter((a) => a.name && a.url)
+          : [];
+
+        const panelCurrent = String(process.env.ELEGANTMC_VERSION || "dev");
+        const panelCmp = compareSemverLike(panelCurrent, latest);
+        const panelUpdate = panelCmp === -1;
+
+        const daemonNodes = Array.from(state.daemons.values()).map((d) => {
+          const cur = String(d?.hello?.version || "").trim();
+          const cmp = compareSemverLike(cur, latest);
+          const outdated = cmp === -1;
+          return {
+            id: d.id,
+            connected: !!d.connected,
+            current: cur || null,
+            outdated,
+            comparable: cmp != null,
+          };
+        });
+        daemonNodes.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        const outdatedCount = daemonNodes.filter((x) => x.outdated).length;
+
+        const result = {
+          checked_at_unix: now,
+          source: {
+            repo: updateRepo || null,
+            url: updateCheckURL,
+          },
+          latest: { version: latest, url: releaseUrl || null, assets },
+          panel: {
+            current: panelCurrent,
+            update_available: panelUpdate,
+            comparable: panelCmp != null,
+          },
+          daemons: {
+            outdated_count: outdatedCount,
+            nodes: daemonNodes,
+          },
+        };
+
+        updateCache = { atUnix: now, result, error: "" };
+        appendAudit(req, "updates.check", { latest, panel_current: panelCurrent, outdated_daemons: outdatedCount });
+        return json(res, 200, result);
+      } catch (e) {
+        const msg = String(e?.message || e);
+        updateCache = { atUnix: now, result: null, error: msg };
+        return json(res, 502, { error: msg });
+      }
+    }
+
     if (url.pathname === "/api/auth/me" && req.method === "GET") {
-      const ok = !!getSession(req);
-      return ok ? json(res, 200, { authed: true }) : json(res, 401, { authed: false });
+      const auth = getAuth(req);
+      if (!auth) return json(res, 401, { authed: false });
+      await loadUsersFromDisk();
+      const u = auth?.user_id ? getUserByID(String(auth.user_id || "").trim()) : null;
+      return json(res, 200, {
+        authed: true,
+        via: auth.kind,
+        user_id: String(auth.user_id || ""),
+        username: String(auth.username || ""),
+        totp_enabled: !!u?.totp?.enabled,
+      });
     }
     if (url.pathname === "/api/auth/login" && req.method === "POST") {
       if (!checkLoginRateLimit(req, res)) return;
       try {
+        await loadUsersFromDisk();
+        let admin = getUserByUsername("admin");
+        if (!admin) admin = ensureDefaultAdminUser(bootstrapAdminPassword);
+
         const body = await readJsonBody(req);
+        const usernameRaw = body?.username ?? body?.user ?? "";
+        const username = usernameRaw ? normalizeUsername(usernameRaw) : "admin";
         const password = String(body?.password || "");
-        if (!safeEqual(password, adminPassword)) {
-          appendAudit(req, "auth.login_failed", { reason: "invalid_password" });
-          return json(res, 401, { error: "invalid password" });
+
+        const u = getUserByUsername(username);
+        if (!u) {
+          appendAudit(req, "auth.login_failed", { reason: "invalid_credentials", username });
+          return json(res, 401, { error: "invalid credentials" });
         }
+        if (!verifyPassword(password, u.pw_salt_b64, u.pw_hash_b64)) {
+          appendAudit(req, "auth.login_failed", { reason: "invalid_credentials", username });
+          return json(res, 401, { error: "invalid credentials" });
+        }
+
+        let usedRecovery = false;
+        let recoveryRemaining = 0;
+        if (u?.totp?.enabled) {
+          const totpCode = String(body?.totp_code ?? body?.totp ?? body?.code ?? body?.otp ?? "").trim();
+          const recoveryCode = String(body?.recovery_code ?? body?.recovery ?? "").trim();
+
+          if (!totpCode && !recoveryCode) {
+            appendAudit(req, "auth.login_failed", { reason: "2fa_required", username });
+            return json(res, 401, { error: "2fa required", needs_2fa: true });
+          }
+
+          let ok2fa = false;
+          if (totpCode && totpVerify(u.totp.secret_b32, totpCode, { window: 1, stepSec: 30, digits: 6 })) {
+            ok2fa = true;
+          } else if (recoveryCode) {
+            const h = hashRecoveryCode(recoveryCode);
+            const recs = Array.isArray(u?.totp?.recovery) ? u.totp.recovery : [];
+            const idx = recs.findIndex((r) => String(r?.hash_b64 || "").trim() === h && !(Number(r?.used_at_unix || 0) > 0));
+            if (idx >= 0) {
+              ok2fa = true;
+              usedRecovery = true;
+              const now = nowUnix();
+              const nextRecs = recs.map((r, i) => (i === idx ? { ...r, used_at_unix: now } : r));
+              users = (Array.isArray(users) ? users : []).map((x) => {
+                if (String(x?.id || "") !== String(u.id || "")) return x;
+                return { ...x, totp: { ...(x.totp || {}), recovery: nextRecs, updated_at_unix: now }, updated_at_unix: now };
+              });
+              await queueUsersSave();
+              recoveryRemaining = nextRecs.filter((r) => !(Number(r?.used_at_unix || 0) > 0)).length;
+            } else {
+              recoveryRemaining = recs.filter((r) => !(Number(r?.used_at_unix || 0) > 0)).length;
+            }
+          }
+
+          if (!ok2fa) {
+            appendAudit(req, "auth.login_failed", { reason: "invalid_2fa", username });
+            return json(res, 401, { error: "invalid 2fa code", needs_2fa: true });
+          }
+        }
+
         const token = randomBytes(24).toString("base64url");
         const now = nowUnix();
-        sessions.set(token, { expiresAtUnix: now + SESSION_TTL_SEC });
+        sessions.set(token, { expiresAtUnix: now + SESSION_TTL_SEC, createdAtUnix: now, user_id: u.id, username: u.username });
         queueSessionsSave();
-        appendAudit(req, "auth.login_ok", { token: maskToken(token) });
+        appendAudit(req, "auth.login_ok", { token: maskToken(token), username: u.username });
         loginAttempts.delete(getClientIP(req) || "unknown");
+
+        const cookieValue = encodeSessionCookieValue(token);
+        if (!cookieValue) throw new Error("failed to encode session cookie");
         res.setHeader(
           "Set-Cookie",
-          serializeCookie(SESSION_COOKIE, token, {
+          serializeCookie(SESSION_COOKIE, cookieValue, {
             httpOnly: true,
             secure: secureCookie,
             sameSite: "Lax",
@@ -917,7 +1698,14 @@ const server = http.createServer(async (req, res) => {
             maxAge: SESSION_TTL_SEC,
           })
         );
-        return json(res, 200, { authed: true });
+        return json(res, 200, {
+          authed: true,
+          via: "session",
+          user_id: u.id,
+          username: u.username,
+          totp_enabled: !!u?.totp?.enabled,
+          ...(usedRecovery ? { used_recovery: true, recovery_remaining: recoveryRemaining } : {}),
+        });
       } catch (e) {
         return json(res, 400, { error: String(e?.message || e) });
       }
@@ -942,6 +1730,450 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
 
+    if (url.pathname === "/api/auth/sessions" && req.method === "GET") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      const now = nowUnix();
+      const list = [];
+      for (const [token, s] of sessions.entries()) {
+        const expiresAtUnix = Number(s?.expiresAtUnix || 0);
+        if (!Number.isFinite(expiresAtUnix) || expiresAtUnix <= now) continue;
+        const createdAtUnix = Number(s?.createdAtUnix || 0);
+        const user_id = String(s?.user_id || "").trim();
+        const username = String(s?.username || "").trim();
+        list.push({
+          id: sessionID(token),
+          token_masked: maskToken(token),
+          user_id: user_id || null,
+          username: username || null,
+          created_at_unix: Number.isFinite(createdAtUnix) && createdAtUnix > 0 ? createdAtUnix : null,
+          expires_at_unix: expiresAtUnix,
+          current: token === session.token,
+        });
+      }
+      list.sort((a, b) => Number(b.expires_at_unix || 0) - Number(a.expires_at_unix || 0));
+      return json(res, 200, { sessions: list });
+    }
+
+    if (url.pathname === "/api/auth/sessions/revoke" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      try {
+        const body = await readJsonBody(req);
+        const id = String(body?.id || body?.session_id || "").trim();
+        if (!id) return json(res, 400, { error: "id is required" });
+        let revoked = false;
+        for (const [token] of sessions.entries()) {
+          if (sessionID(token) !== id) continue;
+          sessions.delete(token);
+          revoked = true;
+          appendAudit(req, "auth.sessions_revoke", { id, token: maskToken(token) });
+          if (token === session.token) {
+            res.setHeader(
+              "Set-Cookie",
+              serializeCookie(SESSION_COOKIE, "", {
+                httpOnly: true,
+                secure: secureCookie,
+                sameSite: "Lax",
+                path: "/",
+                maxAge: 0,
+              })
+            );
+          }
+          break;
+        }
+        if (revoked) queueSessionsSave();
+        return json(res, 200, { revoked });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/sessions/revoke-all" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      try {
+        const body = await readJsonBody(req);
+        const keepCurrent = body?.keep_current === false ? false : true;
+        let count = 0;
+        for (const [token] of sessions.entries()) {
+          if (keepCurrent && token === session.token) continue;
+          sessions.delete(token);
+          count++;
+        }
+        if (count) {
+          queueSessionsSave();
+          appendAudit(req, "auth.sessions_revoke_all", { keep_current: keepCurrent, revoked: count });
+        }
+        if (!keepCurrent) {
+          res.setHeader(
+            "Set-Cookie",
+            serializeCookie(SESSION_COOKIE, "", {
+              httpOnly: true,
+              secure: secureCookie,
+              sameSite: "Lax",
+              path: "/",
+              maxAge: 0,
+            })
+          );
+        }
+        return json(res, 200, { revoked: count, keep_current: keepCurrent });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/users" && req.method === "GET") {
+      if (!requireSessionAdmin(req, res)) return;
+      await loadUsersFromDisk();
+      const list = (Array.isArray(users) ? users : []).map((u) => ({
+        id: String(u?.id || ""),
+        username: String(u?.username || ""),
+        created_at_unix: Number(u?.created_at_unix || 0) || null,
+        updated_at_unix: Number(u?.updated_at_unix || 0) || null,
+        totp_enabled: !!u?.totp?.enabled,
+      }));
+      list.sort((a, b) => String(a.username).localeCompare(String(b.username)));
+      return json(res, 200, { users: list });
+    }
+
+    if (url.pathname === "/api/auth/users/create" && req.method === "POST") {
+      if (!requireSessionAdmin(req, res)) return;
+      try {
+        await loadUsersFromDisk();
+        const body = await readJsonBody(req);
+        const username = normalizeUsername(body?.username || body?.user || "");
+        const password = String(body?.password || "");
+        if (password.length < 8) return json(res, 400, { error: "password too short (min 8)" });
+        if (getUserByUsername(username)) return json(res, 400, { error: "username already exists" });
+        const now = nowUnix();
+        const id = randomBytes(12).toString("base64url");
+        const h = hashPassword(password);
+        const u = { id, username, ...h, created_at_unix: now, updated_at_unix: now };
+        users = [...(Array.isArray(users) ? users : []), u];
+        await queueUsersSave();
+        appendAudit(req, "auth.users_create", { username });
+        return json(res, 200, { user: { id, username, created_at_unix: now, updated_at_unix: now } });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/users/delete" && req.method === "POST") {
+      if (!requireSessionAdmin(req, res)) return;
+      try {
+        await loadUsersFromDisk();
+        const body = await readJsonBody(req);
+        const id = String(body?.id || body?.user_id || "").trim();
+        if (!id) return json(res, 400, { error: "id is required" });
+        if ((Array.isArray(users) ? users : []).length <= 1) return json(res, 400, { error: "refuse to delete last user" });
+        const u = getUserByID(id);
+        if (!u) return json(res, 404, { error: "user not found" });
+        users = (Array.isArray(users) ? users : []).filter((x) => String(x?.id || "") !== id);
+        await queueUsersSave();
+        appendAudit(req, "auth.users_delete", { username: u.username });
+
+        // Revoke sessions for that user.
+        const cur = getSession(req);
+        let revoked = 0;
+        for (const [tok, s] of sessions.entries()) {
+          if (String(s?.user_id || "") !== id) continue;
+          sessions.delete(tok);
+          revoked++;
+        }
+        if (revoked) queueSessionsSave();
+        if (cur?.token && String(cur?.user_id || "") === id) {
+          res.setHeader(
+            "Set-Cookie",
+            serializeCookie(SESSION_COOKIE, "", {
+              httpOnly: true,
+              secure: secureCookie,
+              sameSite: "Lax",
+              path: "/",
+              maxAge: 0,
+            })
+          );
+        }
+
+        return json(res, 200, { deleted: true, revoked_sessions: revoked });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/users/set-password" && req.method === "POST") {
+      if (!requireSessionAdmin(req, res)) return;
+      try {
+        await loadUsersFromDisk();
+        const body = await readJsonBody(req);
+        const id = String(body?.id || body?.user_id || "").trim();
+        const password = String(body?.password || "");
+        if (!id) return json(res, 400, { error: "id is required" });
+        if (password.length < 8) return json(res, 400, { error: "password too short (min 8)" });
+        const u = getUserByID(id);
+        if (!u) return json(res, 404, { error: "user not found" });
+        const now = nowUnix();
+        const h = hashPassword(password);
+        users = (Array.isArray(users) ? users : []).map((x) => {
+          if (String(x?.id || "") !== id) return x;
+          return { ...x, ...h, updated_at_unix: now };
+        });
+        await queueUsersSave();
+        appendAudit(req, "auth.users_set_password", { username: u.username });
+
+        // Revoke sessions for that user.
+        const cur = getSession(req);
+        let revoked = 0;
+        for (const [tok, s] of sessions.entries()) {
+          if (String(s?.user_id || "") !== id) continue;
+          sessions.delete(tok);
+          revoked++;
+        }
+        if (revoked) queueSessionsSave();
+        if (cur?.token && String(cur?.user_id || "") === id) {
+          res.setHeader(
+            "Set-Cookie",
+            serializeCookie(SESSION_COOKIE, "", {
+              httpOnly: true,
+              secure: secureCookie,
+              sameSite: "Lax",
+              path: "/",
+              maxAge: 0,
+            })
+          );
+        }
+
+        return json(res, 200, { ok: true, revoked_sessions: revoked });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/totp/begin" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      try {
+        await loadUsersFromDisk();
+        const u = getUserByID(String(session?.user_id || "").trim());
+        if (!u) return json(res, 404, { error: "user not found" });
+        if (u?.totp?.enabled) return json(res, 400, { error: "2fa already enabled" });
+
+        const secret_b32 = base32Encode(randomBytes(20));
+        const otpauth_uri = makeOtpAuthURI({ username: u.username, issuer: "ElegantMC", secretB32: secret_b32 });
+        appendAudit(req, "auth.totp_begin", { username: u.username });
+        return json(res, 200, { secret_b32, otpauth_uri });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/totp/enable" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      try {
+        await loadUsersFromDisk();
+        const body = await readJsonBody(req);
+        const secret_b32 = String(body?.secret_b32 || body?.secret || "").trim().toUpperCase().replace(/[^A-Z2-7]/g, "");
+        const code = String(body?.totp_code ?? body?.code ?? body?.otp ?? "").trim();
+        if (!secret_b32) return json(res, 400, { error: "secret_b32 is required" });
+        if (!code) return json(res, 400, { error: "code is required" });
+
+        const u = getUserByID(String(session?.user_id || "").trim());
+        if (!u) return json(res, 404, { error: "user not found" });
+        if (u?.totp?.enabled) return json(res, 400, { error: "2fa already enabled" });
+        if (!totpVerify(secret_b32, code, { window: 1, stepSec: 30, digits: 6 })) return json(res, 400, { error: "invalid code" });
+
+        const recovery_codes = generateRecoveryCodes(10);
+        const now = nowUnix();
+        const recovery = recovery_codes.map((c) => ({ hash_b64: hashRecoveryCode(c), used_at_unix: 0 }));
+        users = (Array.isArray(users) ? users : []).map((x) => {
+          if (String(x?.id || "") !== String(u.id || "")) return x;
+          return {
+            ...x,
+            totp: { enabled: true, secret_b32, created_at_unix: now, updated_at_unix: now, recovery },
+            updated_at_unix: now,
+          };
+        });
+        await queueUsersSave();
+
+        // Revoke other sessions for the user, rotate current session token.
+        const curTok = String(session?.token || "").trim();
+        let revoked = 0;
+        for (const [tok, s] of sessions.entries()) {
+          if (String(s?.user_id || "") !== String(u.id || "")) continue;
+          if (tok === curTok) continue;
+          sessions.delete(tok);
+          revoked++;
+        }
+        if (curTok) sessions.delete(curTok);
+
+        const newTok = randomBytes(24).toString("base64url");
+        sessions.set(newTok, { expiresAtUnix: now + SESSION_TTL_SEC, createdAtUnix: now, user_id: u.id, username: u.username });
+        queueSessionsSave();
+
+        res.setHeader(
+          "Set-Cookie",
+          serializeCookie(SESSION_COOKIE, encodeSessionCookieValue(newTok), {
+            httpOnly: true,
+            secure: secureCookie,
+            sameSite: "Lax",
+            path: "/",
+            maxAge: SESSION_TTL_SEC,
+          })
+        );
+
+        appendAudit(req, "auth.totp_enable", { username: u.username, revoked_sessions: revoked });
+        return json(res, 200, { enabled: true, revoked_sessions: revoked, recovery_codes });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/totp/disable" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      try {
+        await loadUsersFromDisk();
+        const body = await readJsonBody(req);
+        const targetID = String(body?.user_id || body?.id || session?.user_id || "").trim();
+        if (!targetID) return json(res, 400, { error: "user_id is required" });
+        const u = getUserByID(targetID);
+        if (!u) return json(res, 404, { error: "user not found" });
+        if (!u?.totp?.enabled) return json(res, 200, { disabled: true, revoked_sessions: 0 });
+
+        const now = nowUnix();
+        users = (Array.isArray(users) ? users : []).map((x) => {
+          if (String(x?.id || "") !== String(u.id || "")) return x;
+          const next = { ...x };
+          delete next.totp;
+          return { ...next, updated_at_unix: now };
+        });
+        await queueUsersSave();
+
+        // Revoke sessions for that user (keep current if disabling self).
+        const curTok = String(session?.token || "").trim();
+        let revoked = 0;
+        for (const [tok, s] of sessions.entries()) {
+          if (String(s?.user_id || "") !== String(u.id || "")) continue;
+          if (tok === curTok && String(session?.user_id || "") === String(u.id || "")) continue;
+          sessions.delete(tok);
+          revoked++;
+        }
+        if (revoked) queueSessionsSave();
+        appendAudit(req, "auth.totp_disable", { username: u.username, revoked_sessions: revoked });
+        return json(res, 200, { disabled: true, revoked_sessions: revoked });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/secret/rotate" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      if (panelSecretManagedByEnv) return json(res, 400, { error: "panel secret is managed by env; rotation disabled" });
+      try {
+        await ensurePanelSecret();
+        const b64 = randomBytes(32).toString("base64");
+        setPanelSecretFromB64(b64, { managedByEnv: false });
+        const payload = JSON.stringify({ created_at_unix: nowUnix(), updated_at_unix: nowUnix(), secret_b64: b64 }, null, 2);
+        await writeFileAtomic(PANEL_SECRET_PATH, payload);
+
+        const count = sessions.size;
+        sessions.clear();
+        queueSessionsSave();
+
+        res.setHeader(
+          "Set-Cookie",
+          serializeCookie(SESSION_COOKIE, "", {
+            httpOnly: true,
+            secure: secureCookie,
+            sameSite: "Lax",
+            path: "/",
+            maxAge: 0,
+          })
+        );
+
+        appendAudit(req, "auth.secret_rotate", { invalidated_sessions: count });
+        return json(res, 200, { rotated: true, invalidated_sessions: count });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/api-tokens" && req.method === "GET") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      await loadApiTokensFromDisk();
+      const userID = String(session?.user_id || "").trim();
+      const list = (Array.isArray(apiTokens) ? apiTokens : [])
+        .filter((t) => String(t?.user_id || "").trim() === userID)
+        .map((t) => ({
+          id: String(t?.id || ""),
+          name: String(t?.name || ""),
+          created_at_unix: Number(t?.created_at_unix || 0) || null,
+          last_used_at_unix: Number(t?.last_used_at_unix || 0) || null,
+          fingerprint: String(t?.token_hash_b64 || "").trim().slice(0, 10),
+        }));
+      list.sort((a, b) => Number(b.created_at_unix || 0) - Number(a.created_at_unix || 0));
+      return json(res, 200, { tokens: list });
+    }
+
+    if (url.pathname === "/api/auth/api-tokens/create" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      try {
+        await loadApiTokensFromDisk();
+        const body = await readJsonBody(req);
+        const name = normalizeTokenName(body?.name || body?.label || body?.title || "");
+        const tokenValue = `emc_${randomBytes(24).toString("base64url")}`;
+        const token_hash_b64 = hashApiTokenValue(tokenValue);
+        if (!token_hash_b64) throw new Error("failed to generate token");
+        const now = nowUnix();
+        const id = randomBytes(12).toString("base64url");
+        const rec = {
+          id,
+          user_id: String(session?.user_id || ""),
+          name,
+          token_hash_b64,
+          created_at_unix: now,
+          last_used_at_unix: 0,
+        };
+        apiTokens = [...(Array.isArray(apiTokens) ? apiTokens : []), rec];
+        rebuildApiTokenIndex();
+        await queueApiTokensSave();
+        appendAudit(req, "auth.api_tokens_create", { name });
+        return json(res, 200, { token: tokenValue, id, name });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/auth/api-tokens/revoke" && req.method === "POST") {
+      const session = getSession(req);
+      if (!session) return json(res, 401, { error: "unauthorized" });
+      try {
+        await loadApiTokensFromDisk();
+        const body = await readJsonBody(req);
+        const id = String(body?.id || "").trim();
+        if (!id) return json(res, 400, { error: "id is required" });
+        const userID = String(session?.user_id || "").trim();
+        const before = (Array.isArray(apiTokens) ? apiTokens : []).length;
+        apiTokens = (Array.isArray(apiTokens) ? apiTokens : []).filter((t) => {
+          if (String(t?.id || "").trim() !== id) return true;
+          return String(t?.user_id || "").trim() !== userID;
+        });
+        const deleted = before - apiTokens.length;
+        rebuildApiTokenIndex();
+        if (deleted) {
+          await queueApiTokensSave();
+          appendAudit(req, "auth.api_tokens_revoke", { id });
+        }
+        return json(res, 200, { revoked: deleted > 0 });
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
     if (url.pathname.startsWith("/api/")) {
       res.setHeader("Cache-Control", "no-store");
       const open =
@@ -949,8 +2181,15 @@ const server = http.createServer(async (req, res) => {
         url.pathname === "/api/config" ||
         url.pathname === "/api/changelog" ||
         url.pathname === "/api/docs" ||
-        url.pathname.startsWith("/api/auth/");
-      if (!open && !requireAdmin(req, res)) return;
+        url.pathname === "/api/auth/login" ||
+        url.pathname === "/api/auth/me";
+      if (open) {
+        // ok
+      } else if (url.pathname.startsWith("/api/auth/")) {
+        if (!requireSessionAdmin(req, res)) return;
+      } else {
+        if (!requireAdmin(req, res)) return;
+      }
     }
 
     if (url.pathname === "/api/ui/prefs" && req.method === "GET") {
@@ -1061,6 +2300,28 @@ const server = http.createServer(async (req, res) => {
       const loader = String(url.searchParams.get("loader") || "").trim();
       try {
         const resolved = await quiltResolveServerJar(mc, loader);
+        return json(res, 200, resolved);
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/mc/paper/jar" && req.method === "GET") {
+      const mc = String(url.searchParams.get("mc") || "").trim();
+      const build = Number(url.searchParams.get("build") || "0");
+      try {
+        const resolved = await paperResolveJar(mc, build);
+        return json(res, 200, resolved);
+      } catch (e) {
+        return json(res, 400, { error: String(e?.message || e) });
+      }
+    }
+
+    if (url.pathname === "/api/mc/purpur/jar" && req.method === "GET") {
+      const mc = String(url.searchParams.get("mc") || "").trim();
+      const build = Number(url.searchParams.get("build") || "0");
+      try {
+        const resolved = await purpurResolveJar(mc, build);
         return json(res, 200, resolved);
       } catch (e) {
         return json(res, 400, { error: String(e?.message || e) });
@@ -1284,6 +2545,20 @@ const server = http.createServer(async (req, res) => {
       if (!ok) return json(res, 404, { error: "not found" });
       appendAudit(req, "nodes.delete", { id });
       return json(res, 200, { deleted: true });
+    }
+
+    const mInstHist = url.pathname.match(/^\/api\/daemons\/([^/]+)\/instances\/([^/]+)\/history$/);
+    if (mInstHist && req.method === "GET") {
+      const daemonId = decodeURIComponent(mInstHist[1]);
+      const instanceId = decodeURIComponent(mInstHist[2]);
+      const d = state.daemons.get(daemonId);
+      if (!d) return json(res, 404, { error: "not found" });
+      const rangeSec = Math.max(0, Math.min(24 * 60 * 60, Number(url.searchParams.get("range_sec") || "0")));
+      const list = Array.isArray(d?.instanceHistory?.[instanceId]) ? d.instanceHistory[instanceId] : [];
+      if (!rangeSec) return json(res, 200, { daemon_id: daemonId, instance_id: instanceId, history: list });
+      const now = nowUnix();
+      const filtered = list.filter((p) => typeof p?.ts_unix === "number" && p.ts_unix >= now - rangeSec);
+      return json(res, 200, { daemon_id: daemonId, instance_id: instanceId, history: filtered });
     }
 
     const mDaemon = url.pathname.match(/^\/api\/daemons\/([^/]+)(?:\/(logs|command|advanced-command))?$/);

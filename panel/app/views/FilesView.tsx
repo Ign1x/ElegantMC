@@ -315,6 +315,8 @@ export default function FilesView() {
     downloadFsEntry,
     downloadFsFolderAsZip,
     deleteFsEntry,
+    bulkDeleteFsEntries,
+    bulkMoveFsEntries,
     openTrashModal,
     copyText,
     confirmDialog,
@@ -324,6 +326,11 @@ export default function FilesView() {
   const [query, setQuery] = useState<string>("");
   const [dragOver, setDragOver] = useState<boolean>(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const [listScrollTop, setListScrollTop] = useState<number>(0);
+  const [listViewportH, setListViewportH] = useState<number>(520);
+  const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [jsonCheck, setJsonCheck] = useState<{ ok: boolean; message: string; line?: number; col?: number; pos?: number } | null>(null);
   const [yamlCheck, setYamlCheck] = useState<{ ok: boolean; message: string; line?: number; col?: number; pos?: number } | null>(null);
   const [showHighlight, setShowHighlight] = useState<boolean>(true);
@@ -340,6 +347,28 @@ export default function FilesView() {
   }, [queryRaw]);
 
   useEffect(() => {
+    setSelectedNames([]);
+  }, [fsPath, fsEntries]);
+
+  useEffect(() => {
+    const el = listScrollRef.current;
+    if (!el) return;
+    setListViewportH(el.clientHeight || 520);
+
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setListViewportH(el.clientHeight || 520));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = listScrollRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    setListScrollTop(0);
+  }, [fsPath, query]);
+
+  useEffect(() => {
     setJsonCheck(null);
     setYamlCheck(null);
     setDiffStatus("");
@@ -353,6 +382,43 @@ export default function FilesView() {
     if (!q) return list;
     return list.filter((e: any) => String(e?.name || "").toLowerCase().includes(q));
   }, [fsEntries, query]);
+
+  const fileListVirtual = useMemo(() => {
+    const list = Array.isArray(viewEntries) ? viewEntries : [];
+    const total = list.length;
+    const enabled = total > 400;
+    if (!enabled) return { enabled: false, visible: list, start: 0, topPad: 0, bottomPad: 0 };
+
+    const rowH = 42;
+    const overscan = 8;
+    const start = Math.max(0, Math.floor(listScrollTop / rowH) - overscan);
+    const visibleCount = Math.ceil(listViewportH / rowH) + overscan * 2;
+    const end = Math.min(total, start + visibleCount);
+    const topPad = start * rowH;
+    const bottomPad = Math.max(0, (total - end) * rowH);
+    return { enabled: true, visible: list.slice(start, end), start, topPad, bottomPad };
+  }, [viewEntries, listScrollTop, listViewportH]);
+
+  const selectedSet = useMemo(() => new Set(selectedNames), [selectedNames]);
+  const visibleNames = useMemo(
+    () => (Array.isArray(viewEntries) ? viewEntries : []).map((e: any) => String(e?.name || "").trim()).filter(Boolean),
+    [viewEntries]
+  );
+  const allVisibleSelected = visibleNames.length > 0 && visibleNames.every((n) => selectedSet.has(n));
+  const someVisibleSelected = visibleNames.some((n) => selectedSet.has(n));
+  const selectedEntries = useMemo(() => {
+    const byName = new Map<string, any>();
+    for (const e of Array.isArray(fsEntries) ? fsEntries : []) {
+      const n = String(e?.name || "").trim();
+      if (n) byName.set(n, e);
+    }
+    return selectedNames.map((n) => byName.get(n)).filter(Boolean);
+  }, [fsEntries, selectedNames]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = someVisibleSelected && !allVisibleSelected;
+  }, [someVisibleSelected, allVisibleSelected]);
 
   const inst = String(instanceId || "").trim();
   const entriesLoading = fsStatus === "Loading..." && !fsEntries.length;
@@ -396,6 +462,45 @@ export default function FilesView() {
     } catch {
       // ignore
     }
+  }
+
+  function toggleSelectedName(nameRaw: string, checked: boolean) {
+    const name = String(nameRaw || "").trim();
+    if (!name) return;
+    setSelectedNames((prev) => {
+      const s = new Set(prev);
+      if (checked) s.add(name);
+      else s.delete(name);
+      return Array.from(s);
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelectedNames((prev) => {
+      const s = new Set(prev);
+      const all = visibleNames.length > 0 && visibleNames.every((n) => s.has(n));
+      if (all) for (const n of visibleNames) s.delete(n);
+      else for (const n of visibleNames) s.add(n);
+      return Array.from(s);
+    });
+  }
+
+  async function downloadSelectedNow() {
+    for (const e of selectedEntries) {
+      if (!e) continue;
+      if (e.isDir) await downloadFsFolderAsZip(e);
+      else await downloadFsEntry(e);
+    }
+  }
+
+  async function bulkMoveSelectedNow() {
+    const ok = await bulkMoveFsEntries(selectedEntries);
+    if (ok) setSelectedNames([]);
+  }
+
+  async function bulkDeleteSelectedNow() {
+    const ok = await bulkDeleteFsEntries(selectedEntries);
+    if (ok) setSelectedNames([]);
   }
 
   function validateJsonNow() {
@@ -698,63 +803,127 @@ export default function FilesView() {
       <div className="grid2" style={{ marginTop: 12, alignItems: "start" }}>
         <div style={{ minWidth: 0 }}>
           <h3>{t.tr("Entries", "条目")}</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>{t.tr("Name", "名称")}</th>
-                <th>{t.tr("Type", "类型")}</th>
-                <th>{t.tr("Size", "大小")}</th>
-                <th>{t.tr("Modified", "修改时间")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {entriesLoading
-                ? Array.from({ length: 10 }).map((_, i) => (
-                    <tr key={i}>
-                      <td colSpan={5}>
-                        <div className="skeleton" style={{ minHeight: 34, borderRadius: 12 }} />
-                      </td>
-                    </tr>
-                  ))
-                : viewEntries.map((e: any) => (
-                    <tr key={`${e.name}-${e.isDir ? "d" : "f"}`}>
-                      <td>
-                        <button type="button" onClick={() => openEntry(e)} className="linkBtn">
-                          {e.name}
-                        </button>
-                      </td>
-                      <td>{e.isDir ? "dir" : "file"}</td>
-                      <td>{e.isDir ? "-" : fmtBytes(Number(e.size || 0))}</td>
-                      <td>{fmtUnix(Number(e.mtime_unix || 0))}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                          <button type="button" onClick={() => renameFsEntry(e)}>
-                            {t.tr("Rename", "重命名")}
+          {selectedNames.length ? (
+            <div className="row" style={{ marginBottom: 8, justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <span className="badge">
+                {t.tr("selected", "已选择")}: {selectedNames.length}
+              </span>
+              <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                <button type="button" onClick={() => setSelectedNames([])} disabled={!selectedNames.length}>
+                  {t.tr("Clear", "清空")}
+                </button>
+                <button type="button" className="iconBtn" onClick={downloadSelectedNow} disabled={!selectedEntries.length}>
+                  <Icon name="download" />
+                  {t.tr("Download", "下载")}
+                </button>
+                <button type="button" onClick={bulkMoveSelectedNow} disabled={!selectedEntries.length}>
+                  {t.tr("Move", "移动")}
+                </button>
+                <button type="button" className="dangerBtn" onClick={bulkDeleteSelectedNow} disabled={!selectedEntries.length}>
+                  {t.tr("Delete", "删除")}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div
+            className="tableScroll"
+            ref={listScrollRef}
+            onScroll={(e) => setListScrollTop(e.currentTarget.scrollTop)}
+            style={{ maxHeight: 520, overflow: "auto" }}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 34 }}>
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      disabled={!visibleNames.length}
+                      aria-label={t.tr("Select all", "全选")}
+                    />
+                  </th>
+                  <th>{t.tr("Name", "名称")}</th>
+                  <th>{t.tr("Type", "类型")}</th>
+                  <th>{t.tr("Size", "大小")}</th>
+                  <th>{t.tr("Modified", "修改时间")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {entriesLoading
+                  ? Array.from({ length: 10 }).map((_, i) => (
+                      <tr key={i}>
+                        <td colSpan={6}>
+                          <div className="skeleton" style={{ minHeight: 34, borderRadius: 12 }} />
+                        </td>
+                      </tr>
+                    ))
+                  : null}
+                {!entriesLoading && fileListVirtual.enabled && fileListVirtual.topPad > 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 0, border: "none" }}>
+                      <div style={{ height: fileListVirtual.topPad }} />
+                    </td>
+                  </tr>
+                ) : null}
+                {!entriesLoading
+                  ? fileListVirtual.visible.map((e: any, idx: number) => (
+                      <tr key={`${fileListVirtual.start + idx}-${e.name}-${e.isDir ? "d" : "f"}`}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedSet.has(String(e?.name || "").trim())}
+                            onChange={(ev) => toggleSelectedName(String(e?.name || ""), ev.currentTarget.checked)}
+                            aria-label={t.tr("Select", "选择")}
+                          />
+                        </td>
+                        <td>
+                          <button type="button" onClick={() => openEntry(e)} className="linkBtn">
+                            {e.name}
                           </button>
-                          <button type="button" onClick={() => moveFsEntry(e)}>
-                            {t.tr("Move", "移动")}
-                          </button>
-                          {!e.isDir ? (
-                            <button type="button" className="iconBtn" onClick={() => downloadFsEntry(e)}>
-                              <Icon name="download" />
-                              {t.tr("Download", "下载")}
+                        </td>
+                        <td>{e.isDir ? "dir" : "file"}</td>
+                        <td>{e.isDir ? "-" : fmtBytes(Number(e.size || 0))}</td>
+                        <td>{fmtUnix(Number(e.mtime_unix || 0))}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                            <button type="button" onClick={() => renameFsEntry(e)}>
+                              {t.tr("Rename", "重命名")}
                             </button>
-                          ) : (
-                            <button type="button" className="iconBtn" onClick={() => downloadFsFolderAsZip(e)}>
-                              <Icon name="download" />
-                              {t.tr("Zip", "打包")}
+                            <button type="button" onClick={() => moveFsEntry(e)}>
+                              {t.tr("Move", "移动")}
                             </button>
-                          )}
-                          <button type="button" className="dangerBtn" onClick={() => deleteFsEntry(e)}>
-                            {t.tr("Delete", "删除")}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-            </tbody>
-          </table>
+                            {!e.isDir ? (
+                              <button type="button" className="iconBtn" onClick={() => downloadFsEntry(e)}>
+                                <Icon name="download" />
+                                {t.tr("Download", "下载")}
+                              </button>
+                            ) : (
+                              <button type="button" className="iconBtn" onClick={() => downloadFsFolderAsZip(e)}>
+                                <Icon name="download" />
+                                {t.tr("Zip", "打包")}
+                              </button>
+                            )}
+                            <button type="button" className="dangerBtn" onClick={() => deleteFsEntry(e)}>
+                              {t.tr("Delete", "删除")}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  : null}
+                {!entriesLoading && fileListVirtual.enabled && fileListVirtual.bottomPad > 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 0, border: "none" }}>
+                      <div style={{ height: fileListVirtual.bottomPad }} />
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div style={{ minWidth: 0 }}>

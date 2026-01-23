@@ -7,15 +7,22 @@ import Select from "../ui/Select";
 export default function PanelView() {
   const {
     t,
+    apiFetch,
+    authMe,
     panelSettings,
     panelSettingsStatus,
     refreshPanelSettings,
     savePanelSettings,
+    updateInfo,
+    updateStatus,
+    updateBusy,
+    checkUpdates,
     selectedDaemon,
     loadSchedule,
     saveScheduleJson,
     runScheduleTask,
     confirmDialog,
+    copyText,
     fmtUnix,
     serverDirs,
   } = useAppCtx();
@@ -26,6 +33,39 @@ export default function PanelView() {
   const [scheduleStatus, setScheduleStatus] = useState<string>("");
   const [schedulePath, setSchedulePath] = useState<string>("");
   const [scheduleBusy, setScheduleBusy] = useState<boolean>(false);
+
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionsStatus, setSessionsStatus] = useState<string>("");
+  const [sessionsBusy, setSessionsBusy] = useState<boolean>(false);
+
+  const [users, setUsers] = useState<any[]>([]);
+  const [usersStatus, setUsersStatus] = useState<string>("");
+  const [usersBusy, setUsersBusy] = useState<boolean>(false);
+  const [newUsername, setNewUsername] = useState<string>("");
+  const [newUserPassword, setNewUserPassword] = useState<string>("");
+  const [resetPwdOpen, setResetPwdOpen] = useState<boolean>(false);
+  const [resetPwdUserId, setResetPwdUserId] = useState<string>("");
+  const [resetPwdUsername, setResetPwdUsername] = useState<string>("");
+  const [resetPwdValue, setResetPwdValue] = useState<string>("");
+
+  const [totpOpen, setTotpOpen] = useState<boolean>(false);
+  const [totpBusy, setTotpBusy] = useState<boolean>(false);
+  const [totpStatus, setTotpStatus] = useState<string>("");
+  const [totpSecret, setTotpSecret] = useState<string>("");
+  const [totpUri, setTotpUri] = useState<string>("");
+  const [totpCode, setTotpCode] = useState<string>("");
+  const [totpRecoveryCodes, setTotpRecoveryCodes] = useState<string[] | null>(null);
+
+  const [apiTokens, setApiTokens] = useState<any[]>([]);
+  const [apiTokensStatus, setApiTokensStatus] = useState<string>("");
+  const [apiTokensBusy, setApiTokensBusy] = useState<boolean>(false);
+  const [newTokenName, setNewTokenName] = useState<string>("");
+  const [createdToken, setCreatedToken] = useState<string>("");
+
+  const [rotateSecretOpen, setRotateSecretOpen] = useState<boolean>(false);
+  const [rotateSecretBusy, setRotateSecretBusy] = useState<boolean>(false);
+  const [rotateSecretStatus, setRotateSecretStatus] = useState<string>("");
+  const [rotateSecretConfirm, setRotateSecretConfirm] = useState<string>("");
 
   const [backupPresetInstanceId, setBackupPresetInstanceId] = useState<string>("");
   const [backupPresetScheduleKind, setBackupPresetScheduleKind] = useState<"interval" | "daily" | "weekly">("daily");
@@ -42,6 +82,449 @@ export default function PanelView() {
   useEffect(() => {
     setDraft(panelSettings || null);
   }, [panelSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSessions() {
+      setSessionsBusy(true);
+      setSessionsStatus(t.tr("Loading...", "加载中..."));
+      try {
+        const res = await apiFetch("/api/auth/sessions", { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+        setSessions(Array.isArray(json?.sessions) ? json.sessions : []);
+        setSessionsStatus("");
+      } catch (e: any) {
+        if (cancelled) return;
+        setSessions([]);
+        setSessionsStatus(String(e?.message || e));
+      } finally {
+        if (!cancelled) setSessionsBusy(false);
+      }
+    }
+    loadSessions();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadUsers() {
+      setUsersBusy(true);
+      setUsersStatus(t.tr("Loading...", "加载中..."));
+      try {
+        const res = await apiFetch("/api/auth/users", { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+        setUsers(Array.isArray(json?.users) ? json.users : []);
+        setUsersStatus("");
+      } catch (e: any) {
+        if (cancelled) return;
+        setUsers([]);
+        setUsersStatus(String(e?.message || e));
+      } finally {
+        if (!cancelled) setUsersBusy(false);
+      }
+    }
+    loadUsers();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTokens() {
+      setApiTokensBusy(true);
+      setApiTokensStatus(t.tr("Loading...", "加载中..."));
+      try {
+        const res = await apiFetch("/api/auth/api-tokens", { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+        setApiTokens(Array.isArray(json?.tokens) ? json.tokens : []);
+        setApiTokensStatus("");
+      } catch (e: any) {
+        if (cancelled) return;
+        setApiTokens([]);
+        setApiTokensStatus(String(e?.message || e));
+      } finally {
+        if (!cancelled) setApiTokensBusy(false);
+      }
+    }
+    loadTokens();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, t]);
+
+  async function refreshSessions() {
+    setSessionsBusy(true);
+    setSessionsStatus(t.tr("Loading...", "加载中..."));
+    try {
+      const res = await apiFetch("/api/auth/sessions", { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setSessions(Array.isArray(json?.sessions) ? json.sessions : []);
+      setSessionsStatus("");
+    } catch (e: any) {
+      setSessions([]);
+      setSessionsStatus(String(e?.message || e));
+    } finally {
+      setSessionsBusy(false);
+    }
+  }
+
+  async function revokeSession(id: string, masked: string) {
+    const ok = await confirmDialog(
+      t.tr(`Revoke session ${masked}?`, `撤销会话 ${masked}？`),
+      { title: t.tr("Revoke session", "撤销会话"), confirmLabel: t.tr("Revoke", "撤销"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+    );
+    if (!ok) return;
+    setSessionsBusy(true);
+    setSessionsStatus(t.tr("Revoking...", "撤销中..."));
+    try {
+      const res = await apiFetch("/api/auth/sessions/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      await refreshSessions();
+      setSessionsStatus(t.tr("Revoked", "已撤销"));
+      window.setTimeout(() => setSessionsStatus(""), 900);
+    } catch (e: any) {
+      setSessionsStatus(String(e?.message || e));
+    } finally {
+      setSessionsBusy(false);
+    }
+  }
+
+  async function revokeAllSessions(keepCurrent: boolean) {
+    const ok = await confirmDialog(
+      keepCurrent
+        ? t.tr("Revoke all other sessions (keep current)?", "撤销除当前以外的所有会话（保留当前）？")
+        : t.tr("Revoke ALL sessions (including current)? You will be logged out.", "撤销全部会话（包括当前）？你将被登出。"),
+      { title: t.tr("Revoke sessions", "撤销会话"), confirmLabel: t.tr("Revoke", "撤销"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+    );
+    if (!ok) return;
+    setSessionsBusy(true);
+    setSessionsStatus(t.tr("Revoking...", "撤销中..."));
+    try {
+      const res = await apiFetch("/api/auth/sessions/revoke-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keep_current: keepCurrent }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      await refreshSessions();
+      setSessionsStatus(t.tr("Done", "已完成"));
+      window.setTimeout(() => setSessionsStatus(""), 900);
+    } catch (e: any) {
+      setSessionsStatus(String(e?.message || e));
+    } finally {
+      setSessionsBusy(false);
+    }
+  }
+
+  async function refreshUsers() {
+    setUsersBusy(true);
+    setUsersStatus(t.tr("Loading...", "加载中..."));
+    try {
+      const res = await apiFetch("/api/auth/users", { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setUsers(Array.isArray(json?.users) ? json.users : []);
+      setUsersStatus("");
+    } catch (e: any) {
+      setUsers([]);
+      setUsersStatus(String(e?.message || e));
+    } finally {
+      setUsersBusy(false);
+    }
+  }
+
+  async function openTotpSetup() {
+    setTotpOpen(true);
+    setTotpStatus("");
+    setTotpSecret("");
+    setTotpUri("");
+    setTotpCode("");
+    setTotpRecoveryCodes(null);
+
+    setTotpBusy(true);
+    setTotpStatus(t.tr("Generating...", "生成中..."));
+    try {
+      const res = await apiFetch("/api/auth/totp/begin", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setTotpSecret(String(json?.secret_b32 || ""));
+      setTotpUri(String(json?.otpauth_uri || ""));
+      setTotpStatus("");
+    } catch (e: any) {
+      setTotpStatus(String(e?.message || e));
+    } finally {
+      setTotpBusy(false);
+    }
+  }
+
+  async function enableTotpNow() {
+    const secret = String(totpSecret || "").trim();
+    const code = String(totpCode || "").trim();
+    if (!secret) {
+      setTotpStatus(t.tr("secret missing (begin again)", "secret 缺失（请重新开始）"));
+      return;
+    }
+    if (!code) {
+      setTotpStatus(t.tr("code is required", "需要填写验证码"));
+      return;
+    }
+    setTotpBusy(true);
+    setTotpStatus(t.tr("Enabling...", "开启中..."));
+    try {
+      const res = await apiFetch("/api/auth/totp/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret_b32: secret, code }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setTotpRecoveryCodes(Array.isArray(json?.recovery_codes) ? json.recovery_codes.map((x: any) => String(x)) : []);
+      setTotpStatus(t.tr("Enabled", "已开启"));
+      await refreshUsers();
+      await refreshSessions();
+    } catch (e: any) {
+      setTotpStatus(String(e?.message || e));
+    } finally {
+      setTotpBusy(false);
+    }
+  }
+
+  async function disableTotpNow(u: any) {
+    const id = String(u?.id || "").trim();
+    const username = String(u?.username || "").trim() || "-";
+    if (!id) return;
+    const ok = await confirmDialog(
+      t.tr(`Disable 2FA for ${username}?`, `为 ${username} 关闭 2FA？`),
+      { title: t.tr("Disable 2FA", "关闭 2FA"), confirmLabel: t.tr("Disable", "关闭"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+    );
+    if (!ok) return;
+    setUsersBusy(true);
+    setUsersStatus(t.tr("Disabling...", "关闭中..."));
+    try {
+      const res = await apiFetch("/api/auth/totp/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: id }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      await refreshUsers();
+      setUsersStatus(t.tr("Done", "完成"));
+      window.setTimeout(() => setUsersStatus(""), 900);
+    } catch (e: any) {
+      setUsersStatus(String(e?.message || e));
+    } finally {
+      setUsersBusy(false);
+    }
+  }
+
+  async function rotatePanelSecretNow() {
+    if (!String(rotateSecretConfirm || "").trim()) {
+      setRotateSecretStatus(t.tr("Type ROTATE to confirm", "输入 ROTATE 以确认"));
+      return;
+    }
+    if (String(rotateSecretConfirm || "").trim().toUpperCase() !== "ROTATE") {
+      setRotateSecretStatus(t.tr("Type ROTATE to confirm", "输入 ROTATE 以确认"));
+      return;
+    }
+
+    const ok = await confirmDialog(
+      t.tr("Rotate panel secret and invalidate ALL sessions? You will be logged out.", "轮换 Panel secret 并撤销所有会话？你将被登出。"),
+      { title: t.tr("Rotate Secret", "轮换 Secret"), confirmLabel: t.tr("Rotate", "轮换"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+    );
+    if (!ok) return;
+
+    setRotateSecretBusy(true);
+    setRotateSecretStatus(t.tr("Rotating...", "轮换中..."));
+    try {
+      const res = await apiFetch("/api/auth/secret/rotate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setRotateSecretStatus(t.tr("Done", "完成"));
+      // The server will clear the session cookie; UI will prompt login again.
+    } catch (e: any) {
+      setRotateSecretStatus(String(e?.message || e));
+    } finally {
+      setRotateSecretBusy(false);
+    }
+  }
+
+  async function createUserNow() {
+    setUsersStatus("");
+    setUsersBusy(true);
+    try {
+      const res = await apiFetch("/api/auth/users/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newUsername, password: newUserPassword }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setNewUsername("");
+      setNewUserPassword("");
+      await refreshUsers();
+      setUsersStatus(t.tr("Created", "已创建"));
+      window.setTimeout(() => setUsersStatus(""), 900);
+    } catch (e: any) {
+      setUsersStatus(String(e?.message || e));
+    } finally {
+      setUsersBusy(false);
+    }
+  }
+
+  async function deleteUserNow(u: any) {
+    const id = String(u?.id || "").trim();
+    const username = String(u?.username || "").trim();
+    if (!id) return;
+    const ok = await confirmDialog(t.tr(`Delete user ${username}?`, `删除用户 ${username}？`), {
+      title: t.tr("Delete User", "删除用户"),
+      confirmLabel: t.tr("Delete", "删除"),
+      cancelLabel: t.tr("Cancel", "取消"),
+      danger: true,
+    });
+    if (!ok) return;
+    setUsersBusy(true);
+    setUsersStatus(t.tr("Deleting...", "删除中..."));
+    try {
+      const res = await apiFetch("/api/auth/users/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      await refreshUsers();
+      await refreshSessions();
+      setUsersStatus(t.tr("Deleted", "已删除"));
+      window.setTimeout(() => setUsersStatus(""), 900);
+    } catch (e: any) {
+      setUsersStatus(String(e?.message || e));
+    } finally {
+      setUsersBusy(false);
+    }
+  }
+
+  function openResetPassword(u: any) {
+    const id = String(u?.id || "").trim();
+    const username = String(u?.username || "").trim();
+    if (!id) return;
+    setResetPwdUserId(id);
+    setResetPwdUsername(username);
+    setResetPwdValue("");
+    setResetPwdOpen(true);
+  }
+
+  async function submitResetPassword() {
+    const id = resetPwdUserId.trim();
+    if (!id) return;
+    setUsersBusy(true);
+    setUsersStatus(t.tr("Saving...", "保存中..."));
+    try {
+      const res = await apiFetch("/api/auth/users/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, password: resetPwdValue }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setResetPwdOpen(false);
+      setResetPwdValue("");
+      await refreshUsers();
+      await refreshSessions();
+      setUsersStatus(t.tr("Saved", "已保存"));
+      window.setTimeout(() => setUsersStatus(""), 900);
+    } catch (e: any) {
+      setUsersStatus(String(e?.message || e));
+    } finally {
+      setUsersBusy(false);
+    }
+  }
+
+  async function refreshApiTokens() {
+    setApiTokensBusy(true);
+    setApiTokensStatus(t.tr("Loading...", "加载中..."));
+    try {
+      const res = await apiFetch("/api/auth/api-tokens", { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setApiTokens(Array.isArray(json?.tokens) ? json.tokens : []);
+      setApiTokensStatus("");
+    } catch (e: any) {
+      setApiTokens([]);
+      setApiTokensStatus(String(e?.message || e));
+    } finally {
+      setApiTokensBusy(false);
+    }
+  }
+
+  async function createApiTokenNow() {
+    setApiTokensBusy(true);
+    setApiTokensStatus(t.tr("Creating...", "创建中..."));
+    try {
+      const res = await apiFetch("/api/auth/api-tokens/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newTokenName }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      setCreatedToken(String(json?.token || ""));
+      setNewTokenName("");
+      await refreshApiTokens();
+      setApiTokensStatus(t.tr("Created", "已创建"));
+      window.setTimeout(() => setApiTokensStatus(""), 900);
+    } catch (e: any) {
+      setApiTokensStatus(String(e?.message || e));
+    } finally {
+      setApiTokensBusy(false);
+    }
+  }
+
+  async function revokeApiTokenNow(idRaw: string) {
+    const id = String(idRaw || "").trim();
+    if (!id) return;
+    const ok = await confirmDialog(t.tr("Revoke this API token?", "撤销此 API token？"), {
+      title: t.tr("Revoke token", "撤销 token"),
+      confirmLabel: t.tr("Revoke", "撤销"),
+      cancelLabel: t.tr("Cancel", "取消"),
+      danger: true,
+    });
+    if (!ok) return;
+    setApiTokensBusy(true);
+    setApiTokensStatus(t.tr("Revoking...", "撤销中..."));
+    try {
+      const res = await apiFetch("/api/auth/api-tokens/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || t.tr("failed", "失败"));
+      await refreshApiTokens();
+      setApiTokensStatus(t.tr("Revoked", "已撤销"));
+      window.setTimeout(() => setApiTokensStatus(""), 900);
+    } catch (e: any) {
+      setApiTokensStatus(String(e?.message || e));
+    } finally {
+      setApiTokensBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (backupPresetInstanceId.trim()) return;
@@ -281,6 +764,63 @@ export default function PanelView() {
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
+              <h2>{t.tr("Updates", "更新")}</h2>
+              {updateStatus ? (
+                <div className="hint">{updateStatus}</div>
+              ) : updateInfo ? (
+                <div className="hint">
+                  {t.tr("latest", "最新")}: <code>{String(updateInfo?.latest?.version || "-")}</code>
+                </div>
+              ) : (
+                <div className="hint">{t.tr("Manual check for newer releases.", "手动检查是否有新版本。")}</div>
+              )}
+            </div>
+          </div>
+          <div className="toolbarRight">
+            <button type="button" className="iconBtn" onClick={() => checkUpdates({ force: true })} disabled={updateBusy}>
+              {t.tr("Check updates", "检查更新")}
+            </button>
+          </div>
+        </div>
+
+        {updateInfo ? (
+          <div className="grid2" style={{ alignItems: "start" }}>
+            <div className="itemCard">
+              <div className="hint">
+                {t.tr("Panel", "面板")}: <code>{String(updateInfo?.panel?.current || "-")}</code>{" "}
+                {updateInfo?.panel?.update_available ? <span className="badge warn">{t.tr("update", "可更新")}</span> : <span className="badge ok">{t.tr("ok", "正常")}</span>}
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                {t.tr("Daemons outdated", "Daemon 过期")}: <code>{String(updateInfo?.daemons?.outdated_count || 0)}</code>
+              </div>
+            </div>
+            <div className="itemCard">
+              <div className="hint">
+                {t.tr("Latest", "最新")}: <code>{String(updateInfo?.latest?.version || "-")}</code>
+              </div>
+              {updateInfo?.latest?.url ? (
+                <div className="row" style={{ justifyContent: "space-between", gap: 10, marginTop: 6 }}>
+                  <code style={{ wordBreak: "break-all" }}>{String(updateInfo.latest.url)}</code>
+                  <button type="button" className="iconBtn" onClick={() => copyText(String(updateInfo.latest.url))}>
+                    {t.tr("Copy URL", "复制 URL")}
+                  </button>
+                </div>
+              ) : null}
+              <div className="hint" style={{ marginTop: 6 }}>
+                {t.tr("Tip", "提示")}:{" "}
+                {t.tr("For docker compose deployments, run: docker compose pull && docker compose up -d", "如果使用 docker compose 部署：运行 docker compose pull && docker compose up -d")}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="emptyState">{t.tr("No update info yet.", "暂无更新信息。")}</div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="toolbar">
+          <div className="toolbarLeft" style={{ alignItems: "center" }}>
+            <div>
               <h2>{t.tr("Panel", "面板")}</h2>
               {panelSettingsStatus ? <div className="hint">{panelSettingsStatus}</div> : null}
             </div>
@@ -437,6 +977,183 @@ export default function PanelView() {
               </button>
             </div>
           </>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="toolbar">
+          <div className="toolbarLeft" style={{ alignItems: "center" }}>
+            <div>
+              <h2>{t.tr("Users", "用户")}</h2>
+              {usersStatus ? <div className="hint">{usersStatus}</div> : <div className="hint">{t.tr("Manage admin users.", "管理管理员用户。")}</div>}
+            </div>
+          </div>
+          <div className="toolbarRight">
+            <button type="button" className="iconBtn" onClick={refreshUsers} disabled={usersBusy}>
+              {t.tr("Refresh", "刷新")}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid2" style={{ alignItems: "end" }}>
+          <div className="field">
+            <label>{t.tr("username", "用户名")}</label>
+            <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="alice" autoCapitalize="none" autoCorrect="off" />
+            <div className="hint">{t.tr("A-Z a-z 0-9 . _ - (max 32)", "A-Z a-z 0-9 . _ -（最长 32）")}</div>
+          </div>
+          <div className="field">
+            <label>{t.tr("password", "密码")}</label>
+            <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} placeholder="••••••••" />
+            <div className="hint">{t.tr("min 8 chars", "至少 8 个字符")}</div>
+          </div>
+        </div>
+        <div className="btnGroup" style={{ marginTop: 10, justifyContent: "flex-end" }}>
+          <button type="button" className="primary" onClick={createUserNow} disabled={usersBusy || !newUsername.trim() || newUserPassword.length < 8}>
+            {t.tr("Create user", "创建用户")}
+          </button>
+        </div>
+
+        {users.length ? (
+          <table style={{ marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th>{t.tr("Username", "用户名")}</th>
+                <th>{t.tr("2FA", "2FA")}</th>
+                <th>{t.tr("Created", "创建")}</th>
+                <th>{t.tr("Updated", "更新")}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u: any) => {
+                const id = String(u?.id || "").trim();
+                const username = String(u?.username || "").trim() || "-";
+                const created = u?.created_at_unix ? fmtUnix(Number(u.created_at_unix)) : "-";
+                const updated = u?.updated_at_unix ? fmtUnix(Number(u.updated_at_unix)) : "-";
+                const totp = !!u?.totp_enabled;
+                const isSelf = !!authMe?.user_id && String(authMe.user_id) === id;
+                return (
+                  <tr key={id || username}>
+                    <td style={{ minWidth: 220 }}>
+                      <code>{username}</code>
+                    </td>
+                    <td>{totp ? <span className="badge ok">{t.tr("on", "开启")}</span> : <span className="badge">{t.tr("off", "关闭")}</span>}</td>
+                    <td>{created}</td>
+                    <td>{updated}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                        {isSelf && !totp ? (
+                          <button type="button" onClick={openTotpSetup} disabled={usersBusy}>
+                            {t.tr("Enable 2FA…", "开启 2FA…")}
+                          </button>
+                        ) : null}
+                        {totp ? (
+                          <button type="button" className="dangerBtn" onClick={() => disableTotpNow(u)} disabled={usersBusy || !id}>
+                            {t.tr("Disable 2FA", "关闭 2FA")}
+                          </button>
+                        ) : null}
+                        <button type="button" onClick={() => openResetPassword(u)} disabled={usersBusy || !id}>
+                          {t.tr("Reset password", "重置密码")}
+                        </button>
+                        <button type="button" className="dangerBtn" onClick={() => deleteUserNow(u)} disabled={usersBusy || !id || users.length <= 1}>
+                          {t.tr("Delete", "删除")}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="emptyState">{t.tr("No users.", "暂无用户。")}</div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="toolbar">
+          <div className="toolbarLeft" style={{ alignItems: "center" }}>
+            <div>
+              <h2>{t.tr("API Tokens", "API Tokens")}</h2>
+              {apiTokensStatus ? <div className="hint">{apiTokensStatus}</div> : <div className="hint">{t.tr("Use tokens for automation (Authorization: Bearer ...).", "用于自动化（Authorization: Bearer ...）。")}</div>}
+            </div>
+          </div>
+          <div className="toolbarRight">
+            <button type="button" className="iconBtn" onClick={refreshApiTokens} disabled={apiTokensBusy}>
+              {t.tr("Refresh", "刷新")}
+            </button>
+          </div>
+        </div>
+
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <div className="field" style={{ minWidth: 260, flex: 1 }}>
+            <label>{t.tr("name", "名称")}</label>
+            <input value={newTokenName} onChange={(e) => setNewTokenName(e.target.value)} placeholder={t.tr("e.g. backup-bot", "例如 backup-bot")} />
+          </div>
+          <div className="btnGroup" style={{ alignSelf: "end", justifyContent: "flex-end" }}>
+            <button type="button" className="primary" onClick={createApiTokenNow} disabled={apiTokensBusy}>
+              {t.tr("Create token", "创建 token")}
+            </button>
+          </div>
+        </div>
+
+        {createdToken ? (
+          <div className="itemCard" style={{ marginTop: 12 }}>
+            <div className="hint">{t.tr("New token (copy now; it won't be shown again):", "新 token（请立即复制；不会再次显示）：")}</div>
+            <div className="row" style={{ justifyContent: "space-between", gap: 10, marginTop: 6 }}>
+              <code style={{ wordBreak: "break-all" }}>{createdToken}</code>
+              <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                <button type="button" className="iconBtn" onClick={() => copyText(createdToken)}>
+                  {t.tr("Copy", "复制")}
+                </button>
+                <button type="button" onClick={() => setCreatedToken("")}>
+                  {t.tr("Hide", "隐藏")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {apiTokens.length ? (
+          <table style={{ marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th>{t.tr("Name", "名称")}</th>
+                <th>{t.tr("Created", "创建")}</th>
+                <th>{t.tr("Last used", "最近使用")}</th>
+                <th>{t.tr("Fingerprint", "指纹")}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {apiTokens.map((tok: any) => {
+                const id = String(tok?.id || "").trim();
+                const name = String(tok?.name || "").trim() || "-";
+                const created = tok?.created_at_unix ? fmtUnix(Number(tok.created_at_unix)) : "-";
+                const lastUsed = tok?.last_used_at_unix ? fmtUnix(Number(tok.last_used_at_unix)) : "-";
+                const fp = String(tok?.fingerprint || "").trim() || "-";
+                return (
+                  <tr key={id || fp}>
+                    <td style={{ minWidth: 220 }}>{name}</td>
+                    <td>{created}</td>
+                    <td>{lastUsed}</td>
+                    <td>
+                      <code>{fp}</code>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                        <button type="button" className="dangerBtn" onClick={() => revokeApiTokenNow(id)} disabled={apiTokensBusy || !id}>
+                          {t.tr("Revoke", "撤销")}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="emptyState">{t.tr("No tokens.", "暂无 tokens。")}</div>
         )}
       </div>
 
@@ -748,6 +1465,214 @@ export default function PanelView() {
           </div>
         ) : null}
       </div>
+
+      <div className="card">
+        <div className="toolbar">
+          <div className="toolbarLeft" style={{ alignItems: "center" }}>
+            <div>
+              <h2>{t.tr("Sessions", "会话")}</h2>
+              {sessionsStatus ? <div className="hint">{sessionsStatus}</div> : <div className="hint">{t.tr("Manage active admin sessions.", "管理当前已登录的管理员会话。")}</div>}
+            </div>
+          </div>
+          <div className="toolbarRight">
+            <button type="button" className="iconBtn" onClick={refreshSessions} disabled={sessionsBusy}>
+              {t.tr("Refresh", "刷新")}
+            </button>
+            <button type="button" onClick={() => revokeAllSessions(true)} disabled={sessionsBusy || sessions.length <= 1}>
+              {t.tr("Revoke others", "撤销其他")}
+            </button>
+            <button type="button" className="dangerBtn" onClick={() => revokeAllSessions(false)} disabled={sessionsBusy || sessions.length === 0}>
+              {t.tr("Revoke all", "撤销全部")}
+            </button>
+            <button
+              type="button"
+              className="dangerBtn"
+              onClick={() => {
+                setRotateSecretConfirm("");
+                setRotateSecretStatus("");
+                setRotateSecretOpen(true);
+              }}
+              disabled={rotateSecretBusy}
+            >
+              {t.tr("Rotate secret…", "轮换 secret…")}
+            </button>
+          </div>
+        </div>
+
+        {sessions.length ? (
+          <table>
+            <thead>
+              <tr>
+                <th>{t.tr("Session", "会话")}</th>
+                <th>{t.tr("User", "用户")}</th>
+                <th>{t.tr("Created", "创建")}</th>
+                <th>{t.tr("Expires", "过期")}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((s: any) => {
+                const id = String(s?.id || "").trim();
+                const masked = String(s?.token_masked || "").trim() || "-";
+                const user = String(s?.username || s?.user_id || "").trim() || "-";
+                const created = s?.created_at_unix ? fmtUnix(Number(s.created_at_unix)) : "-";
+                const expires = s?.expires_at_unix ? fmtUnix(Number(s.expires_at_unix)) : "-";
+                const current = !!s?.current;
+                return (
+                  <tr key={id || masked}>
+                    <td style={{ minWidth: 220 }}>
+                      <code>{masked}</code> {current ? <span className="badge ok">{t.tr("current", "当前")}</span> : null}
+                    </td>
+                    <td>{user}</td>
+                    <td>{created}</td>
+                    <td>{expires}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+                        <button type="button" className="dangerBtn" onClick={() => revokeSession(id, masked)} disabled={sessionsBusy || !id}>
+                          {t.tr("Revoke", "撤销")}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="emptyState">{t.tr("No sessions found.", "暂无会话。")}</div>
+        )}
+      </div>
+
+      {resetPwdOpen ? (
+        <div className="modalOverlay" onClick={() => (!usersBusy ? setResetPwdOpen(false) : null)}>
+          <div className="modal" style={{ width: "min(560px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div style={{ fontWeight: 800 }}>{t.tr("Reset Password", "重置密码")}</div>
+                <div className="hint">
+                  {t.tr("User", "用户")}: <code>{resetPwdUsername || "-"}</code>
+                </div>
+                <div className="hint">{t.tr("This will revoke all sessions for that user.", "这会撤销该用户的所有会话。")}</div>
+                {usersStatus ? <div className="hint">{usersStatus}</div> : null}
+              </div>
+              <button type="button" onClick={() => setResetPwdOpen(false)} disabled={usersBusy}>
+                {t.tr("Close", "关闭")}
+              </button>
+            </div>
+            <div className="field">
+              <label>{t.tr("New password", "新密码")}</label>
+              <input type="password" value={resetPwdValue} onChange={(e) => setResetPwdValue(e.target.value)} placeholder="••••••••" autoFocus />
+              <div className="hint">{t.tr("min 8 chars", "至少 8 个字符")}</div>
+            </div>
+            <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setResetPwdOpen(false)} disabled={usersBusy}>
+                {t.tr("Cancel", "取消")}
+              </button>
+              <button type="button" className="primary" onClick={submitResetPassword} disabled={usersBusy || resetPwdValue.length < 8 || !resetPwdUserId.trim()}>
+                {t.tr("Save", "保存")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {totpOpen ? (
+        <div className="modalOverlay" onClick={() => (!totpBusy ? setTotpOpen(false) : null)}>
+          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div style={{ fontWeight: 800 }}>{t.tr("Enable 2FA (TOTP)", "开启 2FA（TOTP）")}</div>
+                <div className="hint">{t.tr("Only for your own account. Save recovery codes somewhere safe.", "仅用于当前账号。请妥善保存恢复码。")}</div>
+                {totpStatus ? <div className="hint">{totpStatus}</div> : null}
+              </div>
+              <button type="button" onClick={() => setTotpOpen(false)} disabled={totpBusy}>
+                {t.tr("Close", "关闭")}
+              </button>
+            </div>
+
+            {totpRecoveryCodes ? (
+              <div>
+                <div className="hint">{t.tr("Recovery codes (copy now; they won't be shown again):", "恢复码（请立即复制；不会再次显示）：")}</div>
+                <pre className="codeBlock" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {(totpRecoveryCodes || []).join("\n")}
+                </pre>
+                <div className="btnGroup" style={{ marginTop: 10, justifyContent: "flex-end" }}>
+                  <button type="button" className="iconBtn" onClick={() => copyText((totpRecoveryCodes || []).join("\n"))}>
+                    {t.tr("Copy", "复制")}
+                  </button>
+                  <button type="button" className="primary" onClick={() => setTotpOpen(false)} disabled={totpBusy}>
+                    {t.tr("Done", "完成")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid2" style={{ alignItems: "end" }}>
+                  <div className="field" style={{ gridColumn: "1 / -1" }}>
+                    <label>{t.tr("Secret (base32)", "密钥（base32）")}</label>
+                    <input value={totpSecret} readOnly />
+                    <div className="hint">{t.tr("Add to your authenticator app.", "添加到你的验证器 App。")}</div>
+                  </div>
+                  <div className="field" style={{ gridColumn: "1 / -1" }}>
+                    <label>{t.tr("otpauth URI", "otpauth URI")}</label>
+                    <input value={totpUri} readOnly />
+                    <div className="btnGroup" style={{ marginTop: 8, justifyContent: "flex-end" }}>
+                      <button type="button" className="iconBtn" onClick={() => copyText(totpSecret)} disabled={!totpSecret}>
+                        {t.tr("Copy secret", "复制密钥")}
+                      </button>
+                      <button type="button" className="iconBtn" onClick={() => copyText(totpUri)} disabled={!totpUri}>
+                        {t.tr("Copy URI", "复制 URI")}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="field" style={{ gridColumn: "1 / -1" }}>
+                    <label>{t.tr("Code", "验证码")}</label>
+                    <input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} placeholder="123456" autoCapitalize="none" autoCorrect="off" />
+                    <div className="hint">{t.tr("Enter the 6-digit code to confirm.", "输入 6 位动态码以确认。")}</div>
+                  </div>
+                </div>
+                <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+                  <button type="button" onClick={() => setTotpOpen(false)} disabled={totpBusy}>
+                    {t.tr("Cancel", "取消")}
+                  </button>
+                  <button type="button" className="primary" onClick={enableTotpNow} disabled={totpBusy || !totpSecret || !totpCode.trim()}>
+                    {t.tr("Enable 2FA", "开启 2FA")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {rotateSecretOpen ? (
+        <div className="modalOverlay" onClick={() => (!rotateSecretBusy ? setRotateSecretOpen(false) : null)}>
+          <div className="modal" style={{ width: "min(640px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div style={{ fontWeight: 800 }}>{t.tr("Rotate Panel Secret", "轮换 Panel Secret")}</div>
+                <div className="hint">{t.tr("This invalidates ALL sessions immediately.", "这会立即撤销所有会话。")}</div>
+                {rotateSecretStatus ? <div className="hint">{rotateSecretStatus}</div> : null}
+              </div>
+              <button type="button" onClick={() => setRotateSecretOpen(false)} disabled={rotateSecretBusy}>
+                {t.tr("Close", "关闭")}
+              </button>
+            </div>
+            <div className="field">
+              <label>{t.tr('Type "ROTATE" to confirm', '输入 "ROTATE" 以确认')}</label>
+              <input value={rotateSecretConfirm} onChange={(e) => setRotateSecretConfirm(e.target.value)} placeholder="ROTATE" autoCapitalize="none" autoCorrect="off" />
+            </div>
+            <div className="btnGroup" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setRotateSecretOpen(false)} disabled={rotateSecretBusy}>
+                {t.tr("Cancel", "取消")}
+              </button>
+              <button type="button" className="dangerBtn" onClick={rotatePanelSecretNow} disabled={rotateSecretBusy}>
+                {t.tr("Rotate", "轮换")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

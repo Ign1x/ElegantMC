@@ -16,6 +16,8 @@
   --ring: rgba(124, 58, 237, 0.24);
   --primary: #8b5cf6;
   --primary-border: rgba(139, 92, 246, 0.52);
+  --warn: #fbbf24;
+  --warn-border: rgba(251, 191, 36, 0.50);
   --danger: #f87171;
   --danger-border: rgba(248, 113, 113, 0.5);
   --ok: #34d399;
@@ -61,6 +63,8 @@
   --ring: rgba(124, 58, 237, 0.18);
   --primary: #7c3aed;
   --primary-border: rgba(124, 58, 237, 0.44);
+  --warn: #f59e0b;
+  --warn-border: rgba(245, 158, 11, 0.42);
   --danger: #ef4444;
   --danger-border: rgba(239, 68, 68, 0.38);
   --ok: #22c55e;
@@ -103,6 +107,8 @@
   --ring: rgba(250, 204, 21, 0.22);
   --primary: #fbbf24;
   --primary-border: rgba(251, 191, 36, 0.55);
+  --warn: #facc15;
+  --warn-border: rgba(250, 204, 21, 0.55);
   --danger: #fb7185;
   --danger-border: rgba(251, 113, 133, 0.52);
   --ok: #22c55e;
@@ -259,6 +265,32 @@ h3 {
 .card.danger {
   border-color: rgba(248, 113, 113, 0.45);
   background: rgba(248, 113, 113, 0.08);
+}
+
+.dangerZone {
+  border: 1px solid var(--danger-border);
+  background: rgba(248, 113, 113, 0.08);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+}
+
+.dangerZoneSummary {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 800;
+  color: var(--danger);
+  list-style: none;
+}
+
+.dangerZoneSummary::-webkit-details-marker {
+  display: none;
+}
+
+.dangerZoneBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .cardSub {
@@ -932,6 +964,11 @@ button.linkBtn:hover {
   background: rgba(52, 211, 153, 0.12);
 }
 
+.badge.warn {
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.12);
+}
+
 .statusDot {
   width: 10px;
   height: 10px;
@@ -1363,6 +1400,22 @@ table {
   border-radius: var(--radius);
   overflow: hidden;
   font-size: 13px;
+}
+
+.tableScroll {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.tableScroll table {
+  border-radius: 0;
+}
+
+.tableScroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 th,

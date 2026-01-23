@@ -599,6 +599,41 @@ button.navItem .badge {
   min-width: 0;
 }
 
+.panelLayout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.panelToc {
+  position: sticky;
+  top: 18px;
+}
+
+.panelTocNav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.panelSettingsSearchActive .field {
+  outline: 1px solid var(--primary-border);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+}
+
+@media (max-width: 1100px) {
+  .panelLayout {
+    grid-template-columns: 1fr;
+  }
+  .panelToc {
+    position: static;
+  }
+}
+
 .stack {
   display: flex;
   flex-direction: column;

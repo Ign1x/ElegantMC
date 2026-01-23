@@ -759,9 +759,39 @@ export default function PanelView() {
     return "-";
   }
 
+  const toc = [
+    { id: "panel-updates", label: t.tr("Updates", "更新") },
+    { id: "panel-settings", label: t.tr("Panel", "面板") },
+    { id: "panel-users", label: t.tr("Users", "用户") },
+    { id: "panel-tokens", label: t.tr("API Tokens", "API Tokens") },
+    { id: "panel-tasks", label: t.tr("Tasks", "任务") },
+    { id: "panel-sessions", label: t.tr("Sessions", "会话") },
+  ];
+
+  function scrollToPanelSection(id: string) {
+    try {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <div className="stack">
-      <div className="card">
+      <div className="panelLayout">
+        <div className="card panelToc">
+          <div className="hint">{t.tr("On this page", "本页导航")}</div>
+          <div className="panelTocNav">
+            {toc.map((x) => (
+              <button key={x.id} type="button" className="ghost" style={{ justifyContent: "flex-start", width: "100%" }} onClick={() => scrollToPanelSection(x.id)}>
+                {x.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="stack panelMain">
+          <div className="card" id="panel-updates">
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
@@ -826,7 +856,7 @@ export default function PanelView() {
         )}
       </div>
 
-      <div className="card">
+      <div className={["card", q ? "panelSettingsSearchActive" : ""].filter(Boolean).join(" ")} id="panel-settings">
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
@@ -991,7 +1021,7 @@ export default function PanelView() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" id="panel-users">
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
@@ -1077,7 +1107,7 @@ export default function PanelView() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" id="panel-tokens">
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
@@ -1163,7 +1193,7 @@ export default function PanelView() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" id="panel-tasks">
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
@@ -1470,7 +1500,7 @@ export default function PanelView() {
         ) : null}
       </div>
 
-      <div className="card">
+      <div className="card" id="panel-sessions">
         <div className="toolbar">
           <div className="toolbarLeft" style={{ alignItems: "center" }}>
             <div>
@@ -1545,6 +1575,8 @@ export default function PanelView() {
         ) : (
           <div className="emptyState">{t.tr("No sessions found.", "暂无会话。")}</div>
         )}
+      </div>
+        </div>
       </div>
 
       {resetPwdOpen ? (

@@ -10,6 +10,7 @@
   --space-6: 24px;
   --space-7: 32px;
 
+  --font-size-2xs: 11px;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-md: 14px;
@@ -274,7 +275,8 @@ h3 {
 
 .hint {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
   color: var(--muted2);
 }
 
@@ -386,14 +388,16 @@ h3 {
 }
 
 .brandName {
-  font-size: 16px;
-  font-weight: 750;
+  font-size: var(--font-size-lg);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-bold);
   letter-spacing: -0.02em;
 }
 
 .brandTagline {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
   color: var(--muted2);
 }
 
@@ -450,7 +454,7 @@ button.navItem.active {
 
 button.navItem .badge {
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-2xs);
 }
 
 .sidebarFooter {
@@ -513,13 +517,15 @@ button.navItem .badge {
 }
 
 .pageTitle {
-  font-weight: 760;
-  font-size: 14px;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-tight);
   letter-spacing: -0.01em;
 }
 
 .pageSubtitle {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
   color: var(--muted2);
   white-space: nowrap;
   overflow: hidden;
@@ -720,7 +726,8 @@ button.navItem .badge {
 }
 
 .field > label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
   color: var(--muted);
 }
 
@@ -728,7 +735,8 @@ button.navItem .badge {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
   color: var(--muted);
 }
 
@@ -795,7 +803,7 @@ select optgroup {
   justify-content: space-between;
   gap: 10px;
   padding: 9px 12px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   border-radius: var(--radius-sm);
   border: 1px solid var(--control-border);
   background: var(--control-bg);
@@ -1055,7 +1063,8 @@ button.linkBtn:hover {
 
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
   background: var(--code-bg);
   border: 1px solid var(--code-border);
   padding: 3px 7px;
@@ -1077,7 +1086,8 @@ code.clickCopy:hover {
 
 pre {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
   white-space: pre-wrap;
   word-break: break-word;
   background: var(--code-bg);
@@ -1158,7 +1168,8 @@ pre.codePre {
   overflow: auto;
   max-height: 560px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
 }
 
 .diffLine {
@@ -1370,7 +1381,8 @@ button.cmdPaletteItem:disabled {
   color: var(--text);
   box-shadow: var(--shadow2);
   backdrop-filter: blur(10px);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
 }
 
 .snackbarMsg {
@@ -1398,7 +1410,8 @@ button.cmdPaletteItem:disabled {
   color: var(--text);
   box-shadow: var(--shadow2);
   backdrop-filter: blur(10px);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
   text-align: left;
   cursor: default;
 }
@@ -1428,7 +1441,8 @@ table {
   border-collapse: collapse;
   border-radius: var(--radius);
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
 }
 
 .tableScroll {
@@ -1458,9 +1472,9 @@ td {
 }
 
 th {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--muted2);
-  font-weight: 650;
+  font-weight: var(--font-weight-medium);
   letter-spacing: 0.01em;
   background: var(--surface);
 }

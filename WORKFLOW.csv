@@ -137,7 +137,7 @@ WF-20260118-135,P2,observability,done,Instance resource graphs,"Users want to un
 WF-20260118-136,P2,daemon,done,Stats streaming endpoint,"Panel cannot draw graphs without metrics feed","Daemon streams periodic CPU/memory stats per instance and node",feat(daemon): stats stream
 WF-20260118-137,P2,daemon,done,Disk usage per instance,"Panel needs disk usage breakdown per instance","Daemon adds command to compute instance directory size with caching",feat(daemon): instance disk usage
 WF-20260118-138,P3,observability,done,Server TPS indicator,"Admins care about TPS/MSPT but UI lacks it","Provide a TPS estimate from logs parsing or optional plugin integration",feat(obs): tps indicator
-WF-20260118-139,P2,daemon,todo,Compressed backups,"Backups can be large and slow to copy","Support optional compressed backups (tar.gz) with progress",feat(daemon): compressed backups
+WF-20260118-139,P2,daemon,done,Compressed backups,"Backups can be large and slow to copy","Support optional compressed backups (tar.gz) with progress",feat(daemon): compressed backups
 WF-20260118-140,P3,games,todo,Backup restore points view,"Restore UX is still heavy for frequent use","Add restore points view with metadata (time, size, comment) and restore action",ux(games): restore points
 WF-20260118-141,P2,modpacks,todo,Server jar update checks,"Keeping server jars updated is manual and risky","Add update check for known server types and a safe upgrade flow",feat(games): jar updates
 WF-20260118-142,P2,modpacks,todo,Paper/Purpur installer,"Users commonly use Paper/Purpur but must install manually","Add installer for Paper/Purpur with version selection and verify checksums",feat(modpacks): paper installer

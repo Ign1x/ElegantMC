@@ -1491,10 +1491,15 @@ button.cmdPaletteItem:disabled {
 
 .toast {
   pointer-events: auto;
-  min-width: 220px;
+  position: relative;
+  overflow: hidden;
+  min-width: 240px;
   max-width: min(520px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: var(--radius);
   border: 1px solid var(--border2);
   background: rgba(16, 20, 36, 0.90);
   color: var(--text);
@@ -1510,20 +1515,56 @@ button.cmdPaletteItem:disabled {
   background: rgba(255, 255, 255, 0.92);
 }
 
-.toast.clickable {
-  cursor: pointer;
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--toast-accent, rgba(148, 163, 184, 0.55));
 }
 
-.toast.clickable:hover {
-  border-color: var(--border);
+.toastHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.toastTitle {
+  font-weight: var(--font-weight-semibold);
+}
+
+.toastBody {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.toastActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toastActions .linkBtn {
+  font-size: var(--font-size-xs);
 }
 
 .toast.ok {
+  --toast-accent: var(--ok);
   border-color: var(--ok-border);
 }
 
 .toast.error {
+  --toast-accent: var(--danger);
   border-color: var(--danger-border);
+}
+
+.toast.info {
+  --toast-accent: var(--primary);
 }
 
 table {

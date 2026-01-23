@@ -2444,6 +2444,12 @@ export default function HomePage() {
     );
   }
 
+  function dismissToast(id: string) {
+    const tid = String(id || "");
+    if (!tid) return;
+    setToasts((prev) => prev.filter((t) => t.id !== tid));
+  }
+
   useEffect(() => {
     if (!toasts.length) return;
     const timer = window.setInterval(() => {
@@ -7411,21 +7417,40 @@ export default function HomePage() {
 	        </div>
 	      ) : null}
 
-			      {toasts.length ? (
-			        <div className="toastWrap" aria-live="polite" aria-relevant="additions" onMouseEnter={pauseToasts} onMouseLeave={resumeToasts}>
-			          {toasts.map((toast) => (
-			            <button
-			              key={toast.id}
-		              type="button"
-		              className={`toast ${toast.kind} ${toast.detail ? "clickable" : ""}`}
-		              title={toast.detail ? t.tr("Click to copy details", "点击复制详情") : undefined}
-		              onClick={() => (toast.detail ? openCopyModal(toast.detail) : null)}
-		            >
-		              {toast.message}
-		            </button>
-			          ))}
-			        </div>
-			      ) : null}
+				      {toasts.length ? (
+				        <div className="toastWrap" aria-live="polite" aria-relevant="additions" onMouseEnter={pauseToasts} onMouseLeave={resumeToasts}>
+				          {toasts.map((toast) => (
+				            <div key={toast.id} className={`toast ${toast.kind}`}>
+				              <div className="toastHead">
+				                <div className="toastTitle">
+				                  {toast.kind === "ok"
+				                    ? t.tr("Success", "成功")
+				                    : toast.kind === "error"
+				                      ? t.tr("Error", "错误")
+				                      : t.tr("Notice", "提示")}
+				                </div>
+				                <button
+				                  type="button"
+				                  className="iconBtn iconOnly ghost"
+				                  aria-label={t.tr("Dismiss", "关闭")}
+				                  title={t.tr("Dismiss", "关闭")}
+				                  onClick={() => dismissToast(toast.id)}
+				                >
+				                  ×
+				                </button>
+				              </div>
+				              <div className="toastBody">{toast.message}</div>
+				              <div className="toastActions">
+				                {toast.detail ? (
+				                  <button type="button" className="linkBtn" onClick={() => openCopyModal(toast.detail || "")}>
+				                    {t.tr("Copy details", "复制详情")}
+				                  </button>
+				                ) : null}
+				              </div>
+				            </div>
+				          ))}
+				        </div>
+				      ) : null}
 
 			      {undoTrash ? (
 			        <div className="snackbarWrap" aria-live="polite" aria-relevant="additions">

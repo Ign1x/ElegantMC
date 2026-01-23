@@ -123,7 +123,7 @@ WF-20260118-121,P2,games,done,Whitelist/ops editors,"Editing whitelist.json and 
 WF-20260118-122,P2,games,done,Network info card,"Users often misconfigure ports and bind addresses","Show host/port, detected listen address, and docker mapping hints in UI",ux(games): network info
 WF-20260118-123,P2,frp,done,Create FRP proxy from instance,"Creating proxies requires copying ports manually","From a running instance, user can generate a proxy config with one click",feat(frp): create proxy
 WF-20260118-124,P2,frp,done,Per-proxy health indicator,"Proxy list does not show if a proxy is working","Show last check time, reachability, and error per proxy",ux(frp): proxy health
-WF-20260118-125,P3,frp,todo,FRP client logs,"FRP failures are hard to debug without logs","Expose FRP client logs in Panel with filter and download",feat(frp): client logs
+WF-20260118-125,P3,frp,done,FRP client logs,"FRP failures are hard to debug without logs","Expose FRP client logs in Panel with filter and download",feat(frp): client logs
 WF-20260118-126,P2,nodes,todo,Disk usage display,"Users cannot see if a node is running out of disk","Nodes view shows total/free disk and per-instance disk usage estimate",feat(nodes): disk usage
 WF-20260118-127,P2,nodes,todo,Version mismatch warnings,"Panel/daemon version mismatches can cause subtle bugs","Show warnings when daemon protocol/version differs and suggest upgrade",ux(nodes): version warnings
 WF-20260118-128,P3,nodes,todo,Daemon self-update helper,"Updating the daemon requires manual steps","Provide UI guidance and optional command to download new daemon binary safely",feat(nodes): daemon update helper

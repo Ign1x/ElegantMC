@@ -154,7 +154,7 @@ WF-20260118-152,P3,ci,done,Panel linting,"Code style regressions slip in over ti
 WF-20260118-153,P3,perf,done,Reduce panel bundle size,"Initial load can be slow on low-end devices","Code-split heavy views and avoid large dependencies on initial route",perf(panel): bundle size
 WF-20260118-154,P3,perf,done,Virtualize file list,"Large directories can make the Files view slow","Virtualize file list rendering and keep scroll stable",perf(files): virtualize list
 WF-20260118-155,P2,perf,done,WebSocket reconnect backoff,"Temporary network issues cause noisy reconnect loops","Use exponential backoff with jitter and clearer status UI",fix(panel): ws backoff
-WF-20260118-156,P3,reliability,todo,Offline-friendly caching,"Panel becomes blank during brief disconnections","Cache last known state and show stale indicators during offline mode",feat(panel): offline cache
+WF-20260118-156,P3,reliability,done,Offline-friendly caching,"Panel becomes blank during brief disconnections","Cache last known state and show stale indicators during offline mode",feat(panel): offline cache
 WF-20260118-157,P3,docs,done,Contributor guide,"New contributors lack guidance for dev setup and conventions","Add CONTRIBUTING.md with local dev, test, and release notes",docs: contributing
 WF-20260118-158,P3,logs,done,Wrap logs toggle,Long log lines cause horizontal scrolling and reduce readability,Logs view has a wrap toggle; wrapped lines are readable without breaking copy/download,ux(logs): wrap toggle
 WF-20260118-159,P3,logs,done,Log level filters,Users want to quickly focus on errors/warnings in noisy logs,Logs view can filter to All/Warn/Error and shows active filter,ux(logs): level filters

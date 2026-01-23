@@ -145,7 +145,7 @@ WF-20260118-143,P2,games,done,New instance creation wizard,"Creating an instance
 WF-20260118-144,P2,games,done,JVM args presets,"Tuning JVM args is confusing and error-prone","Provide presets (default, aikar, conservative) and show resulting args",feat(games): jvm presets
 WF-20260118-145,P2,games,done,Memory presets and warnings,"Users pick Xmx/Xms values that crash the server or OS","UI offers memory presets and warns if exceeding node memory",ux(games): memory presets
 WF-20260118-146,P1,games,done,Pre-start port conflict check,"Start failures due to port conflicts are common","Before starting, UI/daemon checks port availability and shows a clear fix",fix(games): port conflict precheck
-WF-20260118-147,P2,daemon,todo,Port reservation support,"Multiple instances starting concurrently can race on ports","Daemon supports reserving ports for instance start to avoid races",feat(daemon): port reservation
+WF-20260118-147,P2,daemon,done,Port reservation support,"Multiple instances starting concurrently can race on ports","Daemon supports reserving ports for instance start to avoid races",feat(daemon): port reservation
 WF-20260118-148,P2,ux,todo,Unified Danger Zone,"Destructive actions are scattered and easy to misclick","All destructive actions are grouped under a 'Danger Zone' with strong confirmations",ux(panel): danger zone
 WF-20260118-149,P2,ux,done,Undo delete snackbar,"Even with confirmations, users sometimes delete by mistake","After delete, show undo snackbar for a short period (when trash enabled)",ux(panel): undo delete
 WF-20260118-150,P2,panel-server,todo,Version update banner,"Users don't know when panel/daemon updates are available","Show banner if a newer release is available (manual check configurable)",feat(panel): update banner

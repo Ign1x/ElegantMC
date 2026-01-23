@@ -255,6 +255,12 @@ func requiredJavaMajorFromJar(jarPath string) (int, error) {
 	return javaMajor, nil
 }
 
+// RequiredJavaMajorFromJar returns the minimum Java major version required by this server jar.
+// It inspects a class file in the jar to infer the class major version.
+func RequiredJavaMajorFromJar(jarPath string) (int, error) {
+	return requiredJavaMajorFromJar(jarPath)
+}
+
 // parseJarManifestMainClass reads a minimal subset of MANIFEST.MF.
 // It also supports continuation lines starting with one space.
 func parseJarManifestMainClass(manifest string) string {

@@ -18,11 +18,11 @@ import (
 )
 
 type ManagerConfig struct {
-	ServersFS *sandbox.FS
-	Log       *log.Logger
-	JavaCandidates []string
-	JavaAutoDownload bool
-	JavaCacheDir string
+	ServersFS              *sandbox.FS
+	Log                    *log.Logger
+	JavaCandidates         []string
+	JavaAutoDownload       bool
+	JavaCacheDir           string
 	JavaAdoptiumAPIBaseURL string
 }
 
@@ -32,23 +32,27 @@ type Manager struct {
 	mu        sync.Mutex
 	instances map[string]*Instance
 
-	java *javaSelector
+	java        *javaSelector
 	javaRuntime *JavaRuntimeManager
 }
 
 type Instance struct {
 	ID string
 
-	mu     sync.Mutex
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	done   chan error
-	jarRel string
-	java   string
-	javaMajor int
+	mu                sync.Mutex
+	cmd               *exec.Cmd
+	stdin             io.WriteCloser
+	done              chan error
+	portKey           string
+	jarRel            string
+	java              string
+	javaMajor         int
 	requiredJavaMajor int
-	args   []string
-	startedAt time.Time
+	args              []string
+	startedAt         time.Time
+	lastExitUnix      int64
+	lastExitCode      *int
+	lastExitSignal    string
 }
 
 type StartOptions struct {
@@ -57,31 +61,35 @@ type StartOptions struct {
 	JavaPath   string
 	Xms        string
 	Xmx        string
+	JvmArgs    []string
 	ExtraArgs  []string
 }
 
 type Status struct {
-	Running bool
-	PID     int
-	JarRel string
-	Java string
-	JavaMajor int
+	Running           bool
+	PID               int
+	JarRel            string
+	Java              string
+	JavaMajor         int
 	RequiredJavaMajor int
+	LastExitUnix      int64
+	LastExitCode      *int
+	LastExitSignal    string
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
 	var rt *JavaRuntimeManager
 	if cfg.JavaAutoDownload {
 		rt = NewJavaRuntimeManager(JavaRuntimeManagerConfig{
-			CacheDir: cfg.JavaCacheDir,
+			CacheDir:           cfg.JavaCacheDir,
 			AdoptiumAPIBaseURL: cfg.JavaAdoptiumAPIBaseURL,
-			Log: cfg.Log,
+			Log:                cfg.Log,
 		})
 	}
 	return &Manager{
-		cfg:       cfg,
-		instances: make(map[string]*Instance),
-		java:      newJavaSelector(cfg.JavaCandidates),
+		cfg:         cfg,
+		instances:   make(map[string]*Instance),
+		java:        newJavaSelector(cfg.JavaCandidates),
 		javaRuntime: rt,
 	}
 }
@@ -170,20 +178,26 @@ func (inst *Instance) Status() Status {
 
 	if inst.cmd == nil || inst.cmd.Process == nil {
 		return Status{
-			Running: false,
-			JarRel: inst.jarRel,
-			Java: inst.java,
-			JavaMajor: inst.javaMajor,
+			Running:           false,
+			JarRel:            inst.jarRel,
+			Java:              inst.java,
+			JavaMajor:         inst.javaMajor,
 			RequiredJavaMajor: inst.requiredJavaMajor,
+			LastExitUnix:      inst.lastExitUnix,
+			LastExitCode:      inst.lastExitCode,
+			LastExitSignal:    inst.lastExitSignal,
 		}
 	}
 	return Status{
-		Running: true,
-		PID:     inst.cmd.Process.Pid,
-		JarRel: inst.jarRel,
-		Java: inst.java,
-		JavaMajor: inst.javaMajor,
+		Running:           true,
+		PID:               inst.cmd.Process.Pid,
+		JarRel:            inst.jarRel,
+		Java:              inst.java,
+		JavaMajor:         inst.javaMajor,
 		RequiredJavaMajor: inst.requiredJavaMajor,
+		LastExitUnix:      inst.lastExitUnix,
+		LastExitCode:      inst.lastExitCode,
+		LastExitSignal:    inst.lastExitSignal,
 	}
 }
 
@@ -211,7 +225,23 @@ func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOption
 		return fmt.Errorf("jar not found: %w", err)
 	}
 
+	startedOk := false
+	defer func() {
+		if startedOk {
+			return
+		}
+		if inst.portKey != "" {
+			releasePort(inst.ID, inst.portKey)
+			inst.portKey = ""
+		}
+	}()
+
 	if host, port, ok := detectServerListenAddr(instanceDir); ok {
+		key, err := reservePort(inst.ID, host, port)
+		if err != nil {
+			return err
+		}
+		inst.portKey = key
 		if err := checkTCPPortAvailable(host, port); err != nil {
 			return err
 		}
@@ -305,6 +335,13 @@ func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOption
 	}
 
 	var args []string
+	for _, a := range opt.JvmArgs {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		args = append(args, a)
+	}
 	if opt.Xms != "" {
 		args = append(args, "-Xms"+opt.Xms)
 	}
@@ -356,18 +393,39 @@ func (inst *Instance) start(ctx context.Context, fs *sandbox.FS, opt StartOption
 
 	go func() {
 		err := cmd.Wait()
-		done <- err
-		close(done)
+
+		exitUnix := time.Now().Unix()
+		var exitCode *int
+		if cmd.ProcessState != nil {
+			code := cmd.ProcessState.ExitCode()
+			if code >= 0 {
+				exitCode = &code
+			}
+		}
+		exitSignal := exitSignalFromProcessState(cmd.ProcessState)
+
+		var portKey string
 		inst.mu.Lock()
+		inst.lastExitUnix = exitUnix
+		inst.lastExitCode = exitCode
+		inst.lastExitSignal = exitSignal
 		inst.cmd = nil
 		inst.stdin = nil
 		inst.done = nil
+		portKey = inst.portKey
+		inst.portKey = ""
 		inst.mu.Unlock()
+		if portKey != "" {
+			releasePort(inst.ID, portKey)
+		}
+		done <- err
+		close(done)
 		if err != nil && logger != nil {
 			logger.Printf("mc exited: instance=%s err=%v", inst.ID, err)
 		}
 	}()
 
+	startedOk = true
 	return nil
 }
 

@@ -50,7 +50,7 @@ type Task struct {
 
 	// backup options
 	KeepLast int   `json:"keep_last,omitempty"` // backup retention (backup) or log retention (prune_logs)
-	Stop     *bool `json:"stop,omitempty"` // default true
+	Stop     *bool `json:"stop,omitempty"`      // default true
 
 	// announce options
 	Message string `json:"message,omitempty"`
@@ -60,10 +60,11 @@ type Task struct {
 }
 
 type instanceConfig struct {
-	JarPath  string `json:"jar_path"`
-	JavaPath string `json:"java_path"`
-	Xms      string `json:"xms"`
-	Xmx      string `json:"xmx"`
+	JarPath  string   `json:"jar_path"`
+	JavaPath string   `json:"java_path"`
+	Xms      string   `json:"xms"`
+	Xmx      string   `json:"xmx"`
+	JvmArgs  []string `json:"jvm_args,omitempty"`
 }
 
 func New(cfg Config, deps Deps) *Manager {
@@ -217,6 +218,7 @@ func (m *Manager) restart(ctx context.Context, instanceID string) error {
 		JavaPath:   strings.TrimSpace(cfg.JavaPath),
 		Xms:        strings.TrimSpace(cfg.Xms),
 		Xmx:        strings.TrimSpace(cfg.Xmx),
+		JvmArgs:    cfg.JvmArgs,
 	}, nil)
 }
 

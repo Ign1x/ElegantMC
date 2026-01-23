@@ -27,7 +27,8 @@ func listBackupZips(dirAbs string) ([]backupFile, error) {
 			continue
 		}
 		name := ent.Name()
-		if !strings.HasSuffix(strings.ToLower(name), ".zip") {
+		lower := strings.ToLower(name)
+		if !strings.HasSuffix(lower, ".zip") && !strings.HasSuffix(lower, ".tar.gz") && !strings.HasSuffix(lower, ".tgz") {
 			continue
 		}
 		info, err := ent.Info()
@@ -63,6 +64,7 @@ func pruneBackupZips(dirAbs string, keepLast int) (removed int, kept int, total 
 	}
 	for i := keepLast; i < total; i++ {
 		_ = os.Remove(files[i].abs)
+		_ = os.Remove(files[i].abs + ".meta.json")
 		removed++
 	}
 	kept = keepLast
@@ -106,4 +108,3 @@ func (e *Executor) mcBackupPrune(cmd protocol.Command) protocol.CommandResult {
 	}
 	return ok(map[string]any{"instance_id": instanceID, "removed": removed, "kept": kept, "total": total})
 }
-

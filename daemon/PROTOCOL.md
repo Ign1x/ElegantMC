@@ -72,7 +72,7 @@ Daemon 主动连接 Panel 的 WebSocket：
     "disk": {"path": "/data", "total_bytes": 107374182400, "used_bytes": 123456789, "free_bytes": 107250725611},
     "net": {"hostname": "my-host", "ipv4": ["192.168.1.10"], "preferred_connect_addrs": ["192.168.1.10", "mc.example.com"]},
     "instances": [
-      {"id": "server1", "running": true, "pid": 12345}
+      {"id": "server1", "running": true, "pid": 12345, "last_exit_code": 0, "last_exit_unix": 1730000000}
     ]
   }
 }

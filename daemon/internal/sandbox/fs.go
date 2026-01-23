@@ -33,6 +33,10 @@ func (f *FS) Resolve(rel string) (string, error) {
 		return f.rootAbs, nil
 	}
 
+	if filepath.IsAbs(cleanRel) || filepath.VolumeName(cleanRel) != "" {
+		return "", errors.New("absolute paths are not allowed")
+	}
+
 	abs := filepath.Join(f.rootAbs, cleanRel)
 	abs = filepath.Clean(abs)
 
@@ -59,4 +63,3 @@ func hasPathPrefix(path, root string) bool {
 	}
 	return strings.HasPrefix(path, root)
 }
-

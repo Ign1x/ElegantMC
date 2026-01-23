@@ -65,7 +65,7 @@ type Client struct {
 	connMu  sync.RWMutex
 	conn    *websocket.Conn
 
-	bindMu      sync.Mutex
+	bindMu       sync.Mutex
 	boundPanelID string
 }
 
@@ -196,12 +196,16 @@ func (c *Client) runOnce(ctx context.Context) error {
 }
 
 func (c *Client) sendHello(ctx context.Context) error {
+	version := strings.TrimSpace(os.Getenv("ELEGANTMC_VERSION"))
+	if version == "" {
+		version = "dev"
+	}
 	hello := protocol.Hello{
 		DaemonID: c.cfg.DaemonID,
-		Version:  "0.1.0",
+		Version:  version,
 		OS:       runtime.GOOS,
 		Arch:     runtime.GOARCH,
-		Features: []string{"fs", "fs_upload", "mc", "frp"},
+		Features: []string{"fs", "fs_upload", "mc", "frp", "du", "backup_targz"},
 	}
 	payload, _ := json.Marshal(hello)
 	return c.send(ctx, protocol.Message{

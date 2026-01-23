@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,9 +13,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"elegantmc/daemon/internal/backup"
 	"elegantmc/daemon/internal/download"
@@ -36,14 +39,14 @@ type PaperConfig struct {
 }
 
 type ExecutorDeps struct {
-	Log    *log.Logger
-	FS     *sandbox.FS
-	FRP    *frp.Manager
-	MC     *mc.Manager
-	Daemon string
-	FRPC   string
+	Log                   *log.Logger
+	FS                    *sandbox.FS
+	FRP                   *frp.Manager
+	MC                    *mc.Manager
+	Daemon                string
+	FRPC                  string
 	PreferredConnectAddrs []string
-	ScheduleFile string
+	ScheduleFile          string
 
 	Mojang MojangConfig
 	Paper  PaperConfig
@@ -58,6 +61,13 @@ type Executor struct {
 	uploads *uploadManager
 
 	cpu *sysinfo.CPUTracker
+
+	duMu    sync.Mutex
+	duCache map[string]duCacheEntry
+
+	procMu        sync.Mutex
+	procPrevTotal uint64
+	procPrevByPID map[int]uint64
 }
 
 var instanceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -68,6 +78,8 @@ func NewExecutor(deps ExecutorDeps) *Executor {
 	if deps.FS != nil {
 		ex.uploads = newUploadManager(deps.FS)
 	}
+	ex.duCache = make(map[string]duCacheEntry)
+	ex.procPrevByPID = make(map[int]uint64)
 	return ex
 }
 
@@ -80,12 +92,12 @@ func (e *Executor) mcTemplates() protocol.CommandResult {
 				"supported":   true,
 				"install_cmd": "mc_install_vanilla",
 				"presets": map[string]any{
-					"jar_name":     "server.jar",
-					"xms":          "1G",
-					"xmx":          "2G",
-					"accept_eula":  true,
-					"enable_frp":   true,
-					"frp_remote_port":  0,
+					"jar_name":        "server.jar",
+					"xms":             "1G",
+					"xmx":             "2G",
+					"accept_eula":     true,
+					"enable_frp":      true,
+					"frp_remote_port": 0,
 				},
 			},
 			map[string]any{
@@ -94,12 +106,12 @@ func (e *Executor) mcTemplates() protocol.CommandResult {
 				"supported":   true,
 				"install_cmd": "mc_install_paper",
 				"presets": map[string]any{
-					"jar_name":     "server.jar",
-					"xms":          "1G",
-					"xmx":          "2G",
-					"accept_eula":  true,
-					"enable_frp":   true,
-					"frp_remote_port":  0,
+					"jar_name":        "server.jar",
+					"xms":             "1G",
+					"xmx":             "2G",
+					"accept_eula":     true,
+					"enable_frp":      true,
+					"frp_remote_port": 0,
 				},
 			},
 			map[string]any{
@@ -129,21 +141,57 @@ func (e *Executor) mcBackup(ctx context.Context, cmd protocol.Command) protocol.
 		return fail("servers filesystem not configured")
 	}
 
-	backupName, _ := asString(cmd.Args["backup_name"])
-	if strings.TrimSpace(backupName) == "" {
-		backupName = fmt.Sprintf("%s-%d.zip", instanceID, timeNowUnix())
+	format, _ := asString(cmd.Args["format"])
+	format = strings.TrimSpace(strings.ToLower(format))
+	if format != "" && format != "zip" && format != "tar.gz" && format != "tgz" {
+		return fail("format must be zip or tar.gz")
 	}
+
+	backupName, _ := asString(cmd.Args["backup_name"])
 	backupName = strings.TrimSpace(backupName)
+	comment, _ := asString(cmd.Args["comment"])
+	comment = strings.TrimSpace(comment)
+	if len(comment) > 500 {
+		comment = comment[:500]
+	}
+	if backupName == "" {
+		if format == "tar.gz" || format == "tgz" {
+			backupName = fmt.Sprintf("%s-%d.tar.gz", instanceID, timeNowUnix())
+			format = "tar.gz"
+		} else {
+			backupName = fmt.Sprintf("%s-%d.zip", instanceID, timeNowUnix())
+			if format == "" {
+				format = "zip"
+			}
+		}
+	}
 	if backupName == "" {
 		return fail("backup_name is empty")
 	}
 	if strings.Contains(backupName, "/") || strings.Contains(backupName, "\\") {
 		return fail("backup_name must be a filename (no /)")
 	}
-	if !strings.HasSuffix(strings.ToLower(backupName), ".zip") {
-		backupName += ".zip"
+
+	if format == "" {
+		lower := strings.ToLower(backupName)
+		if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") {
+			format = "tar.gz"
+		} else {
+			format = "zip"
+		}
 	}
-	if len(backupName) > 128 {
+	useTarGz := format == "tar.gz" || format == "tgz"
+	if useTarGz {
+		lower := strings.ToLower(backupName)
+		if !strings.HasSuffix(lower, ".tar.gz") && !strings.HasSuffix(lower, ".tgz") {
+			backupName += ".tar.gz"
+		}
+	} else {
+		if !strings.HasSuffix(strings.ToLower(backupName), ".zip") {
+			backupName += ".zip"
+		}
+	}
+	if len(backupName) > 160 {
 		return fail("backup_name too long")
 	}
 
@@ -173,12 +221,58 @@ func (e *Executor) mcBackup(ctx context.Context, cmd protocol.Command) protocol.
 		return fail(err.Error())
 	}
 
-	e.emitInstall(instanceID, fmt.Sprintf("backup: zipping %s -> %s", instanceID, destRel))
-	files, err := backup.ZipDir(srcAbs, destAbs)
-	if err != nil {
-		return fail(err.Error())
+	files := 0
+	var bytes int64
+	createdAtUnix := timeNowUnix()
+	if useTarGz {
+		last := time.Now()
+		e.emitInstall(instanceID, fmt.Sprintf("backup: tar.gz %s -> %s", instanceID, destRel))
+		n, b, err := backup.TarGzDir(srcAbs, destAbs, func(p backup.ArchiveProgress) {
+			if time.Since(last) < 1*time.Second {
+				return
+			}
+			last = time.Now()
+			e.emitInstall(instanceID, fmt.Sprintf("backup progress: files=%d bytes=%d", p.Files, p.Bytes))
+		})
+		if err != nil {
+			return fail(err.Error())
+		}
+		files = n
+		bytes = b
+		e.emitInstall(instanceID, fmt.Sprintf("backup done: %d files (%d bytes) -> %s", files, bytes, destRel))
+	} else {
+		e.emitInstall(instanceID, fmt.Sprintf("backup: zipping %s -> %s", instanceID, destRel))
+		n, err := backup.ZipDir(srcAbs, destAbs)
+		if err != nil {
+			return fail(err.Error())
+		}
+		files = n
+		e.emitInstall(instanceID, fmt.Sprintf("backup done: %d files -> %s", files, destRel))
 	}
-	e.emitInstall(instanceID, fmt.Sprintf("backup done: %d files -> %s", files, destRel))
+
+	// Best-effort file size (zip doesn't report bytes).
+	if st, err := os.Stat(destAbs); err == nil && st != nil && st.Size() > 0 {
+		bytes = st.Size()
+	}
+
+	// Best-effort metadata sidecar for panel restore points view.
+	{
+		meta := map[string]any{
+			"schema":          1,
+			"instance_id":     instanceID,
+			"path":            destRel,
+			"backup_name":     backupName,
+			"format":          format,
+			"created_at_unix": createdAtUnix,
+			"files":           files,
+			"bytes":           bytes,
+			"comment":         comment,
+		}
+		if b, err := json.MarshalIndent(meta, "", "  "); err == nil {
+			b = append(b, '\n')
+			_ = os.WriteFile(destAbs+".meta.json", b, 0o600)
+		}
+	}
 
 	if keepLast, err := asInt(cmd.Args["keep_last"]); err == nil && keepLast > 0 {
 		if keepLast > 1000 {
@@ -191,7 +285,9 @@ func (e *Executor) mcBackup(ctx context.Context, cmd protocol.Command) protocol.
 			}
 		}
 	}
-	return ok(map[string]any{"instance_id": instanceID, "path": destRel, "files": files})
+	out := map[string]any{"instance_id": instanceID, "path": destRel, "files": files, "format": format}
+	out["bytes"] = bytes
+	return ok(out)
 }
 
 func (e *Executor) mcRestore(ctx context.Context, cmd protocol.Command) protocol.CommandResult {
@@ -232,7 +328,13 @@ func (e *Executor) mcRestore(ctx context.Context, cmd protocol.Command) protocol
 	}
 
 	e.emitInstall(instanceID, fmt.Sprintf("restore: %s -> %s", zipRel, instanceID))
-	files, err := backup.UnzipToDir(zipAbs, instAbs)
+	var files int
+	lower := strings.ToLower(zipRel)
+	if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") {
+		files, err = backup.UntarGzToDir(zipAbs, instAbs)
+	} else {
+		files, err = backup.UnzipToDir(zipAbs, instAbs)
+	}
 	if err != nil {
 		return fail(err.Error())
 	}
@@ -314,6 +416,58 @@ func (e *Executor) HeartbeatSnapshot() protocol.Heartbeat {
 
 	// MC instances
 	instances := e.deps.MC.List()
+	ticksByPID := make(map[int]uint64)
+	memByPID := make(map[int]uint64)
+	for _, st := range instances {
+		if !st.Running || st.PID <= 0 {
+			continue
+		}
+		if ticks, err := sysinfo.ReadProcCPUTicks(st.PID); err == nil {
+			ticksByPID[st.PID] = ticks
+		}
+		if rss, err := sysinfo.ReadProcRSSBytes(st.PID); err == nil {
+			memByPID[st.PID] = rss
+		}
+	}
+	cpuByPID := make(map[int]float64)
+	if total, _, err := sysinfo.ReadCPUTicks(); err == nil && total > 0 {
+		e.procMu.Lock()
+		prevTotal := e.procPrevTotal
+		if prevTotal == 0 {
+			e.procPrevTotal = total
+			for pid, cur := range ticksByPID {
+				e.procPrevByPID[pid] = cur
+			}
+		} else {
+			deltaTotal := uint64(0)
+			if total > prevTotal {
+				deltaTotal = total - prevTotal
+			}
+			e.procPrevTotal = total
+			for pid, cur := range ticksByPID {
+				prev, ok := e.procPrevByPID[pid]
+				e.procPrevByPID[pid] = cur
+				if !ok || deltaTotal == 0 || cur < prev {
+					continue
+				}
+				cpu := float64(cur-prev) * 100 / float64(deltaTotal)
+				if cpu < 0 {
+					cpu = 0
+				}
+				if cpu > 100 {
+					cpu = 100
+				}
+				cpuByPID[pid] = cpu
+			}
+			for pid := range e.procPrevByPID {
+				if _, ok := ticksByPID[pid]; ok {
+					continue
+				}
+				delete(e.procPrevByPID, pid)
+			}
+		}
+		e.procMu.Unlock()
+	}
 	ids := make([]string, 0, len(instances))
 	for id := range instances {
 		ids = append(ids, id)
@@ -321,13 +475,28 @@ func (e *Executor) HeartbeatSnapshot() protocol.Heartbeat {
 	sort.Strings(ids)
 	for _, id := range ids {
 		st := instances[id]
+		var cpuPercent *float64
+		if v, ok := cpuByPID[st.PID]; ok {
+			val := v
+			cpuPercent = &val
+		}
+		var memRSSBytes *uint64
+		if v, ok := memByPID[st.PID]; ok {
+			val := v
+			memRSSBytes = &val
+		}
 		hb.Instances = append(hb.Instances, protocol.MCInstance{
-			ID:      id,
-			Running: st.Running,
-			PID:     st.PID,
-			Java:    st.Java,
-			JavaMajor: st.JavaMajor,
+			ID:                id,
+			Running:           st.Running,
+			PID:               st.PID,
+			CPUPercent:        cpuPercent,
+			MemRSSBytes:       memRSSBytes,
+			Java:              st.Java,
+			JavaMajor:         st.JavaMajor,
 			RequiredJavaMajor: st.RequiredJavaMajor,
+			LastExitCode:      st.LastExitCode,
+			LastExitSignal:    st.LastExitSignal,
+			LastExitUnix:      st.LastExitUnix,
 		})
 	}
 
@@ -343,10 +512,14 @@ func (e *Executor) Execute(ctx context.Context, cmd protocol.Command) protocol.C
 	switch cmd.Name {
 	case "ping":
 		return ok(map[string]any{"pong": true})
+	case "net_check_port":
+		return e.netCheckPort(cmd)
 	case "mc_templates":
 		return e.mcTemplates()
 	case "mc_detect_jar":
 		return e.mcDetectJar(cmd)
+	case "mc_required_java":
+		return e.mcRequiredJava(cmd)
 	case "mc_java_cache_list":
 		return e.mcJavaCacheList(cmd)
 	case "mc_java_cache_remove":
@@ -373,6 +546,8 @@ func (e *Executor) Execute(ctx context.Context, cmd protocol.Command) protocol.C
 		return e.fsList(cmd)
 	case "fs_stat":
 		return e.fsStat(cmd)
+	case "fs_du":
+		return e.fsDu(ctx, cmd)
 	case "fs_delete":
 		return e.fsDelete(cmd)
 	case "fs_trash":
@@ -463,9 +638,9 @@ func (e *Executor) fsDownload(ctx context.Context, cmd protocol.Command) protoco
 	}
 	return ok(map[string]any{
 		"path":   path,
-		"bytes": res.Bytes,
+		"bytes":  res.Bytes,
 		"sha256": res.SHA256,
-		"sha1":  res.SHA1,
+		"sha1":   res.SHA1,
 	})
 }
 
@@ -694,9 +869,14 @@ func (e *Executor) fsList(cmd protocol.Command) protocol.CommandResult {
 			mtimeUnix = info.ModTime().Unix()
 		}
 		out = append(out, map[string]any{
-			"name":       ent.Name(),
-			"isDir":      ent.IsDir(),
-			"size":       func() int64 { if info != nil { return info.Size() }; return 0 }(),
+			"name":  ent.Name(),
+			"isDir": ent.IsDir(),
+			"size": func() int64 {
+				if info != nil {
+					return info.Size()
+				}
+				return 0
+			}(),
 			"mtime_unix": mtimeUnix,
 		})
 	}
@@ -947,6 +1127,7 @@ func (e *Executor) mcStart(ctx context.Context, cmd protocol.Command) protocol.C
 	javaPath, _ := asString(cmd.Args["java_path"])
 	xms, _ := asString(cmd.Args["xms"])
 	xmx, _ := asString(cmd.Args["xmx"])
+	jvmArgs, _ := asStringSlice(cmd.Args["jvm_args"])
 	if err := validateInstanceID(instanceID); err != nil {
 		return fail(err.Error())
 	}
@@ -957,6 +1138,7 @@ func (e *Executor) mcStart(ctx context.Context, cmd protocol.Command) protocol.C
 		JavaPath:   javaPath,
 		Xms:        xms,
 		Xmx:        xmx,
+		JvmArgs:    jvmArgs,
 	}, func(instID, stream, line string) {
 		e.emitLog(protocol.LogLine{
 			Source:   "mc",
@@ -1061,10 +1243,10 @@ func (e *Executor) frpStart(ctx context.Context, cmd protocol.Command) protocol.
 
 	if err := e.deps.FRP.Start(ctx, proxy, func(stream, line string) {
 		e.emitLog(protocol.LogLine{
-			Source: "frp",
-			Stream: stream,
+			Source:   "frp",
+			Stream:   stream,
 			Instance: proxy.Name,
-			Line:   line,
+			Line:     line,
 		})
 	}); err != nil {
 		return fail(err.Error())
@@ -1124,6 +1306,35 @@ func fail(msg string) protocol.CommandResult {
 func asString(v any) (string, bool) {
 	s, ok := v.(string)
 	return s, ok
+}
+
+func asStringSlice(v any) ([]string, bool) {
+	switch a := v.(type) {
+	case []string:
+		out := make([]string, 0, len(a))
+		for _, it := range a {
+			s := strings.TrimSpace(it)
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out, true
+	case []any:
+		out := make([]string, 0, len(a))
+		for _, it := range a {
+			s, ok := it.(string)
+			if !ok {
+				continue
+			}
+			s = strings.TrimSpace(s)
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func asInt(v any) (int, error) {

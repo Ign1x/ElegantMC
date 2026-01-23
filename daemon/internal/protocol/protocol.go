@@ -60,8 +60,8 @@ type DiskStat struct {
 }
 
 type NetInfo struct {
-	Hostname string   `json:"hostname,omitempty"`
-	IPv4     []string `json:"ipv4,omitempty"`
+	Hostname              string   `json:"hostname,omitempty"`
+	IPv4                  []string `json:"ipv4,omitempty"`
 	PreferredConnectAddrs []string `json:"preferred_connect_addrs,omitempty"`
 }
 
@@ -74,12 +74,17 @@ type FRPStatus struct {
 }
 
 type MCInstance struct {
-	ID      string `json:"id"`
-	Running bool   `json:"running"`
-	PID     int    `json:"pid,omitempty"`
-	Java    string `json:"java,omitempty"`
-	JavaMajor int  `json:"java_major,omitempty"`
-	RequiredJavaMajor int `json:"required_java_major,omitempty"`
+	ID                string   `json:"id"`
+	Running           bool     `json:"running"`
+	PID               int      `json:"pid,omitempty"`
+	CPUPercent        *float64 `json:"cpu_percent,omitempty"`
+	MemRSSBytes       *uint64  `json:"mem_rss_bytes,omitempty"`
+	Java              string   `json:"java,omitempty"`
+	JavaMajor         int      `json:"java_major,omitempty"`
+	RequiredJavaMajor int      `json:"required_java_major,omitempty"`
+	LastExitCode      *int     `json:"last_exit_code,omitempty"`
+	LastExitSignal    string   `json:"last_exit_signal,omitempty"`
+	LastExitUnix      int64    `json:"last_exit_unix,omitempty"`
 }
 
 // Command is sent by the panel to ask the daemon to do something.

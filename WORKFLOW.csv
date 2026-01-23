@@ -140,7 +140,7 @@ WF-20260118-138,P3,observability,done,Server TPS indicator,"Admins care about TP
 WF-20260118-139,P2,daemon,done,Compressed backups,"Backups can be large and slow to copy","Support optional compressed backups (tar.gz) with progress",feat(daemon): compressed backups
 WF-20260118-140,P3,games,done,Backup restore points view,"Restore UX is still heavy for frequent use","Add restore points view with metadata (time, size, comment) and restore action",ux(games): restore points
 WF-20260118-141,P2,modpacks,done,Server jar update checks,"Keeping server jars updated is manual and risky","Add update check for known server types and a safe upgrade flow",feat(games): jar updates
-WF-20260118-142,P2,modpacks,todo,Paper/Purpur installer,"Users commonly use Paper/Purpur but must install manually","Add installer for Paper/Purpur with version selection and verify checksums",feat(modpacks): paper installer
+WF-20260118-142,P2,modpacks,done,Paper/Purpur installer,"Users commonly use Paper/Purpur but must install manually","Add installer for Paper/Purpur with version selection and verify checksums",feat(modpacks): paper installer
 WF-20260118-143,P2,games,todo,New instance creation wizard,"Creating an instance feels fragmented and confusing","Add a guided wizard: name, type, version, memory, port, then create",ux(games): create wizard
 WF-20260118-144,P2,games,todo,JVM args presets,"Tuning JVM args is confusing and error-prone","Provide presets (default, aikar, conservative) and show resulting args",feat(games): jvm presets
 WF-20260118-145,P2,games,todo,Memory presets and warnings,"Users pick Xmx/Xms values that crash the server or OS","UI offers memory presets and warns if exceeding node memory",ux(games): memory presets

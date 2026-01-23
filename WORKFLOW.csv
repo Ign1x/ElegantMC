@@ -125,7 +125,7 @@ WF-20260118-123,P2,frp,done,Create FRP proxy from instance,"Creating proxies req
 WF-20260118-124,P2,frp,done,Per-proxy health indicator,"Proxy list does not show if a proxy is working","Show last check time, reachability, and error per proxy",ux(frp): proxy health
 WF-20260118-125,P3,frp,done,FRP client logs,"FRP failures are hard to debug without logs","Expose FRP client logs in Panel with filter and download",feat(frp): client logs
 WF-20260118-126,P2,nodes,done,Disk usage display,"Users cannot see if a node is running out of disk","Nodes view shows total/free disk and per-instance disk usage estimate",feat(nodes): disk usage
-WF-20260118-127,P2,nodes,todo,Version mismatch warnings,"Panel/daemon version mismatches can cause subtle bugs","Show warnings when daemon protocol/version differs and suggest upgrade",ux(nodes): version warnings
+WF-20260118-127,P2,nodes,done,Version mismatch warnings,"Panel/daemon version mismatches can cause subtle bugs","Show warnings when daemon protocol/version differs and suggest upgrade",ux(nodes): version warnings
 WF-20260118-128,P3,nodes,todo,Daemon self-update helper,"Updating the daemon requires manual steps","Provide UI guidance and optional command to download new daemon binary safely",feat(nodes): daemon update helper
 WF-20260118-129,P2,panel-server,todo,Multiple admin accounts,"Single shared password does not scale and is insecure","Support multiple admin users with usernames and per-user sessions",feat(security): multi-user
 WF-20260118-130,P3,security,todo,Two-factor authentication,"Password-only login is weaker than desired","Add optional TOTP-based 2FA per user with recovery codes",feat(security): totp 2fa

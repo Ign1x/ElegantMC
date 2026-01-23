@@ -1,5 +1,30 @@
 :root {
   color-scheme: dark;
+  /* Design tokens (prefer these going forward). */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 22px;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.45;
+  --line-height-loose: 1.7;
+
+  --font-weight-regular: 520;
+  --font-weight-medium: 640;
+  --font-weight-semibold: 740;
+  --font-weight-bold: 780;
+
   --bg0: #060913;
   --bg1: #0b1022;
   --surface: rgba(255, 255, 255, 0.04);
@@ -183,7 +208,8 @@ body {
   height: 100%;
   padding: 0;
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
     "Apple Color Emoji", "Segoe UI Emoji";
   background: var(--page-bg);
@@ -224,18 +250,21 @@ h3 {
 }
 
 h1 {
-  font-size: 22px;
+  font-size: var(--font-size-xl);
+  line-height: var(--line-height-tight);
   letter-spacing: -0.02em;
 }
 
 h2 {
-  font-size: 16px;
-  font-weight: 740;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
   letter-spacing: -0.01em;
 }
 
 h3 {
-  font-size: 14px;
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-tight);
   color: var(--muted);
 }
 
@@ -526,23 +555,23 @@ button.navItem .badge {
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .cardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .itemCard {
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius-lg);
-  padding: 12px;
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -550,18 +579,18 @@ button.navItem .badge {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .itemTitle {
-  font-weight: 760;
-  font-size: 14px;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
   letter-spacing: -0.01em;
 }
 
 .itemMeta {
   margin-top: 3px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--muted2);
   white-space: nowrap;
   overflow: hidden;
@@ -570,7 +599,7 @@ button.navItem .badge {
 
 .itemActions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
@@ -580,15 +609,15 @@ button.navItem .badge {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-2);
   flex-wrap: wrap;
-  padding-top: 10px;
+  padding-top: var(--space-2);
   border-top: 1px solid var(--border);
 }
 
 .btnGroup {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -718,7 +747,7 @@ input,
 textarea,
 select {
   padding: 9px 12px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   box-shadow: 0 0 0 1px var(--control-inset) inset;
 }
 
@@ -883,7 +912,7 @@ button.linkBtn:focus-visible {
 
 button {
   padding: 6px 9px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.02s ease;
 }
@@ -951,12 +980,12 @@ button.linkBtn:hover {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .badge.ok {
@@ -1006,15 +1035,15 @@ button.linkBtn:hover {
 .kv {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px;
+  gap: var(--space-2);
+  padding: var(--space-2);
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
 }
 
 .kv .k {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--muted);
 }
 

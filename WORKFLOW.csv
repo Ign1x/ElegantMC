@@ -118,7 +118,7 @@ WF-20260118-116,P3,files,done,YAML validator,"YAML indentation errors are common
 WF-20260118-117,P2,games,done,Console command history,"Console input loses previous commands and slows admin workflows","Console input supports history (Up/Down) and persists per instance",ux(games): command history
 WF-20260118-118,P3,games,done,Common command shortcuts,"Admins repeatedly type the same commands","Provide quick buttons for stop, save-all, say, whitelist reload, and reload",ux(games): command shortcuts
 WF-20260118-119,P3,games,done,Separate command output,"Command responses can get lost in noisy logs","Show command responses in a small dedicated panel with copy",ux(games): command output panel
-WF-20260118-120,P2,games,todo,Player list from usercache,"Admins want to see known players without opening files","Add a Players tab that reads usercache.json and shows names/uuids",feat(games): players list
+WF-20260118-120,P2,games,done,Player list from usercache,"Admins want to see known players without opening files","Add a Players tab that reads usercache.json and shows names/uuids",feat(games): players list
 WF-20260118-121,P2,games,todo,Whitelist/ops editors,"Editing whitelist.json and ops.json manually is risky","Provide simple editors for whitelist/ops with validation and save",feat(games): whitelist ops editor
 WF-20260118-122,P2,games,done,Network info card,"Users often misconfigure ports and bind addresses","Show host/port, detected listen address, and docker mapping hints in UI",ux(games): network info
 WF-20260118-123,P2,frp,todo,Create FRP proxy from instance,"Creating proxies requires copying ports manually","From a running instance, user can generate a proxy config with one click",feat(frp): create proxy

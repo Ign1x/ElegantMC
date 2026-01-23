@@ -1496,6 +1496,21 @@ button.logNewPill:hover {
   padding-right: 2px;
 }
 
+.cmdPaletteGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cmdPaletteGroupTitle {
+  font-size: var(--font-size-2xs);
+  line-height: var(--line-height-tight);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  padding: 0 4px;
+}
+
 button.cmdPaletteItem {
   width: 100%;
   text-align: left;

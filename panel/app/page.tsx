@@ -34,6 +34,7 @@ type McVersion = {
 
 const INSTANCE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const DAEMONS_CACHE_KEY = "elegantmc_daemons_cache_v1";
+const CMD_PALETTE_RECENT_KEY = "elegantmc_cmd_palette_recent_v1";
 
 type TrFn = (en: string, zh: string) => string;
 
@@ -711,6 +712,7 @@ export default function HomePage() {
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState<boolean>(false);
   const [cmdPaletteQuery, setCmdPaletteQuery] = useState<string>("");
   const [cmdPaletteIdx, setCmdPaletteIdx] = useState<number>(0);
+  const [cmdPaletteRecentIds, setCmdPaletteRecentIds] = useState<string[]>([]);
   const cmdPaletteInputRef = useRef<HTMLInputElement | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState<boolean>(false);
   const [changelogOpen, setChangelogOpen] = useState<boolean>(false);
@@ -1514,6 +1516,18 @@ export default function HomePage() {
     const t = window.setTimeout(() => cmdPaletteInputRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
   }, [cmdPaletteOpen]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CMD_PALETTE_RECENT_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return;
+      const list = parsed.map((x: any) => String(x || "").trim()).filter(Boolean).slice(0, 12);
+      setCmdPaletteRecentIds(list);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Panel auth (cookie-based)
   useEffect(() => {
@@ -6859,15 +6873,62 @@ export default function HomePage() {
     backupServer,
   ]);
 
-  const cmdPaletteFiltered = useMemo(() => {
-    const q = cmdPaletteQuery.trim().toLowerCase();
-    if (!q) return cmdPaletteCommands;
-    return cmdPaletteCommands.filter((c) => {
-      const title = String(c.title || "").toLowerCase();
-      const hint = String((c as any).hint || "").toLowerCase();
-      return title.includes(q) || hint.includes(q);
+  const rememberCmd = useCallback((id: string) => {
+    const cid = String(id || "").trim();
+    if (!cid) return;
+    setCmdPaletteRecentIds((prev) => {
+      const next = [cid, ...prev.filter((x) => x !== cid)].slice(0, 12);
+      try {
+        localStorage.setItem(CMD_PALETTE_RECENT_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
     });
-  }, [cmdPaletteCommands, cmdPaletteQuery]);
+  }, []);
+
+  const cmdPaletteView = useMemo(() => {
+    type CmdItem = (typeof cmdPaletteCommands)[number];
+    const rawQ = cmdPaletteQuery.trim().toLowerCase();
+    const filtered = !rawQ
+      ? cmdPaletteCommands
+      : cmdPaletteCommands.filter((c) => {
+          const title = String(c.title || "").toLowerCase();
+          const hint = String((c as any).hint || "").toLowerCase();
+          return title.includes(rawQ) || hint.includes(rawQ);
+        });
+
+    const cat = (id: string) => {
+      const s = String(id || "");
+      if (s.startsWith("tab:")) return t.tr("Navigation", "导航");
+      if (s.startsWith("game:")) return t.tr("Game", "游戏");
+      return t.tr("Other", "其他");
+    };
+
+    if (rawQ) return { groups: [{ title: t.tr("Results", "结果"), items: filtered }], flat: filtered };
+
+    const byCat = new Map<string, CmdItem[]>();
+    for (const c of filtered) {
+      const k = cat(c.id);
+      const list = byCat.get(k) || [];
+      list.push(c);
+      byCat.set(k, list);
+    }
+
+    const cmdById = new Map(filtered.map((c) => [c.id, c] as const));
+    const recent = cmdPaletteRecentIds.map((id) => cmdById.get(id)).filter(Boolean) as CmdItem[];
+    const used = new Set(recent.map((c) => c.id));
+
+    const groups: { title: string; items: CmdItem[] }[] = [];
+    if (recent.length) groups.push({ title: t.tr("Recent", "最近"), items: recent });
+    for (const [title, items] of byCat.entries()) {
+      const rest = items.filter((c) => !used.has(c.id));
+      if (rest.length) groups.push({ title, items: rest });
+    }
+
+    const flat = groups.flatMap((g) => g.items);
+    return { groups, flat };
+  }, [cmdPaletteCommands, cmdPaletteQuery, cmdPaletteRecentIds, t]);
 
   const appCtxValue = {
     tab,
@@ -7228,6 +7289,9 @@ export default function HomePage() {
 	                <div className="hint">
 	                  <code>Ctrl+K</code> {t.tr("(or", "（或")} <code>⌘K</code>) · <code>/</code> {t.tr("opens search", "打开搜索")}
 	                </div>
+                  <div className="hint">
+                    <code>↑</code>/<code>↓</code> {t.tr("navigate", "选择")} · <code>Enter</code> {t.tr("run", "执行")} · <code>Esc</code> {t.tr("close", "关闭")}
+                  </div>
 	              </div>
 	              <button type="button" onClick={() => setCmdPaletteOpen(false)}>
 	                {t.tr("Close", "关闭")}
@@ -7246,7 +7310,7 @@ export default function HomePage() {
 	              onKeyDown={(e) => {
 	                if (e.key === "ArrowDown") {
 	                  e.preventDefault();
-	                  setCmdPaletteIdx((i) => Math.min(Math.max(0, cmdPaletteFiltered.length - 1), i + 1));
+	                  setCmdPaletteIdx((i) => Math.min(Math.max(0, cmdPaletteView.flat.length - 1), i + 1));
 	                  return;
 	                }
 	                if (e.key === "ArrowUp") {
@@ -7255,9 +7319,10 @@ export default function HomePage() {
 	                  return;
 	                }
 	                if (e.key === "Enter") {
-	                  const cmd = cmdPaletteFiltered[cmdPaletteIdx] as any;
+	                  const cmd = cmdPaletteView.flat[cmdPaletteIdx] as any;
 	                  if (!cmd || cmd.disabled) return;
 	                  e.preventDefault();
+	                  rememberCmd(cmd.id);
 	                  const p = cmd.run?.();
 	                  if (p && typeof p.then === "function") p.catch(() => null);
 	                }
@@ -7265,26 +7330,47 @@ export default function HomePage() {
 	            />
 
 	            <div className="cmdPaletteList">
-	              {cmdPaletteFiltered.length ? (
-	                cmdPaletteFiltered.map((c: any, idx: number) => (
-	                  <button
-	                    key={c.id}
-	                    type="button"
-	                    className={`cmdPaletteItem ${idx === cmdPaletteIdx ? "active" : ""}`}
-	                    disabled={!!c.disabled}
-	                    onMouseEnter={() => setCmdPaletteIdx(idx)}
-	                    onClick={() => {
-	                      if (c.disabled) return;
-	                      const p = c.run?.();
-	                      if (p && typeof p.then === "function") p.catch(() => null);
-	                    }}
-	                  >
-	                    <div className="cmdPaletteTitle">{c.title}</div>
-	                    {c.hint ? <div className="hint">{c.hint}</div> : null}
-	                  </button>
-	                ))
-	              ) : (
-	                <div className="hint">{t.tr("No matching commands", "没有匹配的命令")}</div>
+	              {cmdPaletteView.flat.length ? (
+                  (() => {
+                    let offset = 0;
+                    return cmdPaletteView.groups.map((g) => {
+                      const start = offset;
+                      offset += g.items.length;
+                      return (
+                        <div key={g.title} className="cmdPaletteGroup">
+                          <div className="cmdPaletteGroupTitle">{g.title}</div>
+                          {g.items.map((c: any, idx: number) => {
+                            const flatIdx = start + idx;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className={`cmdPaletteItem ${flatIdx === cmdPaletteIdx ? "active" : ""}`}
+                                disabled={!!c.disabled}
+                                onMouseEnter={() => setCmdPaletteIdx(flatIdx)}
+                                onClick={() => {
+                                  if (c.disabled) return;
+                                  rememberCmd(c.id);
+                                  const p = c.run?.();
+                                  if (p && typeof p.then === "function") p.catch(() => null);
+                                }}
+                              >
+                                <div className="cmdPaletteTitle">{c.title}</div>
+                                {c.hint ? <div className="hint">{c.hint}</div> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    });
+                  })()
+                ) : (
+	                <div className="emptyState">
+                    <div style={{ fontWeight: 800 }}>{t.tr("No matching commands", "没有匹配的命令")}</div>
+                    <div className="hint" style={{ marginTop: 6 }}>
+                      {t.tr("Try a different keyword, or press Esc to close.", "请换个关键词，或按 Esc 关闭。")}
+                    </div>
+                  </div>
 	              )}
 	            </div>
 	          </div>

@@ -818,6 +818,8 @@ export default function HomePage() {
   const [helpDocTitle, setHelpDocTitle] = useState<string>("");
   const [helpDocText, setHelpDocText] = useState<string>("");
   const [helpDocStatus, setHelpDocStatus] = useState<string>("");
+  const [onboardingOpen, setOnboardingOpen] = useState<boolean>(false);
+  const [onboardingStep, setOnboardingStep] = useState<number>(0);
 
   // Logs
   const [logs, setLogs] = useState<any[]>([]);
@@ -1383,6 +1385,34 @@ export default function HomePage() {
     }
   }, [tab, selected, instanceId]);
 
+  function markOnboardingDone() {
+    try {
+      localStorage.setItem("elegantmc_onboarding_done_v1", "1");
+    } catch {
+      // ignore
+    }
+  }
+
+  function closeOnboarding(markDone = true) {
+    if (markDone) markOnboardingDone();
+    setOnboardingOpen(false);
+  }
+
+  // Onboarding wizard (first run)
+  useEffect(() => {
+    if (authed !== true) return;
+    if (onboardingOpen) return;
+    if (!daemonsLoadedOnce) return;
+    try {
+      const k = localStorage.getItem("elegantmc_onboarding_done_v1") || "";
+      if (k === "1") return;
+      setOnboardingStep(0);
+      setOnboardingOpen(true);
+    } catch {
+      // ignore
+    }
+  }, [authed, daemonsLoadedOnce, onboardingOpen]);
+
   // Instance tags (per daemon, stored in localStorage)
   useEffect(() => {
     if (!selected) {
@@ -1545,6 +1575,11 @@ export default function HomePage() {
         if (helpOpen) {
           e.preventDefault();
           setHelpOpen(false);
+          return;
+        }
+        if (onboardingOpen) {
+          e.preventDefault();
+          closeOnboarding(true);
           return;
         }
         if (notificationsOpen) {
@@ -7741,6 +7776,16 @@ export default function HomePage() {
 	                  <button type="button" className={helpDoc === "changelog" ? "primary" : ""} onClick={() => loadHelpDoc("changelog")}>
 	                    {t.tr("Changelog", "更新日志")}
 	                  </button>
+	                  <button
+	                    type="button"
+	                    onClick={() => {
+	                      setHelpOpen(false);
+	                      setOnboardingStep(0);
+	                      setOnboardingOpen(true);
+	                    }}
+	                  >
+	                    {t.tr("Quickstart", "快速开始")}
+	                  </button>
 	                </div>
 	              </div>
 
@@ -7752,6 +7797,188 @@ export default function HomePage() {
 	                ) : (
 	                  <div className="hint">{t.tr("Select a doc to view.", "请选择要查看的文档。")}</div>
 	                )}
+	              </div>
+	            </div>
+	          </div>
+	        </div>
+	      ) : null}
+
+	      {onboardingOpen ? (
+	        <div className="modalOverlay" onClick={() => closeOnboarding(true)}>
+	          <div className="modal" style={{ width: "min(920px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+	            <div className="modalHeader">
+	              <div>
+	                <div style={{ fontWeight: 800 }}>{t.tr("Welcome to ElegantMC", "欢迎使用 ElegantMC")}</div>
+	                <div className="hint">
+	                  {t.tr("Quickstart wizard for your first run.", "首次运行快速向导。")}{" "}
+	                  <span className="badge">
+	                    {t.tr("Step", "步骤")} {onboardingStep + 1}/4
+	                  </span>
+	                </div>
+	              </div>
+	              <button type="button" onClick={() => closeOnboarding(true)}>
+	                {t.tr("Close", "关闭")}
+	              </button>
+	            </div>
+
+	            <div className="modalBody">
+	              {onboardingStep === 0 ? (
+	                <div className="grid2" style={{ alignItems: "start" }}>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("Status", "状态")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      {t.tr("Nodes", "节点")}: <code>{String(nodes.length || 0)}</code> ·{" "}
+	                      {t.tr("Online", "在线")}: <code>{String(daemons.filter((d) => d.connected).length)}</code>
+	                    </div>
+	                    <div className="hint" style={{ marginTop: 6 }}>
+	                      {t.tr("Instances", "实例")}: <code>{String(serverDirs.length || 0)}</code> ·{" "}
+	                      {t.tr("FRP servers", "FRP 服务器")}: <code>{String(profiles.length || 0)}</code>
+	                    </div>
+	                  </div>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("What you'll do", "你将完成")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      <div>1) {t.tr("Check nodes / tokens", "检查节点与 token")}</div>
+	                      <div>2) {t.tr("Install a server", "安装一个服务器")}</div>
+	                      <div>3) {t.tr("Optional: set up FRP for sharing", "可选：配置 FRP 便于公网分享")}</div>
+	                    </div>
+	                  </div>
+	                </div>
+	              ) : onboardingStep === 1 ? (
+	                <div className="grid2" style={{ alignItems: "start" }}>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("Nodes", "节点")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      {t.tr("Create a node (daemon_id → token) and deploy the daemon on your machine.", "创建节点（daemon_id → token），并在你的机器上部署 daemon。")}
+	                    </div>
+	                    <div className="btnGroup" style={{ justifyContent: "flex-start", marginTop: 10 }}>
+	                      <button
+	                        type="button"
+	                        className="iconBtn"
+	                        onClick={() => {
+	                          setTab("nodes");
+	                          setSidebarOpen(false);
+	                        }}
+	                      >
+	                        {t.tr("Open Nodes", "打开 Nodes")}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className="primary"
+	                        onClick={() => {
+	                          setTab("nodes");
+	                          setSidebarOpen(false);
+	                          openAddNodeModal();
+	                        }}
+	                      >
+	                        {t.tr("Add Node…", "添加节点…")}
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("Tip", "提示")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      {t.tr("If you're only testing locally, the default local-node is already created in docker-compose.", "如果只是本机体验，docker-compose 默认已创建 local-node。")}
+	                    </div>
+	                  </div>
+	                </div>
+	              ) : onboardingStep === 2 ? (
+	                <div className="grid2" style={{ alignItems: "start" }}>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("Install a server", "安装服务器")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      {t.tr("Go to Games and install Vanilla/Paper/Modpack, then Start it.", "进入 Games，安装 Vanilla/Paper/整合包，然后启动。")}
+	                    </div>
+	                    <div className="btnGroup" style={{ justifyContent: "flex-start", marginTop: 10 }}>
+	                      <button
+	                        type="button"
+	                        className="iconBtn"
+	                        onClick={() => {
+	                          setTab("games");
+	                          setSidebarOpen(false);
+	                        }}
+	                      >
+	                        {t.tr("Open Games", "打开 Games")}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className="primary"
+	                        onClick={() => {
+	                          setTab("games");
+	                          setSidebarOpen(false);
+	                          openInstallModal();
+	                        }}
+	                      >
+	                        {t.tr("Install…", "安装…")}
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("Tip", "提示")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      {t.tr("After starting, copy the socket address to connect from your client.", "启动后，复制 Socket 地址用客户端连接。")}
+	                    </div>
+	                  </div>
+	                </div>
+	              ) : (
+	                <div className="grid2" style={{ alignItems: "start" }}>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("Optional: FRP", "可选：FRP")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      {t.tr("If you want friends to connect over the Internet, set up an FRP server and enable FRP in game settings.", "如果你想让朋友公网直连，配置 FRP Server，并在游戏设置里启用 FRP。")}
+	                    </div>
+	                    <div className="btnGroup" style={{ justifyContent: "flex-start", marginTop: 10 }}>
+	                      <button
+	                        type="button"
+	                        className="iconBtn"
+	                        onClick={() => {
+	                          setTab("frp");
+	                          setSidebarOpen(false);
+	                        }}
+	                      >
+	                        {t.tr("Open FRP", "打开 FRP")}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className="primary"
+	                        onClick={() => {
+	                          setTab("frp");
+	                          setSidebarOpen(false);
+	                          openAddFrpModal();
+	                        }}
+	                      >
+	                        {t.tr("Add FRP Server…", "添加 FRP Server…")}
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="cardSub">
+	                    <div style={{ fontWeight: 800 }}>{t.tr("Done", "完成")}</div>
+	                    <div className="hint" style={{ marginTop: 8 }}>
+	                      {t.tr("You can reopen this guide from Help later.", "你可以稍后在 Help 中再次打开此向导。")}
+	                    </div>
+	                  </div>
+	                </div>
+	              )}
+	            </div>
+
+	            <div className="modalFooter">
+	              <button type="button" onClick={() => closeOnboarding(true)}>
+	                {t.tr("Skip", "跳过")}
+	              </button>
+	              <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
+	                <button type="button" onClick={() => setOnboardingStep((s) => Math.max(0, s - 1))} disabled={onboardingStep <= 0}>
+	                  {t.tr("Back", "上一步")}
+	                </button>
+	                <button
+	                  type="button"
+	                  className="primary"
+	                  onClick={() => {
+	                    if (onboardingStep >= 3) closeOnboarding(true);
+	                    else setOnboardingStep((s) => Math.min(3, s + 1));
+	                  }}
+	                >
+	                  {onboardingStep >= 3 ? t.tr("Done", "完成") : t.tr("Next", "下一步")}
+	                </button>
 	              </div>
 	            </div>
 	          </div>

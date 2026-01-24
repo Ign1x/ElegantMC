@@ -259,7 +259,7 @@ let apiTokensWriteChain = Promise.resolve();
 let apiTokenByHash = new Map(); // token_hash_b64 -> token record
 
 const UI_PREFS_PATH = path.join(PANEL_DATA_DIR, "ui_prefs.json");
-let uiPrefs = { theme_mode: "auto" };
+let uiPrefs = { theme_mode: "auto", density: "comfortable" };
 let uiPrefsWriteChain = Promise.resolve();
 
 const AUDIT_LOG_PATH = path.join(PANEL_DATA_DIR, "audit.log");
@@ -270,8 +270,18 @@ function normalizeThemeMode(v) {
   return "auto";
 }
 
+function normalizeDensity(v) {
+  const d = String(v || "").trim().toLowerCase();
+  if (d === "compact" || d === "comfortable") return d;
+  return "comfortable";
+}
+
 function serializeUiPrefs() {
-  return { updated_at_unix: nowUnix(), theme_mode: normalizeThemeMode(uiPrefs?.theme_mode || "auto") };
+  return {
+    updated_at_unix: nowUnix(),
+    theme_mode: normalizeThemeMode(uiPrefs?.theme_mode || "auto"),
+    density: normalizeDensity(uiPrefs?.density || "comfortable"),
+  };
 }
 
 function queueUiPrefsSave() {
@@ -291,13 +301,16 @@ async function loadUiPrefsFromDisk() {
   try {
     const raw = await fs.readFile(UI_PREFS_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    uiPrefs = { theme_mode: normalizeThemeMode(parsed?.theme_mode || "auto") };
+    uiPrefs = {
+      theme_mode: normalizeThemeMode(parsed?.theme_mode || "auto"),
+      density: normalizeDensity(parsed?.density || "comfortable"),
+    };
   } catch (e) {
     if (e?.code !== "ENOENT") {
       // eslint-disable-next-line no-console
       console.warn("[panel] failed to load ui_prefs:", e?.message || e);
     }
-    uiPrefs = { theme_mode: "auto" };
+    uiPrefs = { theme_mode: "auto", density: "comfortable" };
   }
 }
 
@@ -2347,10 +2360,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/ui/prefs" && req.method === "POST") {
       try {
         const body = await readJsonBody(req);
-        const themeMode = normalizeThemeMode(body?.theme_mode || body?.theme || "auto");
-        uiPrefs = { ...uiPrefs, theme_mode: themeMode };
+        const themeMode = normalizeThemeMode((body?.theme_mode ?? body?.theme ?? uiPrefs?.theme_mode) || "auto");
+        const density = normalizeDensity((body?.density ?? body?.ui_density ?? uiPrefs?.density) || "comfortable");
+        uiPrefs = { ...uiPrefs, theme_mode: themeMode, density };
         queueUiPrefsSave();
-        appendAudit(req, "ui_prefs.save", { theme_mode: themeMode });
+        appendAudit(req, "ui_prefs.save", { theme_mode: themeMode, density });
         return json(res, 200, { prefs: serializeUiPrefs() });
       } catch (e) {
         return json(res, 400, { error: String(e?.message || e) });

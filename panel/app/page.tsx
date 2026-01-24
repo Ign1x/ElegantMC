@@ -108,6 +108,8 @@ type Tab = "nodes" | "games" | "frp" | "files" | "panel" | "advanced";
 
 type ThemeMode = "auto" | "dark" | "light" | "contrast";
 
+type UiDensity = "comfortable" | "compact";
+
 type GameSettingsSnapshot = {
   jarPath: string;
   javaPath: string;
@@ -690,6 +692,7 @@ export default function HomePage() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [sidebarFooterCollapsed, setSidebarFooterCollapsed] = useState<boolean>(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
+  const [uiDensity, setUiDensity] = useState<UiDensity>("comfortable");
   const themePrefsReadyRef = useRef<boolean>(false);
   const [enableAdvanced, setEnableAdvanced] = useState<boolean>(false);
   const [panelInfo, setPanelInfo] = useState<{ id: string; version: string; revision: string; buildDate: string } | null>(null);
@@ -1218,6 +1221,17 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // UI density (comfortable/compact)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("elegantmc_density") || "comfortable";
+      if (saved === "compact" || saved === "comfortable") setUiDensity(saved);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Locale (en/zh)
   useEffect(() => {
     try {
@@ -1278,6 +1292,20 @@ export default function HomePage() {
   }, [themeMode]);
 
   useEffect(() => {
+    const density: UiDensity = uiDensity === "compact" ? "compact" : "comfortable";
+    try {
+      localStorage.setItem("elegantmc_density", density);
+    } catch {
+      // ignore
+    }
+    try {
+      document.documentElement.dataset.density = density;
+    } catch {
+      // ignore
+    }
+  }, [uiDensity]);
+
+  useEffect(() => {
     if (authed !== true) return;
     if (!themePrefsReadyRef.current) return;
     const mode: ThemeMode = themeMode === "dark" || themeMode === "light" || themeMode === "contrast" ? themeMode : "auto";
@@ -1285,11 +1313,11 @@ export default function HomePage() {
       apiFetch("/api/ui/prefs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme_mode: mode }),
+        body: JSON.stringify({ theme_mode: mode, density: uiDensity }),
       }).catch(() => {});
     }, 260);
     return () => window.clearTimeout(t);
-  }, [authed, themeMode]);
+  }, [authed, themeMode, uiDensity]);
 
   // Persist mobile sidebar open state (per session).
   useEffect(() => {
@@ -1820,6 +1848,10 @@ export default function HomePage() {
       const mode = String(json?.prefs?.theme_mode || "").trim();
       if (mode === "dark" || mode === "light" || mode === "contrast" || mode === "auto") {
         setThemeMode(mode as ThemeMode);
+      }
+      const density = String(json?.prefs?.density || "").trim();
+      if (density === "compact" || density === "comfortable") {
+        setUiDensity(density as UiDensity);
       }
     } catch {
       // ignore
@@ -8668,6 +8700,19 @@ export default function HomePage() {
                     </button>
 	                </div>
 	              </div>
+                <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
+                  <span className="muted">{t.tr("Density", "密度")}</span>
+                  <div style={{ width: 170 }}>
+                    <Select
+                      value={uiDensity}
+                      onChange={(v) => setUiDensity(v === "compact" ? "compact" : "comfortable")}
+                      options={[
+                        { value: "comfortable", label: t.tr("Comfortable", "舒适") },
+                        { value: "compact", label: t.tr("Compact", "紧凑") },
+                      ]}
+                    />
+                  </div>
+                </div>
 	            </>
 	          ) : null}
 	          <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>

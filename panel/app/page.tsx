@@ -937,6 +937,9 @@ export default function HomePage() {
   const [instanceTagsById, setInstanceTagsById] = useState<Record<string, string[]>>({});
   const [favoriteInstanceIds, setFavoriteInstanceIds] = useState<string[]>([]);
   const [instanceNotesById, setInstanceNotesById] = useState<Record<string, string>>({});
+  const [instanceMetaById, setInstanceMetaById] = useState<
+    Record<string, { server_kind?: string; server_version?: string; game_port?: number; loaded_at_unix?: number }>
+  >({});
 
   // Vanilla versions
   const [versions, setVersions] = useState<McVersion[]>([]);
@@ -2798,6 +2801,22 @@ export default function HomePage() {
         if (typeof c.frp_profile_id === "string") setFrpProfileId(c.frp_profile_id);
         if (Number.isFinite(Number(c.frp_remote_port))) setFrpRemotePort(Number(c.frp_remote_port));
         if (Number.isFinite(Number(c.game_port))) setGamePort(Number(c.game_port));
+
+        const nowUnix = Math.floor(Date.now() / 1000);
+        const kind = typeof c.server_kind === "string" ? String(c.server_kind || "").trim() : "";
+        const ver = typeof c.server_version === "string" ? String(c.server_version || "").trim() : "";
+        const portRaw = Math.round(Number(c.game_port ?? 0));
+        const port = Number.isFinite(portRaw) && portRaw >= 1 && portRaw <= 65535 ? portRaw : undefined;
+        setInstanceMetaById((prev) => ({
+          ...(prev || {}),
+          [inst]: {
+            ...((prev || {})[inst] || {}),
+            ...(kind ? { server_kind: kind } : {}),
+            ...(ver ? { server_version: ver } : {}),
+            ...(port != null ? { game_port: port } : {}),
+            loaded_at_unix: nowUnix,
+          },
+        }));
       } catch {
         // ignore
       }
@@ -2807,6 +2826,68 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [tab, selected, instanceId, authed]);
+
+  // Load per-instance meta for instance list (best-effort).
+  useEffect(() => {
+    if (authed !== true) return;
+    let cancelled = false;
+    async function loadMeta() {
+      if (tab !== "games") return;
+      if (!selected || !selectedDaemon?.connected) return;
+      const ids = Array.isArray(serverDirs) ? serverDirs.slice(0, 200) : [];
+      if (!ids.length) {
+        if (Object.keys(instanceMetaById || {}).length) setInstanceMetaById({});
+        return;
+      }
+
+      const cur = instanceMetaById || {};
+      const pruned: typeof cur = {};
+      for (const id of ids) {
+        const v = cur[id];
+        if (v) pruned[id] = v;
+      }
+      if (Object.keys(pruned).length !== Object.keys(cur).length) {
+        setInstanceMetaById(pruned);
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const ttlSec = 60;
+      const need = ids.filter((id) => {
+        const at = typeof pruned[id]?.loaded_at_unix === "number" ? (pruned[id].loaded_at_unix as number) : 0;
+        return !at || now - at > ttlSec;
+      });
+      if (!need.length) return;
+
+      const batch = need.slice(0, 6);
+      const updates: typeof cur = {};
+      for (const id of batch) {
+        if (cancelled) return;
+        const next: (typeof updates)[string] = { loaded_at_unix: now };
+        try {
+          const out = await callOkCommand("fs_read", { path: joinRelPath(id, INSTANCE_CONFIG_NAME) }, 10_000);
+          const raw = b64DecodeUtf8(String(out?.b64 || ""));
+          const cfg = raw ? JSON.parse(raw) : null;
+          if (cfg && typeof cfg === "object" && !Array.isArray(cfg)) {
+            const c: any = cfg;
+            if (typeof c.server_kind === "string" && String(c.server_kind || "").trim()) next.server_kind = String(c.server_kind || "").trim();
+            if (typeof c.server_version === "string" && String(c.server_version || "").trim()) next.server_version = String(c.server_version || "").trim();
+            const portRaw = Math.round(Number(c.game_port ?? 0));
+            const port = Number.isFinite(portRaw) && portRaw >= 1 && portRaw <= 65535 ? portRaw : null;
+            if (port != null) next.game_port = port;
+          }
+        } catch {
+          // ignore
+        }
+        updates[id] = next;
+      }
+      if (cancelled) return;
+      if (Object.keys(updates).length) setInstanceMetaById((prev) => ({ ...(prev || {}), ...updates }));
+    }
+    loadMeta();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, selected, selectedDaemon?.connected, serverDirs, instanceMetaById, authed]);
 
   // Switching games should exit edit mode to avoid mixing settings between instances.
   useEffect(() => {
@@ -7060,6 +7141,7 @@ export default function HomePage() {
     toggleFavoriteInstance,
     instanceNotesById,
     updateInstanceNote,
+    instanceMetaById,
     instanceId,
 	    setInstanceId,
 	    openSettingsModal,

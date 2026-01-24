@@ -79,6 +79,7 @@ export default function GamesView() {
     toggleFavoriteInstance,
     instanceNotesById,
     updateInstanceNote,
+    instanceMetaById,
     selectedDaemon,
     openSettingsModal,
     openJarUpdateModal,
@@ -1262,6 +1263,13 @@ export default function GamesView() {
                 const tagList = Array.isArray(tags) ? tags.map((s: any) => String(s || "").trim()).filter(Boolean) : [];
                 const note = String((instanceNotesById && (instanceNotesById as any)[id]) || "").trim();
                 const noteOneLine = note ? note.split(/\r?\n/)[0].slice(0, 120) : "";
+                const meta = (instanceMetaById && (instanceMetaById as any)[id]) || null;
+                const kindKey = String(meta?.server_kind || "").trim().toLowerCase();
+                const kind = kindKey ? `${kindKey.slice(0, 1).toUpperCase()}${kindKey.slice(1)}` : "";
+                const ver = String(meta?.server_version || "").trim();
+                const kindVer = [kind, ver].filter(Boolean).join(" ");
+                const portRaw = meta?.game_port != null ? Math.round(Number(meta.game_port)) : 0;
+                const port = Number.isFinite(portRaw) && portRaw >= 1 && portRaw <= 65535 ? portRaw : 0;
                 const running = !!runningById[id];
                 const isActive = id === instanceId;
                 return (
@@ -1285,6 +1293,12 @@ export default function GamesView() {
                           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{id}</span>
                           {favoriteSet.has(id) ? <span className="badge">★</span> : null}
                         </div>
+                        {kindVer || port ? (
+                          <div className="row" style={{ marginTop: 6, gap: 6, flexWrap: "wrap" }}>
+                            {kindVer ? <span className="badge">{kindVer}</span> : null}
+                            {port ? <span className="badge">:{port}</span> : null}
+                          </div>
+                        ) : null}
                         <div className="itemMeta">
                           {tagList.length ? (
                             <span>

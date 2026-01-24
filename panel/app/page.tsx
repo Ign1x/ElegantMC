@@ -722,6 +722,12 @@ export default function HomePage() {
   const num0 = useMemo(() => new Intl.NumberFormat(localeTag, { maximumFractionDigits: 0 }), [localeTag]);
   const num1 = useMemo(() => new Intl.NumberFormat(localeTag, { maximumFractionDigits: 1 }), [localeTag]);
 
+  const userInitial = useMemo(() => {
+    const name = String(authMe?.username || "").trim();
+    if (!name) return "?";
+    return name.slice(0, 1).toUpperCase();
+  }, [authMe?.username]);
+
   const fmtUnix = useCallback(
     (ts?: number | null) => {
       if (!ts) return "-";
@@ -792,6 +798,12 @@ export default function HomePage() {
   const [notifications, setNotifications] = useState<
     { id: string; kind: "info" | "ok" | "error"; message: string; detail?: string; atMs: number; seen: boolean }[]
   >([]);
+
+  // User menu + deep links
+  const [userMenuOpen, setUserMenuOpen] = useState<boolean>(false);
+  const [userMenuPos, setUserMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const userMenuBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [panelScrollTarget, setPanelScrollTarget] = useState<string>("");
 
   // Undo (trash)
   const [undoTrash, setUndoTrash] = useState<{
@@ -1578,6 +1590,11 @@ export default function HomePage() {
           setHelpOpen(false);
           return;
         }
+        if (userMenuOpen) {
+          e.preventDefault();
+          setUserMenuOpen(false);
+          return;
+        }
         if (onboardingOpen) {
           e.preventDefault();
           closeOnboarding(true);
@@ -1643,6 +1660,7 @@ export default function HomePage() {
     shortcutsOpen,
     changelogOpen,
     helpOpen,
+    userMenuOpen,
     notificationsOpen,
     cmdPaletteOpen,
     installOpen,
@@ -1725,6 +1743,67 @@ export default function HomePage() {
     }
     return res;
   }
+
+  useEffect(() => {
+    if (authed !== true && userMenuOpen) setUserMenuOpen(false);
+  }, [authed, userMenuOpen]);
+
+  const updateUserMenuPos = useCallback(() => {
+    const btn = userMenuBtnRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const pad = 12;
+    const width = 280;
+    const approxHeight = 260;
+    const left = Math.max(pad, Math.min(rect.right - width, (window.innerWidth || 0) - pad - width));
+    const top = Math.max(pad, Math.min(rect.bottom + 8, (window.innerHeight || 0) - pad - approxHeight));
+    setUserMenuPos({ left, top });
+  }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    updateUserMenuPos();
+    window.addEventListener("resize", updateUserMenuPos);
+    window.addEventListener("scroll", updateUserMenuPos, true);
+    return () => {
+      window.removeEventListener("resize", updateUserMenuPos);
+      window.removeEventListener("scroll", updateUserMenuPos, true);
+    };
+  }, [userMenuOpen, updateUserMenuPos]);
+
+  useEffect(() => {
+    if (!panelScrollTarget) return;
+    if (tab !== "panel") return;
+    let cancelled = false;
+    let tries = 0;
+    let timeout: number | null = null;
+
+    const attempt = () => {
+      if (cancelled) return;
+      const el = document.getElementById(panelScrollTarget);
+      if (el) {
+        try {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch {
+          // ignore
+        }
+        setPanelScrollTarget("");
+        return;
+      }
+      tries++;
+      if (tries > 12) {
+        setPanelScrollTarget("");
+        return;
+      }
+      timeout = window.setTimeout(attempt, 50);
+    };
+
+    timeout = window.setTimeout(attempt, 0);
+    return () => {
+      cancelled = true;
+      if (timeout) window.clearTimeout(timeout);
+    };
+  }, [panelScrollTarget, tab]);
 
   async function refreshUiPrefs() {
     try {
@@ -2587,6 +2666,13 @@ export default function HomePage() {
     const doc = defaultHelpDocForTab(tab);
     if (helpDocText && helpDoc === doc) return;
     await loadHelpDoc(doc);
+  }
+
+  function openPanelSection(id: string) {
+    setUserMenuOpen(false);
+    setSidebarOpen(false);
+    setTab("panel");
+    setPanelScrollTarget(String(id || "").trim());
   }
 
   async function copyText(text: string) {
@@ -8021,6 +8107,58 @@ export default function HomePage() {
 	        </div>
 	      ) : null}
 
+        {userMenuOpen ? (
+          <div className="ctxMenuOverlay" onClick={() => setUserMenuOpen(false)}>
+            <div
+              className="ctxMenu userMenu"
+              role="menu"
+              style={{ left: userMenuPos?.left ?? 12, top: userMenuPos?.top ?? 12 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="userMenuHead">
+                <span className="userAvatar" aria-hidden="true">
+                  {userInitial}
+                </span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="userMenuUser">{String(authMe?.username || "-")}</div>
+                  <div className="userMenuMeta">
+                    {t.tr("Signed in via", "登录方式")}: <code>{String(authMe?.via || "session")}</code>
+                  </div>
+                  <div className="userMenuBadges">
+                    {authMe?.totp_enabled ? (
+                      <StatusBadge tone="ok">{t.tr("2FA enabled", "2FA 已启用")}</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="warn">{t.tr("2FA disabled", "2FA 未启用")}</StatusBadge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <button type="button" className="ctxMenuItem" onClick={() => openPanelSection("panel-sessions")}>
+                {t.tr("Sessions", "会话")}
+              </button>
+              <button type="button" className="ctxMenuItem" onClick={() => openPanelSection("panel-tokens")}>
+                {t.tr("API Tokens", "API Tokens")}
+              </button>
+              <button type="button" className="ctxMenuItem" onClick={() => openPanelSection("panel-users")}>
+                {t.tr("Security settings", "安全设置")}
+              </button>
+              <div className="ctxMenuSep" />
+              <button
+                type="button"
+                className="ctxMenuItem danger"
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  const p = logout();
+                  if (p && typeof (p as any).then === "function") (p as any).catch(() => null);
+                }}
+              >
+                {t.tr("Logout", "退出")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
 	      {notificationsOpen ? (
 	        <div className="drawerOverlay" onClick={() => setNotificationsOpen(false)}>
 	          <div
@@ -8387,31 +8525,62 @@ export default function HomePage() {
             </div>
           </div>
 
-	          <div className="field" style={{ minWidth: 240 }}>
-	            <label>{t.tr("Daemon", "节点")}</label>
-	            <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
-	              <div style={{ flex: 1 }}>
-	                {authed === true && !daemonsLoadedOnce ? (
-	                  <div className="skeleton" style={{ minHeight: 44, borderRadius: 12 }} />
-	                ) : (
-	                  <Select
-	                    value={selected}
-	                    onChange={(v) => setSelected(v)}
-	                    disabled={authed !== true}
-	                    options={daemons.map((d) => ({
-	                      value: d.id,
-	                      label: `${d.id} ${d.connected ? t.tr("(online)", "（在线）") : t.tr("(offline)", "（离线）")}`,
-	                    }))}
-	                  />
-	                )}
-	              </div>
-	              <span
-	                className={`statusDot ${selectedDaemon?.connected ? "ok" : ""}`}
-	                title={selectedDaemon?.connected ? t.tr("online", "在线") : t.tr("offline", "离线")}
-	              />
-                {globalBusy ? <span className="busySpinner" title={t.tr("Working…", "处理中…")} aria-hidden="true" /> : null}
-	            </div>
-	          </div>
+	          <div className="topbarRight">
+              <div className="field" style={{ minWidth: 240 }}>
+                <label>{t.tr("Daemon", "节点")}</label>
+                <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
+                  <div style={{ flex: 1 }}>
+                    {authed === true && !daemonsLoadedOnce ? (
+                      <div className="skeleton" style={{ minHeight: 44, borderRadius: 12 }} />
+                    ) : (
+                      <Select
+                        value={selected}
+                        onChange={(v) => setSelected(v)}
+                        disabled={authed !== true}
+                        options={daemons.map((d) => ({
+                          value: d.id,
+                          label: `${d.id} ${d.connected ? t.tr("(online)", "（在线）") : t.tr("(offline)", "（离线）")}`,
+                        }))}
+                      />
+                    )}
+                  </div>
+                  <span
+                    className={`statusDot ${selectedDaemon?.connected ? "ok" : ""}`}
+                    title={selectedDaemon?.connected ? t.tr("online", "在线") : t.tr("offline", "离线")}
+                  />
+                  {globalBusy ? <span className="busySpinner" title={t.tr("Working…", "处理中…")} aria-hidden="true" /> : null}
+                </div>
+              </div>
+
+              {authed === true ? (
+                <Tooltip content={t.tr("Account", "账户")} instant>
+                  <button
+                    ref={userMenuBtnRef}
+                    type="button"
+                    className={`userMenuBtn ${userMenuOpen ? "open" : ""}`}
+                    aria-haspopup="menu"
+                    aria-expanded={userMenuOpen}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (userMenuOpen) {
+                        setUserMenuOpen(false);
+                        return;
+                      }
+                      updateUserMenuPos();
+                      setUserMenuOpen(true);
+                    }}
+                  >
+                    <span className="userAvatar" aria-hidden="true">
+                      {userInitial}
+                    </span>
+                    <span className="userMenuName">{String(authMe?.username || t.tr("Account", "账户"))}</span>
+                    <span className="userMenuCaret" aria-hidden="true">
+                      ▾
+                    </span>
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
 	        </div>
 
         {authed === true && selectedDaemon && !selectedDaemon.connected ? (

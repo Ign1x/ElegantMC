@@ -567,6 +567,98 @@ button.navItem .badge {
   min-width: 0;
 }
 
+.topbarRight {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.userMenuBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
+}
+
+.userMenuBtn:hover:not(:disabled) {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+.userMenuBtn.open {
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+.userAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--primary-border);
+  background: rgba(139, 92, 246, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.01em;
+  color: var(--text);
+  flex: 0 0 auto;
+}
+
+.userMenuName {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userMenuCaret {
+  opacity: 0.8;
+}
+
+.userMenu {
+  width: 280px;
+}
+
+.userMenuHead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 6px;
+}
+
+.userMenuUser {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userMenuMeta {
+  margin-top: 2px;
+  font-size: var(--font-size-2xs);
+  line-height: var(--line-height-tight);
+  color: var(--muted2);
+}
+
+.userMenuBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .pageTitle {
   display: flex;
   align-items: baseline;
@@ -1890,13 +1982,15 @@ button.logTopPill:hover {
 .ctxMenuOverlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 65;
 }
 
 .ctxMenu {
   position: fixed;
   min-width: 220px;
   max-width: min(320px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 24px));
+  overflow: auto;
   border-radius: var(--radius);
   border: 1px solid var(--border2);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)), var(--card2);
@@ -2468,7 +2562,15 @@ tr:hover td {
   .topbar > .row {
     width: 100%;
   }
-  .topbar > .field {
+  .topbar > .field,
+  .topbar > .topbarRight {
+    width: 100%;
+    min-width: 0;
+  }
+  .topbarRight {
+    align-items: stretch;
+  }
+  .topbarRight .field {
     width: 100%;
     min-width: 0;
   }

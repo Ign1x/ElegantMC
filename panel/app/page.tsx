@@ -759,7 +759,11 @@ export default function HomePage() {
   const [confirmDanger, setConfirmDanger] = useState<boolean>(false);
   const [confirmConfirmLabel, setConfirmConfirmLabel] = useState<string>("Confirm");
   const [confirmCancelLabel, setConfirmCancelLabel] = useState<string>("Cancel");
+  const [confirmTextRequired, setConfirmTextRequired] = useState<string>("");
+  const [confirmTextValue, setConfirmTextValue] = useState<string>("");
+  const [confirmTextPlaceholder, setConfirmTextPlaceholder] = useState<string>("");
   const confirmResolveRef = useRef<((ok: boolean) => void) | null>(null);
+  const confirmInputRef = useRef<HTMLInputElement | null>(null);
 
   const [promptOpen, setPromptOpen] = useState<boolean>(false);
   const [promptTitle, setPromptTitle] = useState<string>("Input");
@@ -1572,6 +1576,7 @@ export default function HomePage() {
       }
       if (e.key === "Enter" && confirmOpen && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+          if (confirmTextRequired && confirmTextValue.trim() !== confirmTextRequired) return;
           e.preventDefault();
           closeConfirm(true);
         }
@@ -1581,6 +1586,8 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     confirmOpen,
+    confirmTextRequired,
+    confirmTextValue,
     promptOpen,
     copyOpen,
     shortcutsOpen,
@@ -1601,6 +1608,13 @@ export default function HomePage() {
     const t = window.setTimeout(() => cmdPaletteInputRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
   }, [cmdPaletteOpen]);
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    if (!confirmTextRequired) return;
+    const t = window.setTimeout(() => confirmInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [confirmOpen, confirmTextRequired]);
 
   useEffect(() => {
     try {
@@ -2087,21 +2101,16 @@ export default function HomePage() {
         `Delete node ${id}?\n\nThis removes its saved token from the panel and will prevent reconnecting until you re-add it.`,
         `删除节点 ${id}？\n\n这会从面板移除该节点的 token，并阻止其再次连接（除非重新添加）。`
       ),
-      { title: t.tr("Delete Node", "删除节点"), confirmLabel: t.tr("Continue", "继续"), cancelLabel: t.tr("Cancel", "取消"), danger: true }
+      {
+        title: t.tr("Delete Node", "删除节点"),
+        confirmLabel: t.tr("Delete", "删除"),
+        cancelLabel: t.tr("Cancel", "取消"),
+        danger: true,
+        confirmText: id,
+        confirmTextPlaceholder: id,
+      }
     );
     if (!ok) return;
-
-    const typed = await promptDialog({
-      title: t.tr("Confirm", "确认"),
-      message: t.tr(`Type "${id}" to confirm deleting this node.`, `输入 “${id}” 以确认删除该节点。`),
-      placeholder: id,
-      okLabel: t.tr("Delete", "删除"),
-      cancelLabel: t.tr("Cancel", "取消"),
-    });
-    if (typed !== id) {
-      setNodesStatus(t.tr("Cancelled", "已取消"));
-      return;
-    }
 
     setNodesStatus(t.tr("Deleting...", "删除中..."));
     try {
@@ -2411,6 +2420,9 @@ export default function HomePage() {
 
   function closeConfirm(ok: boolean) {
     setConfirmOpen(false);
+    setConfirmTextRequired("");
+    setConfirmTextValue("");
+    setConfirmTextPlaceholder("");
     const resolve = confirmResolveRef.current;
     confirmResolveRef.current = null;
     if (resolve) resolve(ok);
@@ -2425,7 +2437,14 @@ export default function HomePage() {
 
   async function confirmDialog(
     message: string,
-    opts: { title?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean } = {}
+    opts: {
+      title?: string;
+      confirmLabel?: string;
+      cancelLabel?: string;
+      danger?: boolean;
+      confirmText?: string;
+      confirmTextPlaceholder?: string;
+    } = {}
   ) {
     const msg = String(message || "");
     if (!msg) return false;
@@ -2436,6 +2455,10 @@ export default function HomePage() {
       setConfirmDanger(!!opts.danger);
       setConfirmConfirmLabel(opts.confirmLabel || (opts.danger ? t.tr("Delete", "删除") : t.tr("OK", "确定")));
       setConfirmCancelLabel(opts.cancelLabel || t.tr("Cancel", "取消"));
+      const need = String(opts.confirmText || "").trim();
+      setConfirmTextRequired(need);
+      setConfirmTextValue("");
+      setConfirmTextPlaceholder(String(opts.confirmTextPlaceholder || need));
       setConfirmOpen(true);
     });
   }
@@ -5453,24 +5476,14 @@ export default function HomePage() {
 		        ),
 		        {
 		          title: t.tr("Move to Trash", "移入回收站"),
-		          confirmLabel: t.tr("Continue", "继续"),
+		          confirmLabel: t.tr("Move", "移入"),
 		          cancelLabel: t.tr("Cancel", "取消"),
 		          danger: true,
+              confirmText: id,
+              confirmTextPlaceholder: id,
 		        }
 		      );
 		      if (!ok) return;
-
-		      const typed = await promptDialog({
-		        title: t.tr("Confirm", "确认"),
-		        message: t.tr(`Type "${id}" to confirm.`, `输入 “${id}” 以确认。`),
-		        placeholder: id,
-		        okLabel: t.tr("Move", "移入"),
-		        cancelLabel: t.tr("Cancel", "取消"),
-		      });
-		      if (typed !== id) {
-		        setServerOpStatus(t.tr("Cancelled", "已取消"));
-		        return;
-		      }
 
 		      try {
 		        await callOkCommand("frp_stop", { instance_id: id }, 30_000);
@@ -7358,12 +7371,37 @@ export default function HomePage() {
 		              <div className="hint" style={{ whiteSpace: "pre-wrap" }}>
 		                {confirmMessage}
 		              </div>
+                  {confirmTextRequired ? (
+                    <div className="field" style={{ marginTop: 12 }}>
+                      <label>{t.tr("Type to confirm", "输入以确认")}</label>
+                      <input
+                        ref={confirmInputRef}
+                        value={confirmTextValue}
+                        onChange={(e) => setConfirmTextValue(e.target.value)}
+                        placeholder={confirmTextPlaceholder || confirmTextRequired}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        onKeyDown={(e: any) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          if (confirmTextValue.trim() !== confirmTextRequired) return;
+                          closeConfirm(true);
+                        }}
+                      />
+                      <div className="hint">{t.tr(`Type "${confirmTextRequired}" to enable.`, `输入 “${confirmTextRequired}” 以启用操作。`)}</div>
+                    </div>
+                  ) : null}
 		            </div>
 		            <div className="modalFooter">
 		              <button type="button" onClick={() => closeConfirm(false)}>
 		                {confirmCancelLabel}
 		              </button>
-		              <button type="button" className={confirmDanger ? "dangerBtn" : "primary"} onClick={() => closeConfirm(true)}>
+		              <button
+                    type="button"
+                    className={confirmDanger ? "dangerBtn" : "primary"}
+                    onClick={() => closeConfirm(true)}
+                    disabled={!!confirmTextRequired && confirmTextValue.trim() !== confirmTextRequired}
+                  >
 		                {confirmConfirmLabel}
 		              </button>
 		            </div>

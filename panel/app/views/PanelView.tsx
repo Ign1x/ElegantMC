@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppCtx } from "../appCtx";
+import CopyButton from "../ui/CopyButton";
 import Field from "../ui/Field";
 import Select from "../ui/Select";
 
@@ -23,7 +24,6 @@ export default function PanelView() {
     saveScheduleJson,
     runScheduleTask,
     confirmDialog,
-    copyText,
     fmtUnix,
     serverDirs,
   } = useAppCtx();
@@ -832,9 +832,12 @@ export default function PanelView() {
               {updateInfo?.latest?.url ? (
                 <div className="row" style={{ justifyContent: "space-between", gap: 10, marginTop: 6 }}>
                   <code style={{ wordBreak: "break-all" }}>{String(updateInfo.latest.url)}</code>
-                  <button type="button" className="iconBtn" onClick={() => copyText(String(updateInfo.latest.url))}>
-                    {t.tr("Copy URL", "复制 URL")}
-                  </button>
+                  <CopyButton
+                    text={String(updateInfo.latest.url)}
+                    label={t.tr("Copy URL", "复制 URL")}
+                    tooltip={t.tr("Copy URL", "复制 URL")}
+                    ariaLabel={t.tr("Copy URL", "复制 URL")}
+                  />
                 </div>
               ) : null}
               <div className="hint" style={{ marginTop: 6 }}>
@@ -1139,9 +1142,7 @@ export default function PanelView() {
             <div className="row" style={{ justifyContent: "space-between", gap: 10, marginTop: 6 }}>
               <code style={{ wordBreak: "break-all" }}>{createdToken}</code>
               <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                <button type="button" className="iconBtn" onClick={() => copyText(createdToken)}>
-                  {t.tr("Copy", "复制")}
-                </button>
+                <CopyButton text={createdToken} />
                 <button type="button" onClick={() => setCreatedToken("")}>
                   {t.tr("Hide", "隐藏")}
                 </button>
@@ -1631,9 +1632,7 @@ export default function PanelView() {
                   {(totpRecoveryCodes || []).join("\n")}
                 </pre>
                 <div className="btnGroup" style={{ marginTop: 10, justifyContent: "flex-end" }}>
-                  <button type="button" className="iconBtn" onClick={() => copyText((totpRecoveryCodes || []).join("\n"))}>
-                    {t.tr("Copy", "复制")}
-                  </button>
+                  <CopyButton text={(totpRecoveryCodes || []).join("\n")} />
                   <button type="button" className="primary" onClick={() => setTotpOpen(false)} disabled={totpBusy}>
                     {t.tr("Done", "完成")}
                   </button>
@@ -1652,12 +1651,20 @@ export default function PanelView() {
                   <Field label={t.tr("otpauth URI", "otpauth URI")} style={{ gridColumn: "1 / -1" }}>
                     <input value={totpUri} readOnly />
                     <div className="btnGroup" style={{ marginTop: 8, justifyContent: "flex-end" }}>
-                      <button type="button" className="iconBtn" onClick={() => copyText(totpSecret)} disabled={!totpSecret}>
-                        {t.tr("Copy secret", "复制密钥")}
-                      </button>
-                      <button type="button" className="iconBtn" onClick={() => copyText(totpUri)} disabled={!totpUri}>
-                        {t.tr("Copy URI", "复制 URI")}
-                      </button>
+                      <CopyButton
+                        text={totpSecret}
+                        disabled={!totpSecret}
+                        label={t.tr("Copy secret", "复制密钥")}
+                        tooltip={t.tr("Copy secret", "复制密钥")}
+                        ariaLabel={t.tr("Copy secret", "复制密钥")}
+                      />
+                      <CopyButton
+                        text={totpUri}
+                        disabled={!totpUri}
+                        label={t.tr("Copy URI", "复制 URI")}
+                        tooltip={t.tr("Copy URI", "复制 URI")}
+                        ariaLabel={t.tr("Copy URI", "复制 URI")}
+                      />
                     </div>
                   </Field>
                   <Field

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { AppCtxProvider } from "./appCtx";
 import { createT, normalizeLocale, type Locale } from "./i18n";
 import Icon from "./ui/Icon";
+import CopyButton from "./ui/CopyButton";
 import ErrorBoundary from "./ui/ErrorBoundary";
 import DangerZone from "./ui/DangerZone";
 import Select from "./ui/Select";
@@ -9122,10 +9123,7 @@ export default function HomePage() {
                             ]}
                           />
                         </div>
-                        <button type="button" className="iconBtn" onClick={() => copyText(jvmArgsComputed.join("\n") || "<empty>")} disabled={!jvmArgsComputed.length}>
-                          <Icon name="copy" />
-                          {t.tr("Copy", "复制")}
-                        </button>
+                        <CopyButton text={jvmArgsComputed.join("\n") || "<empty>"} disabled={!jvmArgsComputed.length} />
                       </div>
                       <textarea
                         value={jvmArgsExtra}
@@ -9950,10 +9948,7 @@ export default function HomePage() {
                 <label>{t.tr("docker-compose.yml", "docker-compose.yml")}</label>
                 <textarea readOnly rows={12} value={deployComposeYml} style={{ width: "100%" }} onFocus={(e) => e.currentTarget.select()} />
                 <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                  <button type="button" className="iconBtn" onClick={() => copyText(deployComposeYml)}>
-                    <Icon name="copy" />
-                    {t.tr("Copy", "复制")}
-                  </button>
+                  <CopyButton text={deployComposeYml} />
                   <button
                     type="button"
                     className="iconBtn"

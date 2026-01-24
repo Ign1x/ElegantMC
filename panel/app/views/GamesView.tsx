@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppCtx } from "../appCtx";
+import CopyButton from "../ui/CopyButton";
 import Icon from "../ui/Icon";
 import Select from "../ui/Select";
 import DangerZone from "../ui/DangerZone";
@@ -1735,10 +1736,7 @@ export default function GamesView() {
           >
             {instanceId.trim() ? socketText : "-"}
           </code>
-          <button type="button" className="iconBtn" onClick={() => copyText(socketText)} disabled={!instanceId.trim()}>
-            <Icon name="copy" />
-            {t.tr("Copy", "复制")}
-          </button>
+          <CopyButton text={socketText} disabled={!instanceId.trim()} />
         </div>
         <div className="hint" style={{ marginTop: 8 }}>
           <span>
@@ -2070,15 +2068,7 @@ export default function GamesView() {
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                            <button
-                              type="button"
-                              className="iconBtn iconOnly"
-                              title={t.tr("Copy path", "复制路径")}
-                              aria-label={t.tr("Copy path", "复制路径")}
-                              onClick={() => copyText(path)}
-                            >
-                              <Icon name="copy" />
-                            </button>
+                            <CopyButton iconOnly text={path} tooltip={t.tr("Copy path", "复制路径")} ariaLabel={t.tr("Copy path", "复制路径")} />
                             <button
                               type="button"
                               onClick={() => {
@@ -2316,9 +2306,7 @@ export default function GamesView() {
                         </td>
                         <td className="muted">{p.expiresOn || "-"}</td>
                         <td style={{ textAlign: "right" }}>
-                          <button type="button" className="iconBtn iconOnly" title={t.tr("Copy", "复制")} aria-label={t.tr("Copy", "复制")} onClick={() => copyText(p.uuid || p.name)}>
-                            <Icon name="copy" />
-                          </button>
+                          <CopyButton iconOnly text={String(p.uuid || p.name || "")} />
                         </td>
                       </tr>
                     ))}
@@ -2381,9 +2369,7 @@ export default function GamesView() {
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <div className="btnGroup">
-                          <button type="button" className="iconBtn iconOnly" title={t.tr("Copy", "复制")} aria-label={t.tr("Copy", "复制")} onClick={() => copyText(p.uuid || p.name)}>
-                            <Icon name="copy" />
-                          </button>
+                          <CopyButton iconOnly text={String(p.uuid || p.name || "")} />
                           <button
                             type="button"
                             className="dangerBtn iconBtn iconOnly"
@@ -2479,9 +2465,7 @@ export default function GamesView() {
                       <td className="muted">{p.bypassesPlayerLimit ? t.tr("yes", "是") : t.tr("no", "否")}</td>
                       <td style={{ textAlign: "right" }}>
                         <div className="btnGroup">
-                          <button type="button" className="iconBtn iconOnly" title={t.tr("Copy", "复制")} aria-label={t.tr("Copy", "复制")} onClick={() => copyText(p.uuid || p.name)}>
-                            <Icon name="copy" />
-                          </button>
+                          <CopyButton iconOnly text={String(p.uuid || p.name || "")} />
                           <button
                             type="button"
                             className="dangerBtn iconBtn iconOnly"

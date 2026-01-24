@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppCtx } from "../appCtx";
+import CopyButton from "../ui/CopyButton";
 import Icon from "../ui/Icon";
 import Select from "../ui/Select";
 import Tooltip from "../ui/Tooltip";
@@ -1007,20 +1008,13 @@ export default function FilesView() {
                   </span>
                 ))
               )}
-              <Tooltip content={t.tr("Copy path", "复制路径")}>
-                <button
-                  type="button"
-                  className="iconBtn iconOnly"
-                  aria-label={t.tr("Copy path", "复制路径")}
-                  style={{ marginLeft: 8 }}
-                  onClick={() => {
-                    const p = fsPath ? `servers/${fsPath}` : "servers/";
-                    copyText(p);
-                  }}
-                >
-                  <Icon name="copy" />
-                </button>
-              </Tooltip>
+              <CopyButton
+                iconOnly
+                text={fsPath ? `servers/${fsPath}` : "servers/"}
+                tooltip={t.tr("Copy path", "复制路径")}
+                ariaLabel={t.tr("Copy path", "复制路径")}
+                style={{ marginLeft: 8 }}
+              />
             </div>
             {fsStatus ? <div className="hint">{fsStatus}</div> : null}
           </div>
@@ -1415,15 +1409,7 @@ export default function FilesView() {
               <button type="button" className="iconBtn" onClick={saveFile} disabled={!textEditable}>
                 {t.tr("Save", "保存")}
               </button>
-              <button
-                type="button"
-                className="iconBtn"
-                onClick={() => copyText(String(fsFileText || "<empty>"))}
-                disabled={!textEditable}
-              >
-                <Icon name="copy" />
-                {t.tr("Copy", "复制")}
-              </button>
+              <CopyButton text={String(fsFileText || "<empty>")} disabled={!textEditable} />
               <button type="button" className="iconBtn" onClick={() => setFindOpen((v) => !v)} disabled={!textEditable}>
                 <Icon name="search" />
                 {t.tr("Find", "查找")}

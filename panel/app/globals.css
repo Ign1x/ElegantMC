@@ -1255,6 +1255,11 @@ button.iconOnly {
   transition-delay: 0.35s;
 }
 
+.uiTooltipWrap.instant:hover .uiTooltip,
+.uiTooltipWrap.instant:focus-within .uiTooltip {
+  transition-delay: 0s;
+}
+
 .sparkWrap {
   position: relative;
   display: inline-block;

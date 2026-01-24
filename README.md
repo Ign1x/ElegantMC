@@ -93,6 +93,47 @@ DOCKER_BUILDKIT=0 docker compose up -d --build
 docker compose up -d --build
 ```
 
+## 本地开发/运行（不使用 Docker）
+
+### 前置要求
+
+- Node.js 20+（npm）
+- Go 1.22+
+
+### 1) 启动 Panel
+
+```bash
+cd panel
+npm ci
+ELEGANTMC_PANEL_ADMIN_PASSWORD='change-me' \
+ELEGANTMC_PANEL_HOST='127.0.0.1' \
+ELEGANTMC_PANEL_PORT='3000' \
+npm run dev
+```
+
+访问 `http://127.0.0.1:3000`。
+
+> Panel 默认把数据写到 `panel/.elegantmc-panel/`（可用 `ELEGANTMC_PANEL_DATA_DIR` 覆盖）。
+
+### 2) 在 Panel 创建节点 token
+
+进入 **Nodes → Add**，填写 `daemon_id` 并复制生成的 `token`。
+
+### 3) 启动 Daemon
+
+```bash
+cd daemon
+go build -o ./elegantmc-daemon ./cmd/elegantmc-daemon
+
+ELEGANTMC_PANEL_WS_URL='ws://127.0.0.1:3000/ws/daemon' \
+ELEGANTMC_DAEMON_ID='home-1' \
+ELEGANTMC_TOKEN='your-token' \
+ELEGANTMC_BASE_DIR='./data' \
+./elegantmc-daemon
+```
+
+> `ELEGANTMC_BASE_DIR` 下会创建 `servers/`（游戏实例目录）。
+
 ## Smoke Test（5 分钟自检）
 
 1) 打开 Panel：`http://127.0.0.1:3000`

@@ -62,6 +62,7 @@ export default function PanelView() {
   const [apiTokensStatus, setApiTokensStatus] = useState<string>("");
   const [apiTokensBusy, setApiTokensBusy] = useState<boolean>(false);
   const [newTokenName, setNewTokenName] = useState<string>("");
+  const [apiTokenQuery, setApiTokenQuery] = useState<string>("");
   const [createdToken, setCreatedToken] = useState<string>("");
 
   const [rotateSecretOpen, setRotateSecretOpen] = useState<boolean>(false);
@@ -546,6 +547,16 @@ export default function PanelView() {
 
   const q = settingsQuery.trim().toLowerCase();
   const show = (...terms: string[]) => !q || terms.some((t) => String(t || "").toLowerCase().includes(q));
+
+  const filteredApiTokens = useMemo(() => {
+    const q = apiTokenQuery.trim().toLowerCase();
+    if (!q) return apiTokens;
+    return (Array.isArray(apiTokens) ? apiTokens : []).filter((tok: any) => {
+      const name = String(tok?.name || "").toLowerCase();
+      const fp = String(tok?.fingerprint || "").toLowerCase();
+      return name.includes(q) || fp.includes(q);
+    });
+  }, [apiTokenQuery, apiTokens]);
 
   function uniqueTaskId(existingTasks: any[], base: string) {
     const used = new Set((existingTasks || []).map((t) => String(t?.id || "").trim()).filter(Boolean));
@@ -1152,44 +1163,82 @@ export default function PanelView() {
           </div>
         ) : null}
 
-        {apiTokens.length ? (
-          <table style={{ marginTop: 12 }}>
-            <thead>
-              <tr>
-                <th>{t.tr("Name", "名称")}</th>
-                <th>{t.tr("Created", "创建")}</th>
-                <th>{t.tr("Last used", "最近使用")}</th>
-                <th>{t.tr("Fingerprint", "指纹")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {apiTokens.map((tok: any) => {
-                const id = String(tok?.id || "").trim();
-                const name = String(tok?.name || "").trim() || "-";
-                const createdUnix = tok?.created_at_unix ? Number(tok.created_at_unix) : 0;
-                const lastUsedUnix = tok?.last_used_at_unix ? Number(tok.last_used_at_unix) : 0;
-                const fp = String(tok?.fingerprint || "").trim() || "-";
-                return (
-                  <tr key={id || fp}>
-                    <td style={{ minWidth: 220 }}>{name}</td>
-                    <td>{createdUnix ? <TimeAgo unix={createdUnix} /> : "-"}</td>
-                    <td>{lastUsedUnix ? <TimeAgo unix={lastUsedUnix} /> : "-"}</td>
-                    <td>
-                      <code>{fp}</code>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div className="btnGroup" style={{ justifyContent: "flex-end" }}>
-                        <button type="button" className="dangerBtn" onClick={() => revokeApiTokenNow(id)} disabled={apiTokensBusy || !id}>
-                          {t.tr("Revoke", "撤销")}
-                        </button>
+        <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 12, alignItems: "end" }}>
+          <Field
+            label={t.tr("Search", "搜索")}
+            hint={
+              apiTokens.length
+                ? t.tr(`Showing ${filteredApiTokens.length} of ${apiTokens.length}`, `显示 ${filteredApiTokens.length}/${apiTokens.length}`)
+                : t.tr("No tokens yet.", "暂无 token。")
+            }
+            style={{ minWidth: 260, flex: 1 }}
+          >
+            <input
+              value={apiTokenQuery}
+              onChange={(e) => setApiTokenQuery(e.target.value)}
+              placeholder={t.tr("Search by name or fingerprint…", "按名称或指纹搜索…")}
+            />
+          </Field>
+          <div className="hint" style={{ alignSelf: "end" }}>
+            {t.tr("Treat tokens like passwords.", "Token 相当于密码，请妥善保管。")}
+          </div>
+        </div>
+
+        {filteredApiTokens.length ? (
+          <div className="grid2" style={{ marginTop: 12, alignItems: "start" }}>
+            {filteredApiTokens.map((tok: any) => {
+              const id = String(tok?.id || "").trim();
+              const fp = String(tok?.fingerprint || "").trim();
+              const name = String(tok?.name || "").trim() || t.tr("Unnamed token", "未命名 token");
+              const createdUnix = tok?.created_at_unix ? Number(tok.created_at_unix) : 0;
+              const lastUsedUnix = tok?.last_used_at_unix ? Number(tok.last_used_at_unix) : 0;
+              const masked = fp ? `emc_••••••••••••••••••••-${fp}` : "emc_••••••••••••••••••••";
+              const stale = lastUsedUnix > 0 && nowUnix - lastUsedUnix > 60 * 60 * 24 * 30;
+              return (
+                <div key={id || fp || name} className="itemCard">
+                  <div className="itemCardHeader">
+                    <div style={{ minWidth: 0 }}>
+                      <div className="itemTitle">{name}</div>
+                      <div className="itemMeta">
+                        {t.tr("Created", "创建")}: {createdUnix ? <TimeAgo unix={createdUnix} /> : "-"} · {t.tr("Last used", "最近使用")}:{" "}
+                        {lastUsedUnix ? <TimeAgo unix={lastUsedUnix} /> : t.tr("Never", "从未")}
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                    <div className="itemActions">
+                      {!lastUsedUnix ? <span className="badge warn">{t.tr("never used", "从未使用")}</span> : stale ? <span className="badge">{t.tr("stale", "长期未用")}</span> : null}
+                      <button type="button" className="dangerBtn" onClick={() => revokeApiTokenNow(id)} disabled={apiTokensBusy || !id}>
+                        {t.tr("Revoke", "撤销")}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid2" style={{ alignItems: "start" }}>
+                    <div className="kv">
+                      <div className="k">{t.tr("Token (masked)", "Token（隐藏）")}</div>
+                      <div className="v">
+                        <code style={{ wordBreak: "break-all" }}>{masked}</code>
+                      </div>
+                    </div>
+                    <div className="kv">
+                      <div className="k">{t.tr("Fingerprint", "指纹")}</div>
+                      <div className="v">
+                        <code>{fp || "-"}</code>
+                        <CopyButton
+                          text={fp || ""}
+                          iconOnly
+                          tooltip={t.tr("Copy fingerprint", "复制指纹")}
+                          ariaLabel={t.tr("Copy fingerprint", "复制指纹")}
+                          disabled={!fp}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : apiTokens.length ? (
+          <div className="emptyState">{t.tr("No matches.", "没有匹配项。")}</div>
         ) : (
           <div className="emptyState">{t.tr("No tokens.", "暂无 tokens。")}</div>
         )}

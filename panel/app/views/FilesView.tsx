@@ -335,6 +335,7 @@ export default function FilesView() {
   const [listViewportH, setListViewportH] = useState<number>(520);
   const listScrollSaveTimerRef = useRef<number | null>(null);
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; entry: any } | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [jsonCheck, setJsonCheck] = useState<{ ok: boolean; message: string; line?: number; col?: number; pos?: number } | null>(null);
   const [yamlCheck, setYamlCheck] = useState<{ ok: boolean; message: string; line?: number; col?: number; pos?: number } | null>(null);
@@ -354,6 +355,20 @@ export default function FilesView() {
   useEffect(() => {
     setSelectedNames([]);
   }, [fsPath, fsEntries]);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCtxMenu(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [ctxMenu]);
+
+  useEffect(() => {
+    if (ctxMenu) setCtxMenu(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fsPath]);
 
   useEffect(() => {
     const el = listScrollRef.current;
@@ -436,6 +451,20 @@ export default function FilesView() {
     const overflow = list.slice(1, -3);
     return { collapsed: true, head, overflow, tail };
   }, [fsBreadcrumbs]);
+
+  const ctxMenuPos = useMemo(() => {
+    if (!ctxMenu) return { left: 0, top: 0 };
+    const pad = 12;
+    const w = 260;
+    const h = 320;
+    const vw = typeof window === "undefined" ? 0 : window.innerWidth;
+    const vh = typeof window === "undefined" ? 0 : window.innerHeight;
+    const maxLeft = Math.max(pad, vw - w - pad);
+    const maxTop = Math.max(pad, vh - h - pad);
+    const left = Math.max(pad, Math.min(ctxMenu.x, maxLeft));
+    const top = Math.max(pad, Math.min(ctxMenu.y, maxTop));
+    return { left, top };
+  }, [ctxMenu]);
 
   async function navigateToPath(path: string) {
     if (fsDirty) {
@@ -975,7 +1004,10 @@ export default function FilesView() {
           <div
             className="tableScroll"
             ref={listScrollRef}
-            onScroll={(e) => setListScrollTop(e.currentTarget.scrollTop)}
+            onScroll={(e) => {
+              setListScrollTop(e.currentTarget.scrollTop);
+              if (ctxMenu) setCtxMenu(null);
+            }}
             style={{ maxHeight: 520, overflow: "auto" }}
           >
             <table>
@@ -1017,7 +1049,13 @@ export default function FilesView() {
                 ) : null}
                 {!entriesLoading
                   ? fileListVirtual.visible.map((e: any, idx: number) => (
-                      <tr key={`${fileListVirtual.start + idx}-${e.name}-${e.isDir ? "d" : "f"}`}>
+                      <tr
+                        key={`${fileListVirtual.start + idx}-${e.name}-${e.isDir ? "d" : "f"}`}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          setCtxMenu({ x: ev.clientX, y: ev.clientY, entry: e });
+                        }}
+                      >
                         <td>
                           <input
                             type="checkbox"
@@ -1086,6 +1124,95 @@ export default function FilesView() {
               </button>
             ) : null}
           </div>
+
+          {ctxMenu ? (
+            <div
+              className="ctxMenuOverlay"
+              onMouseDown={() => setCtxMenu(null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setCtxMenu(null);
+              }}
+            >
+              <div
+                className="ctxMenu"
+                role="menu"
+                style={{ left: ctxMenuPos.left, top: ctxMenuPos.top }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="ctxMenuItem"
+                  onClick={() => {
+                    const entry = ctxMenu.entry;
+                    setCtxMenu(null);
+                    openEntry(entry);
+                  }}
+                >
+                  {t.tr("Open", "打开")}
+                </button>
+                <button
+                  type="button"
+                  className="ctxMenuItem"
+                  onClick={() => {
+                    const entry = ctxMenu.entry;
+                    setCtxMenu(null);
+                    renameFsEntry(entry);
+                  }}
+                >
+                  {t.tr("Rename", "重命名")}
+                </button>
+                <button
+                  type="button"
+                  className="ctxMenuItem"
+                  onClick={() => {
+                    const entry = ctxMenu.entry;
+                    setCtxMenu(null);
+                    moveFsEntry(entry);
+                  }}
+                >
+                  {t.tr("Move", "移动")}
+                </button>
+                <button
+                  type="button"
+                  className="ctxMenuItem"
+                  onClick={() => {
+                    const entry = ctxMenu.entry;
+                    const name = String(entry?.name || "").trim();
+                    const rel = name ? joinRelPath(fsPath, name) : String(fsPath || "");
+                    setCtxMenu(null);
+                    copyText(rel ? `servers/${rel}` : "servers/");
+                  }}
+                >
+                  {t.tr("Copy path", "复制路径")}
+                </button>
+                <div className="ctxMenuSep" />
+                <button
+                  type="button"
+                  className="ctxMenuItem"
+                  onClick={() => {
+                    const entry = ctxMenu.entry;
+                    setCtxMenu(null);
+                    if (entry?.isDir) downloadFsFolderAsZip(entry);
+                    else downloadFsEntry(entry);
+                  }}
+                >
+                  {t.tr("Download", "下载")}
+                </button>
+                <button
+                  type="button"
+                  className="ctxMenuItem danger"
+                  onClick={() => {
+                    const entry = ctxMenu.entry;
+                    setCtxMenu(null);
+                    deleteFsEntry(entry);
+                  }}
+                >
+                  {t.tr("Delete", "删除")}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div style={{ minWidth: 0 }}>

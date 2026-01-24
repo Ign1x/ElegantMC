@@ -1671,6 +1671,49 @@ button.logTopPill:hover {
   color: rgba(248, 113, 113, 0.95);
 }
 
+.ctxMenuOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.ctxMenu {
+  position: fixed;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 24px));
+  border-radius: var(--radius);
+  border: 1px solid var(--border2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)), var(--card2);
+  box-shadow: var(--shadow);
+  padding: 6px;
+}
+
+.ctxMenuItem {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ctxMenuItem:hover {
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
+.ctxMenuItem.danger {
+  color: var(--danger);
+}
+
+.ctxMenuSep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+
 .modalOverlay {
   position: fixed;
   inset: 0;

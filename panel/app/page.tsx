@@ -718,6 +718,7 @@ export default function HomePage() {
   const [loginOtp, setLoginOtp] = useState<string>("");
   const [loginNeeds2fa, setLoginNeeds2fa] = useState<boolean>(false);
   const [loginStatus, setLoginStatus] = useState<string>("");
+  const [csrfToken, setCsrfToken] = useState<string>("");
   const [locale, setLocale] = useState<Locale>("en");
   const t = useMemo(() => createT(locale), [locale]);
   const localeTag = useMemo(() => (locale === "zh" ? "zh-CN" : "en-US"), [locale]);
@@ -1779,16 +1780,19 @@ export default function HomePage() {
             username: String(json?.username || ""),
             totp_enabled: !!json?.totp_enabled,
           });
+          setCsrfToken(String(json?.csrf_token || ""));
           setLoginNeeds2fa(false);
           setLoginOtp("");
         } else {
           setAuthed(false);
           setAuthMe(null);
+          setCsrfToken("");
         }
       } catch {
         if (!cancelled) {
           setAuthed(false);
           setAuthMe(null);
+          setCsrfToken("");
         }
       }
     }
@@ -1802,10 +1806,22 @@ export default function HomePage() {
     const nextInit: RequestInit = { ...init };
     if (!nextInit.cache) nextInit.cache = "no-store";
     if (!nextInit.credentials) nextInit.credentials = "include";
+    try {
+      const method = String(nextInit.method || "GET").toUpperCase();
+      const needsCsrf = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+      if (needsCsrf && csrfToken) {
+        const headers = new Headers(nextInit.headers || {});
+        headers.set("X-CSRF-Token", csrfToken);
+        nextInit.headers = headers;
+      }
+    } catch {
+      // ignore
+    }
     const res = await fetch(url, nextInit);
     if (res.status === 401) {
       setAuthed(false);
       setAuthMe(null);
+      setCsrfToken("");
     }
     return res;
   }
@@ -2011,6 +2027,7 @@ export default function HomePage() {
         username: String(json?.username || ""),
         totp_enabled: !!json?.totp_enabled,
       });
+      setCsrfToken(String(json?.csrf_token || ""));
       setLoginUsername("admin");
       setLoginPassword("");
       setLoginOtp("");
@@ -2021,6 +2038,7 @@ export default function HomePage() {
       setLoginStatus(String(e?.message || e));
       setAuthed(false);
       setAuthMe(null);
+      setCsrfToken("");
     }
   }
 
@@ -2032,6 +2050,7 @@ export default function HomePage() {
     }
     setAuthed(false);
     setAuthMe(null);
+    setCsrfToken("");
   }
 
   async function callCommand(name: string, args: any, timeoutMs = 60_000) {

@@ -394,6 +394,7 @@ function serializeSessions() {
     const username = String(s?.username || "").trim();
     const ip = String(s?.ip || "").trim().slice(0, 64);
     const ua = String(s?.ua || "").trim().slice(0, 256);
+    const csrf_token = String(s?.csrf_token || s?.csrf || "").trim();
     out[token] = {
       expiresAtUnix,
       ...(Number.isFinite(createdAtUnix) && createdAtUnix > 0 ? { createdAtUnix } : {}),
@@ -402,6 +403,7 @@ function serializeSessions() {
       ...(username ? { username } : {}),
       ...(ip ? { ip } : {}),
       ...(ua ? { ua } : {}),
+      ...(csrf_token ? { csrf_token } : {}),
     };
   }
   return { updated_at_unix: nowUnix(), sessions: out };
@@ -446,6 +448,7 @@ async function loadSessionsFromDisk() {
         (user_id && admin?.id && user_id === admin.id ? "admin" : getUserByID(user_id)?.username || "");
       const ip = String(s?.ip || "").trim().slice(0, 64);
       const ua = String(s?.ua || "").replace(/[\r\n]+/g, " ").trim().slice(0, 256);
+      const csrf_token = String(s?.csrf_token || s?.csrf || "").trim();
       if (!token || typeof token !== "string") continue;
       if (!Number.isFinite(expiresAtUnix) || expiresAtUnix <= now) continue;
       const lastSeenAtUnix =
@@ -462,6 +465,7 @@ async function loadSessionsFromDisk() {
         ...(username ? { username } : {}),
         ...(ip ? { ip } : {}),
         ...(ua ? { ua } : {}),
+        ...(csrf_token ? { csrf_token } : {}),
       });
     }
   } catch (e) {
@@ -1051,13 +1055,19 @@ function getSession(req) {
   const parsed = parseSessionCookieValue(cookies?.[SESSION_COOKIE] || "");
   if (!parsed?.token) return null;
   const token = parsed.token;
-  const session = sessions.get(token);
+  let session = sessions.get(token);
   if (!session) return null;
   const now = nowUnix();
   if (session.expiresAtUnix && now > session.expiresAtUnix) {
     sessions.delete(token);
     queueSessionsSave();
     return null;
+  }
+  if (!String(session?.csrf_token || "").trim()) {
+    const next = { ...session, csrf_token: randomBytes(18).toString("base64url") };
+    sessions.set(token, next);
+    sessionsDirty = true;
+    session = next;
   }
   const ip = getClientIP(req) || "";
   const ua = typeof req.headers?.["user-agent"] === "string" ? req.headers["user-agent"] : "";
@@ -1072,6 +1082,7 @@ function getSession(req) {
     if (shouldTouch) next.lastSeenAtUnix = now;
     if (ipNorm) next.ip = ipNorm;
     if (uaNorm) next.ua = uaNorm;
+    if (!String(next?.csrf_token || "").trim()) next.csrf_token = randomBytes(18).toString("base64url");
     sessions.set(token, next);
     sessionsDirty = true;
     return { token, ...next };
@@ -1111,6 +1122,26 @@ function requireAdmin(req, res) {
 function requireSessionAdmin(req, res) {
   if (getSession(req)) return true;
   json(res, 401, { error: "unauthorized" });
+  return false;
+}
+
+function getCsrfHeader(req) {
+  const raw = req.headers["x-csrf-token"];
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw) && raw.length) return String(raw[0] || "").trim();
+  return "";
+}
+
+function requireCSRF(req, res) {
+  const m = String(req.method || "GET").toUpperCase();
+  if (m === "GET" || m === "HEAD" || m === "OPTIONS") return true;
+  const auth = getAuth(req);
+  if (!auth) return true;
+  if (auth.kind !== "session") return true;
+  const expected = String(auth?.csrf_token || "").trim();
+  const got = getCsrfHeader(req);
+  if (expected && got && safeEqual(expected, got)) return true;
+  json(res, 403, { error: "csrf token required" });
   return false;
 }
 
@@ -1720,6 +1751,7 @@ const server = http.createServer(async (req, res) => {
         user_id: String(auth.user_id || ""),
         username: String(auth.username || ""),
         totp_enabled: !!u?.totp?.enabled,
+        csrf_token: auth.kind === "session" ? String(auth?.csrf_token || "") : "",
       });
     }
     if (url.pathname === "/api/auth/login" && req.method === "POST") {
@@ -1787,6 +1819,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         const token = randomBytes(24).toString("base64url");
+        const csrf_token = randomBytes(18).toString("base64url");
         const now = nowUnix();
         const ip = String(getClientIP(req) || "").trim().slice(0, 64);
         const ua = typeof req.headers?.["user-agent"] === "string" ? req.headers["user-agent"] : "";
@@ -1795,6 +1828,7 @@ const server = http.createServer(async (req, res) => {
           expiresAtUnix: now + SESSION_TTL_SEC,
           createdAtUnix: now,
           lastSeenAtUnix: now,
+          csrf_token,
           ...(ip ? { ip } : {}),
           ...(uaNorm ? { ua: uaNorm } : {}),
           user_id: u.id,
@@ -1823,6 +1857,7 @@ const server = http.createServer(async (req, res) => {
           user_id: u.id,
           username: u.username,
           totp_enabled: !!u?.totp?.enabled,
+          csrf_token,
           ...(usedRecovery ? { used_recovery: true, recovery_remaining: recoveryRemaining } : {}),
         });
       } catch (e) {
@@ -2406,6 +2441,10 @@ const server = http.createServer(async (req, res) => {
         if (!requireSessionAdmin(req, res)) return;
       } else {
         if (!requireAdmin(req, res)) return;
+      }
+
+      if (!open) {
+        if (!requireCSRF(req, res)) return;
       }
     }
 

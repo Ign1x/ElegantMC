@@ -7983,7 +7983,7 @@ export default function HomePage() {
 	            <span className="muted">{t.tr("Preferences", "偏好")}</span>
 	            <div className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
 	              <button type="button" className="linkBtn" onClick={() => setShortcutsOpen(true)}>
-	                {t.tr("Shortcuts", "快捷键")}
+	                {t.tr("Shortcuts", "快捷键")} <code>?</code>
 	              </button>
 	              <button type="button" className="linkBtn" onClick={openChangelogModal}>
 	                {t.tr("What's new", "更新日志")}
@@ -8051,7 +8051,7 @@ export default function HomePage() {
             >
               <Icon name="menu" />
             </button>
-            <Tooltip content={t.tr("Search (Ctrl+K)", "搜索（Ctrl+K）")} disabled={authed !== true}>
+            <Tooltip content={t.tr("Search (Ctrl+K or /)", "搜索（Ctrl+K 或 /）")} disabled={authed !== true}>
               <button
                 type="button"
                 className="iconBtn iconOnly"
@@ -8084,6 +8084,17 @@ export default function HomePage() {
                     {notificationsUnread > 99 ? "99+" : String(notificationsUnread)}
                   </span>
                 ) : null}
+              </button>
+            </Tooltip>
+            <Tooltip content={t.tr("Keyboard Shortcuts (?)", "键盘快捷键（?）")} disabled={authed !== true}>
+              <button
+                type="button"
+                className="iconBtn iconOnly"
+                aria-label={t.tr("Keyboard Shortcuts", "键盘快捷键")}
+                onClick={() => setShortcutsOpen(true)}
+                disabled={authed !== true}
+              >
+                ?
               </button>
             </Tooltip>
             <div className="topbarTitle">

@@ -823,22 +823,60 @@ button.navItem .badge {
   flex-wrap: wrap;
 }
 
+.gamesStickyBar {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 10px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.016)), var(--card2);
+  box-shadow: var(--shadow2);
+  backdrop-filter: blur(10px);
+}
+
+.gamesStickyLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gamesStickyTitle {
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .gamesToolbarRight.compact {
   width: 100%;
   align-items: stretch;
 }
 
-.gamesToolbarRight.compact .gamesActionGroup {
+.gamesStickyBar.compact {
+  top: 10px;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.gamesStickyBar.compact .gamesActionGroup {
   width: 100%;
   flex-direction: column;
   align-items: stretch;
 }
 
-.gamesToolbarRight.compact .gamesActionGroup > button {
+.gamesStickyBar.compact .gamesActionGroup > button {
   width: 100%;
 }
 
-.gamesToolbarRight.compact .gamesActionGroup .uiSelect {
+.gamesStickyBar.compact .gamesActionGroup .uiSelect {
   width: 100%;
 }
 

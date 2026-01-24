@@ -1171,66 +1171,70 @@ export default function GamesView() {
                 </button>
               </div>
             ) : null}
+          </div>
+        </div>
 
-            <div className="btnGroup gamesActionGroup">
-              <button
-                className={running ? "" : "primary"}
-                onClick={() => (running ? stopServer() : startServer())}
-                disabled={!canControl}
-              >
-                {gameActionBusy ? t.tr("Working...", "处理中...") : running ? t.tr("Stop", "停止") : t.tr("Start", "启动")}
-              </button>
-              <button
-                type="button"
-                className="iconBtn iconOnly"
-                title={favoriteSet.has(instanceId.trim()) ? t.tr("Unfavorite", "取消收藏") : t.tr("Favorite", "收藏")}
-                aria-label={favoriteSet.has(instanceId.trim()) ? t.tr("Unfavorite", "取消收藏") : t.tr("Favorite", "收藏")}
-                onClick={() => toggleFavoriteInstance(instanceId.trim())}
-                disabled={!instanceId.trim()}
-              >
-                {favoriteSet.has(instanceId.trim()) ? "★" : "☆"}
-              </button>
-              <Select
-                value=""
-                onChange={(v) => {
-                  if (v === "install") openInstallModal();
-                  else if (v === "restart") restartServer();
-                  else if (v === "backup") backupServer();
-                  else if (v === "datapack") openDatapackModal();
-                  else if (v === "resourcepack") openResourcePackModal();
-                  else if (v === "trash") openTrashModal();
-                  else if (v === "export") exportInstanceZip();
-                  else if (v === "properties") openServerPropertiesEditor();
-                  else if (v === "rename") renameInstance();
-                  else if (v === "clone") cloneInstance();
-                  else if (v === "repair") repairInstance();
-                  else if (v === "settings") openSettingsModal();
-                  else if (v === "files") {
-                    setFsPath(instanceId.trim());
-                    setTab("files");
-                  }
-                }}
-                placeholder={t.tr("More", "更多")}
-                options={[
-                  ...(compactActions ? [{ value: "install", label: t.tr("Install…", "安装…"), disabled: !selectedDaemon?.connected || gameActionBusy }] : []),
-                  { value: "restart", label: t.tr("Restart", "重启"), disabled: !canControl },
-                  { value: "backup", label: t.tr("Backup", "备份"), disabled: !canControl },
-                  { value: "datapack", label: t.tr("Datapack…", "Datapack…"), disabled: !canControl },
-                  { value: "resourcepack", label: t.tr("Resource pack…", "资源包…"), disabled: !canControl },
-                  { value: "repair", label: t.tr("Repair…", "修复…"), disabled: !canControl },
-                  { value: "trash", label: t.tr("Trash…", "回收站…"), disabled: !selectedDaemon?.connected },
-                  { value: "export", label: t.tr("Export zip", "导出 zip"), disabled: !selectedDaemon?.connected || !instanceId.trim() },
-                  { value: "properties", label: "server.properties…", disabled: !canControl },
-                  { value: "rename", label: t.tr("Rename…", "重命名…"), disabled: !canControl },
-                  { value: "clone", label: t.tr("Clone…", "克隆…"), disabled: !canControl },
-                  { value: "settings", label: t.tr("Settings", "设置"), disabled: !canControl },
-                  { value: "files", label: t.tr("Files", "文件"), disabled: !canControl },
-                ]}
-                style={compactActions ? { width: "100%" } : { width: 150 }}
-                disabled={!selectedDaemon?.connected || gameActionBusy}
-              />
-              {gameActionBusy ? <span className="badge">{t.tr("busy", "忙碌")}</span> : null}
-            </div>
+        <div className={`gamesStickyBar ${compactActions ? "compact" : ""}`}>
+          <div className="gamesStickyLeft">
+            <span className="muted">{t.tr("Instance", "实例")}</span>
+            <span className="gamesStickyTitle">{instanceId.trim() || "-"}</span>
+            <span className={`badge ${running ? "ok" : ""}`}>{running ? t.tr("running", "运行中") : t.tr("stopped", "已停止")}</span>
+          </div>
+
+          <div className="btnGroup gamesActionGroup">
+            <button className={running ? "" : "primary"} onClick={() => (running ? stopServer() : startServer())} disabled={!canControl}>
+              {gameActionBusy ? t.tr("Working...", "处理中...") : running ? t.tr("Stop", "停止") : t.tr("Start", "启动")}
+            </button>
+            <button
+              type="button"
+              className="iconBtn iconOnly"
+              title={favoriteSet.has(instanceId.trim()) ? t.tr("Unfavorite", "取消收藏") : t.tr("Favorite", "收藏")}
+              aria-label={favoriteSet.has(instanceId.trim()) ? t.tr("Unfavorite", "取消收藏") : t.tr("Favorite", "收藏")}
+              onClick={() => toggleFavoriteInstance(instanceId.trim())}
+              disabled={!instanceId.trim()}
+            >
+              {favoriteSet.has(instanceId.trim()) ? "★" : "☆"}
+            </button>
+            <Select
+              value=""
+              onChange={(v) => {
+                if (v === "install") openInstallModal();
+                else if (v === "restart") restartServer();
+                else if (v === "backup") backupServer();
+                else if (v === "datapack") openDatapackModal();
+                else if (v === "resourcepack") openResourcePackModal();
+                else if (v === "trash") openTrashModal();
+                else if (v === "export") exportInstanceZip();
+                else if (v === "properties") openServerPropertiesEditor();
+                else if (v === "rename") renameInstance();
+                else if (v === "clone") cloneInstance();
+                else if (v === "repair") repairInstance();
+                else if (v === "settings") openSettingsModal();
+                else if (v === "files") {
+                  setFsPath(instanceId.trim());
+                  setTab("files");
+                }
+              }}
+              placeholder={t.tr("More", "更多")}
+              options={[
+                ...(compactActions ? [{ value: "install", label: t.tr("Install…", "安装…"), disabled: !selectedDaemon?.connected || gameActionBusy }] : []),
+                { value: "restart", label: t.tr("Restart", "重启"), disabled: !canControl },
+                { value: "backup", label: t.tr("Backup", "备份"), disabled: !canControl },
+                { value: "datapack", label: t.tr("Datapack…", "Datapack…"), disabled: !canControl },
+                { value: "resourcepack", label: t.tr("Resource pack…", "资源包…"), disabled: !canControl },
+                { value: "repair", label: t.tr("Repair…", "修复…"), disabled: !canControl },
+                { value: "trash", label: t.tr("Trash…", "回收站…"), disabled: !selectedDaemon?.connected },
+                { value: "export", label: t.tr("Export zip", "导出 zip"), disabled: !selectedDaemon?.connected || !instanceId.trim() },
+                { value: "properties", label: "server.properties…", disabled: !canControl },
+                { value: "rename", label: t.tr("Rename…", "重命名…"), disabled: !canControl },
+                { value: "clone", label: t.tr("Clone…", "克隆…"), disabled: !canControl },
+                { value: "settings", label: t.tr("Settings", "设置"), disabled: !canControl },
+                { value: "files", label: t.tr("Files", "文件"), disabled: !canControl },
+              ]}
+              style={compactActions ? { width: "100%" } : { width: 150 }}
+              disabled={!selectedDaemon?.connected || gameActionBusy}
+            />
+            {gameActionBusy ? <span className="badge">{t.tr("busy", "忙碌")}</span> : null}
           </div>
         </div>
 

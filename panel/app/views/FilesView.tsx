@@ -330,6 +330,8 @@ export default function FilesView() {
   const [query, setQuery] = useState<string>("");
   const [dragOver, setDragOver] = useState<boolean>(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const gutterRef = useRef<HTMLDivElement | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const [listScrollTop, setListScrollTop] = useState<number>(0);
   const [listViewportH, setListViewportH] = useState<number>(520);
@@ -340,6 +342,11 @@ export default function FilesView() {
   const [jsonCheck, setJsonCheck] = useState<{ ok: boolean; message: string; line?: number; col?: number; pos?: number } | null>(null);
   const [yamlCheck, setYamlCheck] = useState<{ ok: boolean; message: string; line?: number; col?: number; pos?: number } | null>(null);
   const [showHighlight, setShowHighlight] = useState<boolean>(true);
+  const [editorWrap, setEditorWrap] = useState<boolean>(true);
+  const [showLineNumbers, setShowLineNumbers] = useState<boolean>(true);
+  const [findOpen, setFindOpen] = useState<boolean>(false);
+  const [findQuery, setFindQuery] = useState<string>("");
+  const [replaceText, setReplaceText] = useState<string>("");
   const [diffOpen, setDiffOpen] = useState<boolean>(false);
   const [diffBasePath, setDiffBasePath] = useState<string>("");
   const [diffOtherPath, setDiffOtherPath] = useState<string>("");
@@ -394,7 +401,13 @@ export default function FilesView() {
     setDiffStatus("");
     setDiffLines(null);
     setDiffOpen(false);
+    setFindOpen(false);
   }, [fsSelectedFile]);
+
+  useEffect(() => {
+    if (!findOpen) return;
+    window.setTimeout(() => findInputRef.current?.focus(), 0);
+  }, [findOpen]);
 
   const viewEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -441,6 +454,12 @@ export default function FilesView() {
   }, [someVisibleSelected, allVisibleSelected]);
 
   const inst = String(instanceId || "").trim();
+  const textEditable = !!fsSelectedFile && fsSelectedFileMode === "text";
+  const canSetJar =
+    !!fsSelectedFile &&
+    fsSelectedFile.toLowerCase().endsWith(".jar") &&
+    inst &&
+    (fsSelectedFile === inst || fsSelectedFile.startsWith(`${inst}/`));
   const entriesLoading = fsStatus === "Loading..." && !fsEntries.length;
 
   const breadcrumbsView = useMemo(() => {
@@ -546,6 +565,26 @@ export default function FilesView() {
     return highlightToHtml(String(fsFileText || ""), highlightKind);
   }, [fsFileText, highlightEligible, highlightKind, showHighlight]);
 
+  const lineNumbers = useMemo(() => {
+    if (!showLineNumbers || !fsSelectedFile || fsSelectedFileMode !== "text") return "";
+    const src = String(fsFileText || "");
+    const maxLines = 5000;
+    const maxCount = maxLines + 1;
+    let lines = 1;
+    for (let i = 0; i < src.length; i++) {
+      if (src.charCodeAt(i) === 10) {
+        lines += 1;
+        if (lines > maxCount) break;
+      }
+    }
+    const truncated = lines > maxLines;
+    const n = truncated ? maxLines : lines;
+    const out: string[] = [];
+    for (let i = 1; i <= n; i++) out.push(String(i));
+    if (truncated) out.push("…");
+    return out.join("\n");
+  }, [fsFileText, fsSelectedFile, fsSelectedFileMode, showLineNumbers]);
+
   function jsonErrorLocation(text: string, err: any) {
     const msg = String(err?.message || err);
     const m = msg.match(/position\s+(\d+)/i);
@@ -567,6 +606,71 @@ export default function FilesView() {
     } catch {
       // ignore
     }
+  }
+
+  function findNext(backward: boolean) {
+    const el = editorRef.current;
+    if (!el) return;
+    const q = String(findQuery || "");
+    if (!q) return;
+    const text = String(el.value || "");
+    if (!text) return;
+
+    const from = backward ? Math.max(0, (el.selectionStart ?? 0) - 1) : el.selectionEnd ?? 0;
+    const hit = backward ? text.lastIndexOf(q, from) : text.indexOf(q, from);
+    const at = hit >= 0 ? hit : backward ? text.lastIndexOf(q) : text.indexOf(q);
+    if (at < 0) return;
+    try {
+      el.focus();
+      el.setSelectionRange(at, at + q.length);
+    } catch {
+      // ignore
+    }
+  }
+
+  function replaceSelection() {
+    const el = editorRef.current;
+    if (!el) return;
+    const start = Math.max(0, Math.floor(Number(el.selectionStart ?? 0)));
+    const end = Math.max(start, Math.floor(Number(el.selectionEnd ?? 0)));
+    if (start === end) return;
+    const text = String(el.value || "");
+    const next = text.slice(0, start) + replaceText + text.slice(end);
+    setFsFileText(next);
+    window.setTimeout(() => {
+      const el2 = editorRef.current;
+      if (!el2) return;
+      try {
+        const pos = start + String(replaceText || "").length;
+        el2.focus();
+        el2.setSelectionRange(pos, pos);
+      } catch {
+        // ignore
+      }
+    }, 0);
+  }
+
+  function replaceAllNow() {
+    const q = String(findQuery || "");
+    if (!q) return;
+    const src = String(fsFileText || "");
+    const next = src.split(q).join(String(replaceText || ""));
+    if (next === src) return;
+    setFsFileText(next);
+  }
+
+  function openDiffModalNow() {
+    if (!fsSelectedFile || fsSelectedFileMode !== "text") return;
+    setDiffBasePath(fsSelectedFile);
+    const candidates = (Array.isArray(fsEntries) ? fsEntries : [])
+      .filter((e: any) => e && !e.isDir)
+      .map((e: any) => joinRelPath(fsPath, String(e.name || "")))
+      .filter((p: string) => p && p !== fsSelectedFile);
+    setDiffOtherPath(candidates[0] || "");
+    setDiffUseBufferBase(true);
+    setDiffStatus("");
+    setDiffLines(null);
+    setDiffOpen(true);
   }
 
   function toggleSelectedName(nameRaw: string, checked: boolean) {
@@ -1217,70 +1321,124 @@ export default function FilesView() {
 
         <div style={{ minWidth: 0 }}>
           <h3>{t.tr("Editor", "编辑器")}</h3>
-          <div className="row">
-            <span className="muted">
-              {t.tr("file", "文件")}: <code>{fsSelectedFile || "-"}</code>
-            </span>
-            {fsDirty ? <span className="badge">{t.tr("unsaved", "未保存")}</span> : null}
-            {fsSelectedFile && fsSelectedFileMode === "binary" ? <span className="badge">{t.tr("download-only", "仅下载")}</span> : null}
-            {fsSelectedFile && fsSelectedFileMode === "image" ? <span className="badge">{t.tr("preview", "预览")}</span> : null}
-            {fsSelectedFile &&
-            fsSelectedFile.toLowerCase().endsWith(".jar") &&
-            inst &&
-            (fsSelectedFile === inst || fsSelectedFile.startsWith(`${inst}/`)) ? (
-              <button type="button" onClick={() => setServerJarFromFile(fsSelectedFile)}>
-                {t.tr("Set as server jar", "设为 server jar")}
+          <div className="editorToolbar">
+            <div className="editorToolbarLeft">
+              <div className="editorFileLine">
+                <span className="muted">{t.tr("file", "文件")}:</span> <code>{fsSelectedFile || "-"}</code>
+              </div>
+              <div className="editorBadges">
+                {fsDirty ? <span className="badge">{t.tr("unsaved", "未保存")}</span> : null}
+                {fsSelectedFile && fsSelectedFileMode === "binary" ? <span className="badge">{t.tr("download-only", "仅下载")}</span> : null}
+                {fsSelectedFile && fsSelectedFileMode === "image" ? <span className="badge">{t.tr("preview", "预览")}</span> : null}
+              </div>
+            </div>
+
+            <div className="editorToolbarRight">
+              <button type="button" className="iconBtn" onClick={saveFile} disabled={!textEditable}>
+                {t.tr("Save", "保存")}
               </button>
-            ) : null}
-            <button type="button" onClick={saveFile} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
-              {t.tr("Save", "保存")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!fsSelectedFile || fsSelectedFileMode !== "text") return;
-                setDiffBasePath(fsSelectedFile);
-                const candidates = (Array.isArray(fsEntries) ? fsEntries : [])
-                  .filter((e: any) => e && !e.isDir)
-                  .map((e: any) => joinRelPath(fsPath, String(e.name || "")))
-                  .filter((p: string) => p && p !== fsSelectedFile);
-                setDiffOtherPath(candidates[0] || "");
-                setDiffUseBufferBase(true);
-                setDiffStatus("");
-                setDiffLines(null);
-                setDiffOpen(true);
-              }}
-              disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}
-            >
-              {t.tr("Diff", "对比")}
-            </button>
-            {isJson ? (
-              <>
-                <button type="button" onClick={formatJsonNow} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
-                  {t.tr("Format JSON", "格式化 JSON")}
-                </button>
-                <button type="button" onClick={validateJsonNow} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
-                  {t.tr("Validate JSON", "校验 JSON")}
-                </button>
-              </>
-            ) : null}
-            {isYaml ? (
-              <button type="button" onClick={validateYamlNow} disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}>
-                {t.tr("Validate YAML", "校验 YAML")}
+              <button
+                type="button"
+                className="iconBtn"
+                onClick={() => copyText(String(fsFileText || "<empty>"))}
+                disabled={!textEditable}
+              >
+                <Icon name="copy" />
+                {t.tr("Copy", "复制")}
               </button>
-            ) : null}
-            {highlightKind ? (
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={showHighlight}
-                  onChange={(e) => setShowHighlight(e.target.checked)}
-                  disabled={!highlightEligible || fsSelectedFileMode !== "text"}
-                />{" "}
-                {t.tr("Highlight", "高亮")}
+              <button type="button" className="iconBtn" onClick={() => setFindOpen((v) => !v)} disabled={!textEditable}>
+                <Icon name="search" />
+                {t.tr("Find", "查找")}
+              </button>
+              <label className="checkRow" style={{ userSelect: "none" }}>
+                <input type="checkbox" checked={editorWrap} onChange={(e) => setEditorWrap(e.target.checked)} disabled={!textEditable} />{" "}
+                {t.tr("Wrap", "换行")}
               </label>
-            ) : null}
+              <label className="checkRow" style={{ userSelect: "none" }}>
+                <input type="checkbox" checked={showLineNumbers} onChange={(e) => setShowLineNumbers(e.target.checked)} disabled={!textEditable} />{" "}
+                {t.tr("Line #", "行号")}
+              </label>
+              {highlightKind ? (
+                <label className="checkRow" style={{ userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={showHighlight}
+                    onChange={(e) => setShowHighlight(e.target.checked)}
+                    disabled={!highlightEligible || !textEditable}
+                  />{" "}
+                  {t.tr("Highlight", "高亮")}
+                </label>
+              ) : null}
+              <div style={{ width: 180 }}>
+                <Select
+                  value=""
+                  onChange={(v) => {
+                    if (v === "diff") openDiffModalNow();
+                    else if (v === "format_json") formatJsonNow();
+                    else if (v === "validate_json") validateJsonNow();
+                    else if (v === "validate_yaml") validateYamlNow();
+                    else if (v === "set_jar" && canSetJar) setServerJarFromFile(fsSelectedFile);
+                  }}
+                  placeholder={t.tr("Tools", "工具")}
+                  options={[
+                    { value: "diff", label: t.tr("Diff…", "对比…"), disabled: !textEditable },
+                    ...(isJson
+                      ? [
+                          { value: "format_json", label: t.tr("Format JSON", "格式化 JSON"), disabled: !textEditable },
+                          { value: "validate_json", label: t.tr("Validate JSON", "校验 JSON"), disabled: !textEditable },
+                        ]
+                      : []),
+                    ...(isYaml ? [{ value: "validate_yaml", label: t.tr("Validate YAML", "校验 YAML"), disabled: !textEditable }] : []),
+                    ...(canSetJar ? [{ value: "set_jar", label: t.tr("Set as server jar", "设为 server jar") }] : []),
+                  ]}
+                  disabled={!fsSelectedFile}
+                />
+              </div>
+            </div>
           </div>
+
+          {findOpen && textEditable ? (
+            <div className="editorFindBar">
+              <input
+                ref={findInputRef}
+                value={findQuery}
+                onChange={(e: any) => setFindQuery(String(e.target.value || ""))}
+                placeholder={t.tr("Find…", "查找…")}
+                style={{ width: 200 }}
+                onKeyDown={(e: any) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    findNext(!!e.shiftKey);
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setFindOpen(false);
+                  }
+                }}
+              />
+              <button type="button" onClick={() => findNext(true)} disabled={!findQuery.trim()}>
+                {t.tr("Prev", "上一个")}
+              </button>
+              <button type="button" onClick={() => findNext(false)} disabled={!findQuery.trim()}>
+                {t.tr("Next", "下一个")}
+              </button>
+              <input
+                value={replaceText}
+                onChange={(e: any) => setReplaceText(String(e.target.value || ""))}
+                placeholder={t.tr("Replace…", "替换…")}
+                style={{ width: 200 }}
+              />
+              <button type="button" onClick={replaceSelection} disabled={!replaceText}>
+                {t.tr("Replace", "替换")}
+              </button>
+              <button type="button" onClick={replaceAllNow} disabled={!findQuery.trim()}>
+                {t.tr("All", "全部")}
+              </button>
+              <button type="button" className="iconBtn iconOnly" onClick={() => setFindOpen(false)} aria-label={t.tr("Close", "关闭")}>
+                ×
+              </button>
+            </div>
+          ) : null}
           {fsSelectedFileMode === "image" && fsPreviewUrl ? (
             <div style={{ marginTop: 8 }}>
               <img
@@ -1290,22 +1448,47 @@ export default function FilesView() {
               />
             </div>
           ) : (
-            <textarea
-              ref={editorRef}
-              value={fsFileText}
-              onChange={(e) => {
-                setFsFileText(e.target.value);
-                if (jsonCheck && !jsonCheck.ok) setJsonCheck(null);
-              }}
-              rows={16}
-              placeholder={
-                fsSelectedFile && fsSelectedFileMode !== "text"
-                  ? t.tr("Binary file (editing disabled). Use Download.", "二进制文件（禁止编辑）。请使用 Download 下载。")
-                  : t.tr("Select a text file to edit (e.g. server.properties)", "选择一个文本文件进行编辑（例如 server.properties）")
-              }
-              style={{ width: "100%", marginTop: 8 }}
-              disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}
-            />
+            <div className={`editorFrame ${showLineNumbers && textEditable ? "withGutter" : ""}`} style={{ marginTop: 8 }}>
+              {showLineNumbers && textEditable ? (
+                <div ref={gutterRef} className="editorGutter" aria-hidden="true">
+                  <pre>{lineNumbers || "1"}</pre>
+                </div>
+              ) : null}
+              <textarea
+                ref={editorRef}
+                className="editorTextarea"
+                value={fsFileText}
+                onChange={(e) => {
+                  setFsFileText(e.target.value);
+                  if (jsonCheck && !jsonCheck.ok) setJsonCheck(null);
+                }}
+                onScroll={(e) => {
+                  const g = gutterRef.current;
+                  if (g) g.scrollTop = e.currentTarget.scrollTop;
+                }}
+                onKeyDown={(e: any) => {
+                  const k = String(e.key || "");
+                  if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "f") {
+                    e.preventDefault();
+                    setFindOpen(true);
+                  }
+                  if (k === "Escape" && findOpen) {
+                    e.preventDefault();
+                    setFindOpen(false);
+                  }
+                }}
+                rows={16}
+                wrap={editorWrap ? "soft" : "off"}
+                spellCheck={false}
+                placeholder={
+                  fsSelectedFile && fsSelectedFileMode !== "text"
+                    ? t.tr("Binary file (editing disabled). Use Download.", "二进制文件（禁止编辑）。请使用 Download 下载。")
+                    : t.tr("Select a text file to edit (e.g. server.properties)", "选择一个文本文件进行编辑（例如 server.properties）")
+                }
+                style={{ whiteSpace: editorWrap ? "pre-wrap" : "pre" }}
+                disabled={!fsSelectedFile || fsSelectedFileMode !== "text"}
+              />
+            </div>
           )}
           {isJson && jsonCheck && !jsonCheck.ok ? (
             <div className="hint" style={{ color: "var(--danger)", marginTop: 6 }}>

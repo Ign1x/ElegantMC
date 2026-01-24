@@ -1498,6 +1498,106 @@ pre.codePre {
   user-select: none;
 }
 
+.editorToolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.editorToolbarLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.editorFileLine {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.editorBadges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.editorToolbarRight {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.editorFindBar {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.editorFrame {
+  display: flex;
+  border-radius: var(--radius);
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  overflow: hidden;
+}
+
+.editorGutter {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 10px 8px;
+  text-align: right;
+  color: var(--muted2);
+  user-select: none;
+  border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.editorGutter pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: pre;
+  word-break: normal;
+}
+
+.editorTextarea {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  resize: vertical;
+  min-height: 320px;
+}
+
+.editorTextarea:focus {
+  outline: none;
+}
+
 .tok {
   font: inherit;
 }

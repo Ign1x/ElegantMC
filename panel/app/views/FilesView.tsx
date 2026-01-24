@@ -275,6 +275,10 @@ function highlightToHtml(text: string, kind: "json" | "yaml" | "properties" | "l
   return lines.map((l) => `<span class=\"codeLine\">${l || "&nbsp;"}</span>`).join("");
 }
 
+function isImageFileName(name: string) {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(name || "").trim());
+}
+
 export default function FilesView() {
   const {
     t,
@@ -326,6 +330,11 @@ export default function FilesView() {
     confirmDialog,
   } = useAppCtx();
 
+  const openEntryRef = useRef(openEntry);
+  useEffect(() => {
+    openEntryRef.current = openEntry;
+  }, [openEntry]);
+
   const [queryRaw, setQueryRaw] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [dragOver, setDragOver] = useState<boolean>(false);
@@ -347,6 +356,11 @@ export default function FilesView() {
   const [findOpen, setFindOpen] = useState<boolean>(false);
   const [findQuery, setFindQuery] = useState<string>("");
   const [replaceText, setReplaceText] = useState<string>("");
+  const [lightboxOpen, setLightboxOpen] = useState<boolean>(false);
+  const [lightboxZoom, setLightboxZoom] = useState<number>(1);
+  const [lightboxPan, setLightboxPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [lightboxDragging, setLightboxDragging] = useState<boolean>(false);
+  const lightboxDragRef = useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | null>(null);
   const [diffOpen, setDiffOpen] = useState<boolean>(false);
   const [diffBasePath, setDiffBasePath] = useState<string>("");
   const [diffOtherPath, setDiffOtherPath] = useState<string>("");
@@ -409,6 +423,59 @@ export default function FilesView() {
     window.setTimeout(() => findInputRef.current?.focus(), 0);
   }, [findOpen]);
 
+  useEffect(() => {
+    if (fsSelectedFileMode !== "image") {
+      if (lightboxOpen) setLightboxOpen(false);
+      return;
+    }
+  }, [fsSelectedFileMode, lightboxOpen]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    setLightboxZoom(1);
+    setLightboxPan({ x: 0, y: 0 });
+    setLightboxDragging(false);
+    lightboxDragRef.current = null;
+  }, [lightboxOpen, fsSelectedFile]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setLightboxOpen(false);
+        return;
+      }
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        setLightboxZoom((z) => Math.min(6, Math.max(0.2, Number((z * 1.2).toFixed(3)))));
+        return;
+      }
+      if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        setLightboxZoom((z) => Math.min(6, Math.max(0.2, Number((z / 1.2).toFixed(3)))));
+        return;
+      }
+      if (e.key === "0") {
+        e.preventDefault();
+        setLightboxZoom(1);
+        setLightboxPan({ x: 0, y: 0 });
+        return;
+      }
+      if (e.key === "ArrowLeft" && currentImageIdx > 0) {
+        e.preventDefault();
+        openEntryRef.current(imageEntries[currentImageIdx - 1]);
+        return;
+      }
+      if (e.key === "ArrowRight" && currentImageIdx >= 0 && currentImageIdx < imageEntries.length - 1) {
+        e.preventDefault();
+        openEntryRef.current(imageEntries[currentImageIdx + 1]);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightboxOpen, currentImageIdx, imageEntries]);
+
   const viewEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = Array.isArray(fsEntries) ? fsEntries : [];
@@ -461,6 +528,17 @@ export default function FilesView() {
     inst &&
     (fsSelectedFile === inst || fsSelectedFile.startsWith(`${inst}/`));
   const entriesLoading = fsStatus === "Loading..." && !fsEntries.length;
+
+  const imageEntries = useMemo(() => {
+    const list = (Array.isArray(fsEntries) ? fsEntries : []).filter((e: any) => e && !e.isDir && isImageFileName(String(e?.name || "")));
+    return list.sort((a: any, b: any) => String(a?.name || "").localeCompare(String(b?.name || "")));
+  }, [fsEntries]);
+
+  const currentImageIdx = useMemo(() => {
+    if (!fsSelectedFile || fsSelectedFileMode !== "image") return -1;
+    const curName = fsSelectedFile.split("/").pop() || fsSelectedFile;
+    return imageEntries.findIndex((e: any) => String(e?.name || "") === curName);
+  }, [fsSelectedFile, fsSelectedFileMode, imageEntries]);
 
   const breadcrumbsView = useMemo(() => {
     const list = Array.isArray(fsBreadcrumbs) ? fsBreadcrumbs : [];
@@ -1444,7 +1522,8 @@ export default function FilesView() {
               <img
                 src={fsPreviewUrl}
                 alt={fsSelectedFile.split("/").pop() || "image"}
-                style={{ maxWidth: "100%", maxHeight: 520, borderRadius: 12, border: "1px solid var(--border)" }}
+                style={{ maxWidth: "100%", maxHeight: 520, borderRadius: 12, border: "1px solid var(--border)", cursor: "zoom-in" }}
+                onClick={() => setLightboxOpen(true)}
               />
             </div>
           ) : (
@@ -1490,6 +1569,133 @@ export default function FilesView() {
               />
             </div>
           )}
+
+          {lightboxOpen && fsSelectedFileMode === "image" && fsPreviewUrl ? (
+            <div className="lightboxOverlay" onClick={() => setLightboxOpen(false)}>
+              <div className="lightbox" onClick={(e) => e.stopPropagation()}>
+                <div className="lightboxToolbar">
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800 }}>{t.tr("Preview", "预览")}</div>
+                    <div className="hint" style={{ marginTop: 4 }}>
+                      <code>{fsSelectedFile || "-"}</code>
+                    </div>
+                  </div>
+                  <div className="btnGroup">
+                    <button
+                      type="button"
+                      className="iconBtn iconOnly"
+                      title={t.tr("Prev", "上一个")}
+                      aria-label={t.tr("Prev", "上一个")}
+                      onClick={() => currentImageIdx > 0 && openEntry(imageEntries[currentImageIdx - 1])}
+                      disabled={currentImageIdx <= 0}
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      className="iconBtn iconOnly"
+                      title={t.tr("Next", "下一个")}
+                      aria-label={t.tr("Next", "下一个")}
+                      onClick={() => currentImageIdx >= 0 && currentImageIdx < imageEntries.length - 1 && openEntry(imageEntries[currentImageIdx + 1])}
+                      disabled={currentImageIdx < 0 || currentImageIdx >= imageEntries.length - 1}
+                    >
+                      →
+                    </button>
+                    <span className="badge">{Math.round(lightboxZoom * 100)}%</span>
+                    <button
+                      type="button"
+                      className="iconBtn iconOnly"
+                      title={t.tr("Zoom out", "缩小")}
+                      aria-label={t.tr("Zoom out", "缩小")}
+                      onClick={() => setLightboxZoom((z) => Math.min(6, Math.max(0.2, Number((z / 1.2).toFixed(3)))))}
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      className="iconBtn iconOnly"
+                      title={t.tr("Zoom in", "放大")}
+                      aria-label={t.tr("Zoom in", "放大")}
+                      onClick={() => setLightboxZoom((z) => Math.min(6, Math.max(0.2, Number((z * 1.2).toFixed(3)))))}
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLightboxZoom(1);
+                        setLightboxPan({ x: 0, y: 0 });
+                      }}
+                    >
+                      {t.tr("Reset", "重置")}
+                    </button>
+                    <button type="button" onClick={() => setLightboxOpen(false)}>
+                      {t.tr("Close", "关闭")}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className={`lightboxViewport ${lightboxDragging ? "dragging" : ""}`}
+                  onPointerDown={(e: any) => {
+                    if (e.button != null && e.button !== 0) return;
+                    try {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    } catch {
+                      // ignore
+                    }
+                    lightboxDragRef.current = {
+                      pointerId: e.pointerId,
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      panX: lightboxPan.x,
+                      panY: lightboxPan.y,
+                    };
+                    setLightboxDragging(true);
+                  }}
+                  onPointerMove={(e: any) => {
+                    const st = lightboxDragRef.current;
+                    if (!st || st.pointerId !== e.pointerId) return;
+                    const dx = e.clientX - st.startX;
+                    const dy = e.clientY - st.startY;
+                    setLightboxPan({ x: st.panX + dx, y: st.panY + dy });
+                  }}
+                  onPointerUp={(e: any) => {
+                    const st = lightboxDragRef.current;
+                    if (!st || st.pointerId !== e.pointerId) return;
+                    lightboxDragRef.current = null;
+                    setLightboxDragging(false);
+                  }}
+                  onPointerCancel={(e: any) => {
+                    const st = lightboxDragRef.current;
+                    if (!st || st.pointerId !== e.pointerId) return;
+                    lightboxDragRef.current = null;
+                    setLightboxDragging(false);
+                  }}
+                  onWheel={(e: any) => {
+                    if (!(e.ctrlKey || e.metaKey)) return;
+                    e.preventDefault();
+                    const dir = Math.sign(Number(e.deltaY || 0));
+                    if (!dir) return;
+                    setLightboxZoom((z) => {
+                      const next = dir > 0 ? z / 1.12 : z * 1.12;
+                      return Math.min(6, Math.max(0.2, Number(next.toFixed(3))));
+                    });
+                  }}
+                >
+                  <img
+                    src={fsPreviewUrl}
+                    alt={fsSelectedFile.split("/").pop() || "image"}
+                    className="lightboxImg"
+                    draggable={false}
+                    style={{
+                      transform: `translate(${Math.round(lightboxPan.x)}px, ${Math.round(lightboxPan.y)}px) scale(${lightboxZoom})`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {isJson && jsonCheck && !jsonCheck.ok ? (
             <div className="hint" style={{ color: "var(--danger)", marginTop: 6 }}>
               {t.tr("JSON error", "JSON 错误")}: {jsonCheck.message}

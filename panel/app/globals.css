@@ -1814,6 +1814,62 @@ button.logTopPill:hover {
   margin: 4px 6px;
 }
 
+.lightboxOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.lightbox {
+  width: min(1200px, 100%);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)), var(--card2);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.lightboxToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lightboxViewport {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+  cursor: grab;
+  touch-action: none;
+}
+
+.lightboxViewport.dragging {
+  cursor: grabbing;
+}
+
+.lightboxImg {
+  max-width: 92%;
+  max-height: 92%;
+  user-select: none;
+  pointer-events: none;
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
 .modalOverlay {
   position: fixed;
   inset: 0;

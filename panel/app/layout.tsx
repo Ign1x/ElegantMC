@@ -23,6 +23,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="zh-CN">
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <a className="skipLink" href="#mainContent">
+          Skip to content / 跳到内容
+        </a>
         {children}
       </body>
     </html>

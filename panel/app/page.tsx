@@ -8039,7 +8039,7 @@ export default function HomePage() {
 	        </div>
       </aside>
 
-      <div className="main">
+      <main id="mainContent" className="main" tabIndex={-1}>
         <div className="topbar">
           <div className="row" style={{ alignItems: "center", gap: 10, minWidth: 0 }}>
             <button
@@ -10129,7 +10129,7 @@ export default function HomePage() {
 
       {enableAdvanced && tab === "advanced" ? <AdvancedView /> : null}
         </div>
-      </div>
+      </main>
       </div>
     </AppCtxProvider>
     </ErrorBoundary>

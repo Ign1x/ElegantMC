@@ -55,10 +55,13 @@ docker compose logs panel
 
 ```bash
 ELEGANTMC_PANEL_ADMIN_PASSWORD='change-me' \
+ELEGANTMC_PANEL_PORT='3001' \
 ELEGANTMC_DAEMON_ID='home-1' \
 ELEGANTMC_TOKEN='your-strong-token' \
 docker compose up -d --build
 ```
+
+> 如果你修改了 `ELEGANTMC_PANEL_PORT`，Panel 会监听同一个端口，Daemon 也会自动连到 `ws://panel:<port>/ws/daemon`（同一个 compose 内）。
 
 > 直连端口：`docker-compose.yml` 默认把 Daemon 容器的 `25565-25600` 映射到宿主机同端口（方便在 Panel 里调整 Game Port 并从本机/LAN 直连）。
 

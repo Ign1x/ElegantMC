@@ -438,6 +438,17 @@ export default function FilesView() {
     lightboxDragRef.current = null;
   }, [lightboxOpen, fsSelectedFile]);
 
+  const imageEntries = useMemo(() => {
+    const list = (Array.isArray(fsEntries) ? fsEntries : []).filter((e: any) => e && !e.isDir && isImageFileName(String(e?.name || "")));
+    return list.sort((a: any, b: any) => String(a?.name || "").localeCompare(String(b?.name || "")));
+  }, [fsEntries]);
+
+  const currentImageIdx = useMemo(() => {
+    if (!fsSelectedFile || fsSelectedFileMode !== "image") return -1;
+    const curName = fsSelectedFile.split("/").pop() || fsSelectedFile;
+    return imageEntries.findIndex((e: any) => String(e?.name || "") === curName);
+  }, [fsSelectedFile, fsSelectedFileMode, imageEntries]);
+
   useEffect(() => {
     if (!lightboxOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -528,17 +539,6 @@ export default function FilesView() {
     inst &&
     (fsSelectedFile === inst || fsSelectedFile.startsWith(`${inst}/`));
   const entriesLoading = fsStatus === "Loading..." && !fsEntries.length;
-
-  const imageEntries = useMemo(() => {
-    const list = (Array.isArray(fsEntries) ? fsEntries : []).filter((e: any) => e && !e.isDir && isImageFileName(String(e?.name || "")));
-    return list.sort((a: any, b: any) => String(a?.name || "").localeCompare(String(b?.name || "")));
-  }, [fsEntries]);
-
-  const currentImageIdx = useMemo(() => {
-    if (!fsSelectedFile || fsSelectedFileMode !== "image") return -1;
-    const curName = fsSelectedFile.split("/").pop() || fsSelectedFile;
-    return imageEntries.findIndex((e: any) => String(e?.name || "") === curName);
-  }, [fsSelectedFile, fsSelectedFileMode, imageEntries]);
 
   const breadcrumbsView = useMemo(() => {
     const list = Array.isArray(fsBreadcrumbs) ? fsBreadcrumbs : [];
@@ -918,7 +918,7 @@ export default function FilesView() {
       ),
       disabled: !d?.connected,
     }));
-    const hasOnlineDaemon = daemonOptions.some((o) => !o.disabled);
+    const hasOnlineDaemon = daemonOptions.some((o: any) => !o.disabled);
     return (
       <div className="card">
         <div className="toolbar">
